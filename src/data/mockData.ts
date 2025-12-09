@@ -17,6 +17,7 @@ export interface ActionCard {
   draft: string;
   context: string;
   priority: 'high' | 'medium' | 'low';
+  createdAt: string;
 }
 
 export interface Connection {
@@ -118,6 +119,7 @@ export const mockActionCards: ActionCard[] = [
     draft: "Hey John, hope you're doing well! Following up on our term sheet discussion. Would love to schedule a call this week to finalize details. Are you free Thursday afternoon?",
     context: 'Last contacted 14 days ago • Birthday in 3 days 🎂',
     priority: 'high',
+    createdAt: 'Dec 8, 2024',
   },
   {
     id: 'card_2',
@@ -126,14 +128,16 @@ export const mockActionCards: ActionCard[] = [
     draft: "Hi Sarah! Saw your post about the new AI features. Would love to discuss how we could collaborate on the integration. Coffee next week?",
     context: 'Mentioned you in a LinkedIn post yesterday',
     priority: 'medium',
+    createdAt: 'Dec 7, 2024',
   },
   {
     id: 'card_3',
     contact: mockContacts[3],
-    platform: 'whatsapp',
+    platform: 'email',
     draft: "Hi Michael! Quick update on our progress - we've hit our Q4 targets ahead of schedule. Would love to share the details over a call.",
     context: 'Quarterly update due • Last contacted 5 days ago',
     priority: 'high',
+    createdAt: 'Dec 6, 2024',
   },
   {
     id: 'card_4',
@@ -142,6 +146,7 @@ export const mockActionCards: ActionCard[] = [
     draft: "Lisa! That conference was amazing. Let's catch up over dinner this weekend - I have some exciting news to share!",
     context: 'Both attended Tech Summit 2024',
     priority: 'low',
+    createdAt: 'Dec 5, 2024',
   },
   {
     id: 'card_5',
@@ -150,6 +155,7 @@ export const mockActionCards: ActionCard[] = [
     draft: "Emily, congrats on the product launch! The new dashboard looks incredible. Would love to hear about the design process.",
     context: 'Product launch yesterday 🚀',
     priority: 'medium',
+    createdAt: 'Dec 4, 2024',
   },
 ];
 
