@@ -14,10 +14,11 @@ const mockConversations = [
   { id: 'conv3', message: 'Absolutely, let me send over some details.', timestamp: '1 day ago', isSent: true },
 ];
 
-// Mock contact feeds
+// Mock contact feeds - use supported platform types
 const mockContactFeeds = [
-  { id: 'feed1', title: 'Shared an article about AI trends', platform: 'linkedin', timestamp: '5 hours ago' },
-  { id: 'feed2', title: 'Posted a YouTube video: "Future of Tech"', platform: 'youtube', timestamp: '1 day ago' },
+  { id: 'feed1', title: 'Shared an article about AI trends', platform: 'linkedin' as const, timestamp: '5 hours ago' },
+  { id: 'feed2', title: 'Posted a video: "Future of Tech"', platform: 'youtube' as const, timestamp: '1 day ago' },
+  { id: 'feed3', title: 'Commented on your post', platform: 'linkedin' as const, timestamp: '2 days ago' },
 ];
 
 export default function Contacts() {

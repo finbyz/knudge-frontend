@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 
-type Platform = 'whatsapp' | 'linkedin' | 'signal' | 'email';
+type Platform = 'whatsapp' | 'linkedin' | 'signal' | 'email' | 'youtube' | 'rss';
 
 interface PlatformBadgeProps {
   platform: Platform;
@@ -8,7 +8,7 @@ interface PlatformBadgeProps {
   showLabel?: boolean;
 }
 
-const platformConfig = {
+const platformConfig: Record<Platform, { label: string; bgClass: string; textClass: string; cardBg: string; borderClass: string }> = {
   whatsapp: {
     label: 'WhatsApp',
     bgClass: 'bg-emerald-500/10',
@@ -37,6 +37,20 @@ const platformConfig = {
     cardBg: 'bg-orange-50 dark:bg-orange-950/20',
     borderClass: 'border-orange-200 dark:border-orange-800/30',
   },
+  youtube: {
+    label: 'YouTube',
+    bgClass: 'bg-red-500/10',
+    textClass: 'text-red-600',
+    cardBg: 'bg-red-50 dark:bg-red-950/20',
+    borderClass: 'border-red-200 dark:border-red-800/30',
+  },
+  rss: {
+    label: 'RSS',
+    bgClass: 'bg-amber-500/10',
+    textClass: 'text-amber-600',
+    cardBg: 'bg-amber-50 dark:bg-amber-950/20',
+    borderClass: 'border-amber-200 dark:border-amber-800/30',
+  },
 };
 
 // SVG icons for better clarity
@@ -64,6 +78,18 @@ const PlatformIcon = ({ platform, className }: { platform: Platform; className?:
       return (
         <svg className={className} viewBox="0 0 24 24" fill="currentColor">
           <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+        </svg>
+      );
+    case 'youtube':
+      return (
+        <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+          <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+        </svg>
+      );
+    case 'rss':
+      return (
+        <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+          <path d="M6.18 15.64a2.18 2.18 0 0 1 2.18 2.18C8.36 19 7.38 20 6.18 20C5 20 4 19 4 17.82a2.18 2.18 0 0 1 2.18-2.18M4 4.44A15.56 15.56 0 0 1 19.56 20h-2.83A12.73 12.73 0 0 0 4 7.27V4.44m0 5.66a9.9 9.9 0 0 1 9.9 9.9h-2.83A7.07 7.07 0 0 0 4 12.93V10.1z"/>
         </svg>
       );
   }
