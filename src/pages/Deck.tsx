@@ -101,13 +101,13 @@ export default function Deck() {
         ) : (
           <div className="absolute inset-0 pt-6">
             <AnimatePresence mode="popLayout">
-              {cards.slice(0, 3).map((card, index) => (
+              {cards.slice(0, 3).reverse().map((card, index, arr) => (
                 <SwipeableCard
                   key={card.id}
                   card={card}
                   onSwipeRight={() => handleSwipeRight(card.id)}
                   onSwipeLeft={() => handleSwipeLeft(card.id)}
-                  isTop={index === 0}
+                  isTop={index === arr.length - 1}
                 />
               ))}
             </AnimatePresence>

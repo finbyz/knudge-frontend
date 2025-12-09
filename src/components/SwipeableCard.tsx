@@ -1,9 +1,9 @@
 import { motion, useMotionValue, useTransform, PanInfo } from 'framer-motion';
 import { useState } from 'react';
-import { Edit3, Check, X } from 'lucide-react';
+import { Check, X, Calendar } from 'lucide-react';
 import { ActionCard } from '@/data/mockData';
 import { Avatar } from './Avatar';
-import { PlatformBadge } from './PlatformBadge';
+import { PlatformBadge, getPlatformCardStyles } from './PlatformBadge';
 import { cn } from '@/lib/utils';
 
 interface SwipeableCardProps {
@@ -33,13 +33,15 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop }: Swipea
     }
   };
 
+  const platformStyles = getPlatformCardStyles(card.platform);
+
   return (
     <motion.div
       className={cn(
         'absolute inset-x-4 top-0 touch-none',
         !isTop && 'pointer-events-none'
       )}
-      style={{ x, rotate, opacity }}
+      style={{ x, rotate, opacity, zIndex: isTop ? 10 : 1 }}
       drag={isTop ? 'x' : false}
       dragConstraints={{ left: 0, right: 0 }}
       dragElastic={0.7}
@@ -67,10 +69,14 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop }: Swipea
         </div>
       </motion.div>
 
-      {/* Card content */}
-      <div className="bg-card rounded-3xl shadow-elevated border border-border overflow-hidden">
+      {/* Card content with platform-specific background */}
+      <div className={cn(
+        'rounded-3xl shadow-elevated border overflow-hidden min-h-[480px] flex flex-col',
+        platformStyles.cardBg,
+        platformStyles.borderClass
+      )}>
         {/* Header */}
-        <div className="p-5 border-b border-border">
+        <div className="p-5 border-b border-border/50 bg-card/60 backdrop-blur-sm">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
               <Avatar
@@ -90,39 +96,42 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop }: Swipea
         </div>
 
         {/* Context */}
-        <div className="px-5 py-3 bg-muted/30 border-b border-border">
+        <div className="px-5 py-3 bg-card/40 border-b border-border/50">
           <p className="text-sm text-muted-foreground">{card.context}</p>
         </div>
 
-        {/* Message */}
-        <div className="p-5">
+        {/* Message - Clickable to edit */}
+        <div className="p-5 flex-1 flex flex-col">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               AI Draft
             </span>
-            <button
-              onClick={() => setIsEditing(!isEditing)}
-              className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
-            >
-              <Edit3 className="h-3.5 w-3.5" />
-              {isEditing ? 'Save' : 'Edit'}
-            </button>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Calendar className="h-3.5 w-3.5" />
+              <span>{card.createdAt}</span>
+            </div>
           </div>
 
           {isEditing ? (
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              className="w-full min-h-[120px] p-3 rounded-xl bg-muted/50 border border-border text-foreground text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20"
+              onBlur={() => setIsEditing(false)}
+              className="w-full flex-1 min-h-[140px] p-3 rounded-xl bg-card/80 border border-border text-foreground text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20"
               autoFocus
             />
           ) : (
-            <p className="text-foreground text-sm leading-relaxed">{draft}</p>
+            <div 
+              onClick={() => setIsEditing(true)}
+              className="flex-1 min-h-[140px] p-3 rounded-xl bg-card/50 border border-transparent hover:border-border/50 cursor-text transition-colors"
+            >
+              <p className="text-foreground text-sm leading-relaxed">{draft}</p>
+            </div>
           )}
         </div>
 
         {/* Priority indicator */}
-        <div className="px-5 pb-5">
+        <div className="px-5 pb-4">
           <div
             className={cn(
               'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
