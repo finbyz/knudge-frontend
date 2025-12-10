@@ -51,25 +51,22 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
 
   const platformStyles = getPlatformCardStyles(card.platform);
 
-  // Enhanced stack effect calculations for better visibility
-  const stackOffset = stackIndex * 10; // 10px offset per card
-  const stackScale = 1 - (stackIndex * 0.04); // 4% smaller per card (100%, 96%, 92%, 88%)
-  const stackZIndex = 50 - (stackIndex * 10); // z-50, z-40, z-30, z-20
-  const stackOpacity = 1 - (stackIndex * 0.15); // Slight opacity reduction for depth
+  // Stack effect calculations for visible depth
+  const stackOffset = stackIndex * 12; // 12px offset per card going down
+  const stackScale = 1 - (stackIndex * 0.05); // 5% smaller per card (100%, 95%, 90%, 85%)
+  const stackZIndex = 40 - (stackIndex * 10); // z-40, z-30, z-20, z-10
 
   return (
     <motion.div
       className={cn(
-        'absolute inset-x-4 touch-none',
+        'absolute left-4 right-4 touch-none',
         !isTop && 'pointer-events-none'
       )}
       style={{ 
         x: isTop ? x : 0, 
         rotate: isTop ? rotate : 0, 
-        opacity: isTop ? opacity : stackOpacity,
+        opacity: isTop ? opacity : 1,
         zIndex: stackZIndex,
-        top: `${stackOffset}px`,
-        height: 'calc(100vh - 100px)',
       }}
       drag={isTop ? 'x' : false}
       dragConstraints={{ left: 0, right: 0 }}
@@ -77,13 +74,13 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
       onDragEnd={handleDragEnd}
       initial={{ 
         scale: stackScale, 
-        y: 30, 
+        y: stackOffset + 20, 
         opacity: 0 
       }}
       animate={{ 
         scale: stackScale, 
-        y: 0, 
-        opacity: stackOpacity,
+        y: stackOffset, 
+        opacity: 1,
       }}
       exit={{ 
         x: x.get() > 0 ? 400 : -400,
@@ -118,7 +115,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
 
       {/* Card content with platform-specific background */}
       <div className={cn(
-        'rounded-3xl shadow-elevated border overflow-hidden h-full flex flex-col',
+        'rounded-3xl border overflow-hidden flex flex-col',
         platformStyles.cardBg,
         platformStyles.borderClass,
         // Add shadow depth for stacked cards
