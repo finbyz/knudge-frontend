@@ -25,12 +25,11 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
   const rotate = useTransform(x, [-200, 200], [-12, 12]);
   const opacity = useTransform(x, [-200, -100, 0, 100, 200], [0.5, 1, 1, 1, 0.5]);
 
-  // Swipe indicator opacities - fade in based on drag distance
-  const leftIndicatorOpacity = useTransform(x, [-150, -50, 0], [1, 0.3, 0]);
-  const rightIndicatorOpacity = useTransform(x, [0, 50, 150], [0, 0.3, 1]);
+  const leftIndicatorOpacity = useTransform(x, [-100, -40, 0], [1, 0.5, 0]);
+  const rightIndicatorOpacity = useTransform(x, [0, 40, 100], [0, 0.5, 1]);
 
   const handleDragEnd = (_: any, info: PanInfo) => {
-    const threshold = 80;
+    const threshold = 80; // Reduced for better mobile sensitivity
     if (info.offset.x > threshold) {
       onSwipeRight();
     } else if (info.offset.x < -threshold) {
@@ -51,15 +50,15 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
 
   const platformStyles = getPlatformCardStyles(card.platform);
 
-  // Stack effect calculations for visible depth
-  const stackOffset = stackIndex * 14; // 14px offset per card going down
-  const stackScale = 1 - (stackIndex * 0.05); // 5% smaller per card (100%, 95%, 90%, 85%)
-  const stackZIndex = 40 - (stackIndex * 10); // z-40, z-30, z-20, z-10
+  // Stack effect calculations
+  const stackOffset = stackIndex * 8;
+  const stackScale = 1 - (stackIndex * 0.02);
+  const stackZIndex = 30 - (stackIndex * 10);
 
   return (
     <motion.div
       className={cn(
-        'absolute left-4 right-4 top-0 touch-none',
+        'absolute inset-x-4 touch-none',
         !isTop && 'pointer-events-none'
       )}
       style={{ 
@@ -67,64 +66,50 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         rotate: isTop ? rotate : 0, 
         opacity: isTop ? opacity : 1,
         zIndex: stackZIndex,
-        height: 'calc(100% - 50px)', // Leave room for stack offset
-        transformOrigin: 'top center',
+        top: stackOffset,
+        height: 'calc(100vh - 90px)',
       }}
       drag={isTop ? 'x' : false}
       dragConstraints={{ left: 0, right: 0 }}
       dragElastic={0.9}
       onDragEnd={handleDragEnd}
-      initial={{ 
-        scale: stackScale, 
-        y: stackOffset + 20, 
-        opacity: 0 
-      }}
+      initial={{ scale: stackScale, y: 20, opacity: 0 }}
       animate={{ 
         scale: stackScale, 
-        y: stackOffset, 
+        y: 0, 
         opacity: 1,
       }}
       exit={{ 
         x: x.get() > 0 ? 400 : -400,
         opacity: 0,
-        transition: { duration: 0.25, ease: 'easeOut' }
+        transition: { duration: 0.3, type: 'spring', stiffness: 100 }
       }}
       transition={{ type: 'spring', stiffness: 300, damping: 25 }}
     >
-      {/* Left swipe indicator (RED - Skip) - Only show on top card */}
-      {isTop && (
-        <motion.div
-          className="absolute inset-0 rounded-3xl bg-red-500/25 flex items-center justify-center z-10 pointer-events-none"
-          style={{ opacity: leftIndicatorOpacity }}
-        >
-          <div className="absolute top-6 left-6 bg-red-500 rounded-full p-3 shadow-lg">
-            <X className="h-8 w-8 text-white" strokeWidth={3} />
-          </div>
-        </motion.div>
-      )}
+      {/* Swipe indicators */}
+      <motion.div
+        className="absolute inset-0 rounded-3xl gradient-danger flex items-center justify-center z-10 pointer-events-none"
+        style={{ opacity: leftIndicatorOpacity }}
+      >
+        <div className="bg-card/90 rounded-full p-4">
+          <X className="h-8 w-8 text-destructive" />
+        </div>
+      </motion.div>
 
-      {/* Right swipe indicator (GREEN - Send) - Only show on top card */}
-      {isTop && (
-        <motion.div
-          className="absolute inset-0 rounded-3xl bg-green-500/25 flex items-center justify-center z-10 pointer-events-none"
-          style={{ opacity: rightIndicatorOpacity }}
-        >
-          <div className="absolute top-6 right-6 bg-green-500 rounded-full p-3 shadow-lg">
-            <Check className="h-8 w-8 text-white" strokeWidth={3} />
-          </div>
-        </motion.div>
-      )}
+      <motion.div
+        className="absolute inset-0 rounded-3xl gradient-success flex items-center justify-center z-10 pointer-events-none"
+        style={{ opacity: rightIndicatorOpacity }}
+      >
+        <div className="bg-card/90 rounded-full p-4">
+          <Check className="h-8 w-8 text-success" />
+        </div>
+      </motion.div>
 
       {/* Card content with platform-specific background */}
       <div className={cn(
-        'rounded-3xl border overflow-hidden flex flex-col h-full',
+        'rounded-3xl shadow-elevated border overflow-hidden h-full flex flex-col',
         platformStyles.cardBg,
-        platformStyles.borderClass,
-        // Add shadow depth for stacked cards
-        stackIndex === 0 && 'shadow-2xl',
-        stackIndex === 1 && 'shadow-xl',
-        stackIndex === 2 && 'shadow-lg',
-        stackIndex >= 3 && 'shadow-md'
+        platformStyles.borderClass
       )}>
         {/* Header */}
         <div className="p-4 border-b border-border/50 bg-card/60 backdrop-blur-sm flex-shrink-0">
