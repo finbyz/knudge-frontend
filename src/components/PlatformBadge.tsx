@@ -8,48 +8,54 @@ interface PlatformBadgeProps {
   showLabel?: boolean;
 }
 
-const platformConfig: Record<Platform, { label: string; bgClass: string; textClass: string; cardBg: string; borderClass: string }> = {
+const platformConfig: Record<Platform, { label: string; bgClass: string; textClass: string; cardBg: string; borderClass: string; leftBorder: string }> = {
   whatsapp: {
     label: 'WhatsApp',
     bgClass: 'bg-emerald-500/10',
     textClass: 'text-emerald-600',
-    cardBg: 'bg-emerald-50 dark:bg-emerald-950/20',
-    borderClass: 'border-emerald-200 dark:border-emerald-800/30',
+    cardBg: 'bg-green-50/60 dark:bg-green-950/30',
+    borderClass: 'border-green-200 dark:border-green-800/40',
+    leftBorder: 'border-l-4 border-l-green-500',
   },
   linkedin: {
     label: 'LinkedIn',
     bgClass: 'bg-blue-500/10',
     textClass: 'text-blue-600',
-    cardBg: 'bg-blue-50 dark:bg-blue-950/20',
-    borderClass: 'border-blue-200 dark:border-blue-800/30',
+    cardBg: 'bg-blue-50/60 dark:bg-blue-950/30',
+    borderClass: 'border-blue-200 dark:border-blue-800/40',
+    leftBorder: 'border-l-4 border-l-blue-600',
   },
   signal: {
     label: 'Signal',
     bgClass: 'bg-indigo-500/10',
     textClass: 'text-indigo-600',
-    cardBg: 'bg-indigo-50 dark:bg-indigo-950/20',
-    borderClass: 'border-indigo-200 dark:border-indigo-800/30',
+    cardBg: 'bg-indigo-50/60 dark:bg-indigo-950/30',
+    borderClass: 'border-indigo-200 dark:border-indigo-800/40',
+    leftBorder: 'border-l-4 border-l-indigo-500',
   },
   email: {
     label: 'Email',
-    bgClass: 'bg-orange-500/10',
-    textClass: 'text-orange-600',
-    cardBg: 'bg-orange-50 dark:bg-orange-950/20',
-    borderClass: 'border-orange-200 dark:border-orange-800/30',
+    bgClass: 'bg-gray-500/10',
+    textClass: 'text-gray-600',
+    cardBg: 'bg-gray-50/60 dark:bg-gray-950/30',
+    borderClass: 'border-gray-200 dark:border-gray-800/40',
+    leftBorder: 'border-l-4 border-l-gray-500',
   },
   youtube: {
     label: 'YouTube',
     bgClass: 'bg-red-500/10',
     textClass: 'text-red-600',
-    cardBg: 'bg-red-50 dark:bg-red-950/20',
-    borderClass: 'border-red-200 dark:border-red-800/30',
+    cardBg: 'bg-red-50/60 dark:bg-red-950/30',
+    borderClass: 'border-red-200 dark:border-red-800/40',
+    leftBorder: 'border-l-4 border-l-red-500',
   },
   rss: {
     label: 'RSS',
     bgClass: 'bg-amber-500/10',
     textClass: 'text-amber-600',
-    cardBg: 'bg-amber-50 dark:bg-amber-950/20',
-    borderClass: 'border-amber-200 dark:border-amber-800/30',
+    cardBg: 'bg-amber-50/60 dark:bg-amber-950/30',
+    borderClass: 'border-amber-200 dark:border-amber-800/40',
+    leftBorder: 'border-l-4 border-l-amber-500',
   },
 };
 

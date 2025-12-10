@@ -65,7 +65,7 @@ export default function Deck() {
       </header>
 
       {/* Card Stack */}
-      <main className="flex-1 relative overflow-hidden" style={{ height: 'calc(100vh - 65px)' }}>
+      <main className="flex-1 relative overflow-hidden pb-safe" style={{ height: 'calc(100vh - 70px)' }}>
         {isEmpty ? (
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}

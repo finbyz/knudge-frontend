@@ -50,16 +50,16 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
 
   const platformStyles = getPlatformCardStyles(card.platform);
 
-  // Stack effect calculations - improved visibility
-  const stackScale = 1 - (stackIndex * 0.05);
-  const stackTranslateY = stackIndex * 12;
-  const stackOpacity = 1 - (stackIndex * 0.2);
+  // Stack effect calculations - cards behind are smaller and lower
+  const stackScale = 1 - (stackIndex * 0.04);
+  const stackTranslateY = stackIndex * 16;
+  const stackOpacity = stackIndex === 0 ? 1 : Math.max(0.4, 1 - (stackIndex * 0.25));
   const stackZIndex = 40 - (stackIndex * 10);
 
   return (
     <motion.div
       className={cn(
-        'absolute inset-x-4 top-2 bottom-2 touch-none',
+        'absolute left-4 right-4 touch-none',
         !isTop && 'pointer-events-none'
       )}
       style={{ 
@@ -67,6 +67,8 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         rotate: isTop ? rotate : 0, 
         opacity: isTop ? opacity : stackOpacity,
         zIndex: stackZIndex,
+        top: 8,
+        height: 'calc(100% - 16px)',
       }}
       drag={isTop ? 'x' : false}
       dragConstraints={{ left: 0, right: 0 }}
@@ -74,7 +76,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
       onDragEnd={handleDragEnd}
       initial={{ 
         scale: stackScale, 
-        y: stackTranslateY + 20, 
+        y: stackTranslateY + 30, 
         opacity: 0 
       }}
       animate={{ 
@@ -119,7 +121,8 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         stackIndex === 1 && 'shadow-lg',
         stackIndex === 2 && 'shadow-md',
         platformStyles.cardBg,
-        platformStyles.borderClass
+        platformStyles.borderClass,
+        platformStyles.leftBorder
       )}
       >
         {/* Header */}
