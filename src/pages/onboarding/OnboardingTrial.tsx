@@ -5,7 +5,7 @@ import { ChevronLeft, CreditCard, Sparkles, Check, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useOnboardingStore } from '@/stores/onboardingStore';
-import { cn } from '@/lib/utils';
+import { FixedBottomContainer } from '@/components/FixedBottomContainer';
 
 type FormMode = 'payment' | 'invite';
 
@@ -65,7 +65,7 @@ export default function OnboardingTrial() {
   const isInviteValid = inviteCode.length >= 6;
 
   return (
-    <div className="min-h-screen bg-muted flex flex-col">
+    <div className="min-h-screen bg-muted flex flex-col pb-24">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-background border-b border-border px-4 py-4">
         <div className="flex items-center justify-between">
@@ -182,21 +182,6 @@ export default function OnboardingTrial() {
               >
                 Have an organization invite code?
               </button>
-
-              <Button
-                onClick={handleSubmit}
-                disabled={!isPaymentValid || loading}
-                className="w-full h-12 rounded-xl font-semibold gradient-primary text-primary-foreground"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Setting up your account...
-                  </>
-                ) : (
-                  'Start Free Trial →'
-                )}
-              </Button>
             </>
           ) : (
             <>
@@ -216,29 +201,49 @@ export default function OnboardingTrial() {
               >
                 ← Back to payment
               </button>
-
-              <Button
-                onClick={handleInviteSubmit}
-                disabled={!isInviteValid || loading}
-                className="w-full h-12 rounded-xl font-semibold gradient-primary text-primary-foreground"
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Joining organization...
-                  </>
-                ) : (
-                  'Join Organization'
-                )}
-              </Button>
             </>
           )}
 
-          <p className="text-xs text-muted-foreground text-center mt-6">
+          <p className="text-xs text-muted-foreground text-center">
             We'll remind you 3 days before trial ends. No surprises.
           </p>
         </motion.div>
       </main>
+
+      {/* Fixed bottom button */}
+      <FixedBottomContainer show={true}>
+        {mode === 'payment' ? (
+          <Button
+            onClick={handleSubmit}
+            disabled={!isPaymentValid || loading}
+            className="w-full h-12 rounded-xl font-semibold gradient-primary text-primary-foreground disabled:opacity-50"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Setting up your account...
+              </>
+            ) : (
+              'Start Free Trial →'
+            )}
+          </Button>
+        ) : (
+          <Button
+            onClick={handleInviteSubmit}
+            disabled={!isInviteValid || loading}
+            className="w-full h-12 rounded-xl font-semibold gradient-primary text-primary-foreground disabled:opacity-50"
+          >
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Joining organization...
+              </>
+            ) : (
+              'Join Organization'
+            )}
+          </Button>
+        )}
+      </FixedBottomContainer>
     </div>
   );
 }

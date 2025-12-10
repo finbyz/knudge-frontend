@@ -5,6 +5,7 @@ import { ChevronLeft, FileText, Globe, Upload, X, Check, Loader2 } from 'lucide-
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useOnboardingStore } from '@/stores/onboardingStore';
+import { FixedBottomContainer } from '@/components/FixedBottomContainer';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 
@@ -104,7 +105,7 @@ export default function OnboardingKnowledge() {
   };
 
   return (
-    <div className="min-h-screen bg-muted flex flex-col">
+    <div className="min-h-screen bg-muted flex flex-col pb-24">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-background border-b border-border px-4 py-4">
         <div className="flex items-center justify-between">
@@ -233,25 +234,27 @@ export default function OnboardingKnowledge() {
           <p className="text-sm text-muted-foreground mb-8">
             Don't have a PDF? Just paste your website URL, we'll read it.
           </p>
-
-          {/* Buttons */}
-          <div className="flex gap-3">
-            <Button
-              onClick={handleSkip}
-              variant="ghost"
-              className="flex-1 h-12 rounded-xl"
-            >
-              Skip
-            </Button>
-            <Button
-              onClick={handleNext}
-              className="flex-1 h-12 rounded-xl gradient-primary text-primary-foreground"
-            >
-              Next →
-            </Button>
-          </div>
         </motion.div>
       </main>
+
+      {/* Fixed bottom buttons */}
+      <FixedBottomContainer show={true}>
+        <div className="flex gap-3 w-full">
+          <Button
+            onClick={handleSkip}
+            variant="ghost"
+            className="flex-1 h-12 rounded-xl"
+          >
+            Skip
+          </Button>
+          <Button
+            onClick={handleNext}
+            className="flex-1 h-12 rounded-xl gradient-primary text-primary-foreground"
+          >
+            Next →
+          </Button>
+        </div>
+      </FixedBottomContainer>
     </div>
   );
 }

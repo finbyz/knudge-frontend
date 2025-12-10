@@ -5,6 +5,7 @@ import { ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { useOnboardingStore } from '@/stores/onboardingStore';
+import { FixedBottomContainer } from '@/components/FixedBottomContainer';
 
 const messageVariants = [
   { length: 'concise', tone: 'professional', emoji: 'never', text: 'Hi John, checking in on the project status.' },
@@ -54,7 +55,7 @@ export default function OnboardingVoice() {
   };
 
   return (
-    <div className="min-h-screen bg-muted flex flex-col">
+    <div className="min-h-screen bg-muted flex flex-col pb-24">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-background border-b border-border px-4 py-4">
         <div className="flex items-center justify-between">
@@ -143,14 +144,6 @@ export default function OnboardingVoice() {
                   <span>Heavy</span>
                 </div>
               </div>
-
-              <Button
-                onClick={handleNext}
-                disabled={!hasInteracted}
-                className="w-full h-12 rounded-xl font-semibold gradient-primary text-primary-foreground mt-4"
-              >
-                Next →
-              </Button>
             </div>
 
             {/* Preview */}
@@ -177,6 +170,17 @@ export default function OnboardingVoice() {
           </div>
         </motion.div>
       </main>
+
+      {/* Fixed bottom button */}
+      <FixedBottomContainer show={true}>
+        <Button
+          onClick={handleNext}
+          disabled={!hasInteracted}
+          className="w-full h-12 rounded-xl font-semibold gradient-primary text-primary-foreground disabled:opacity-50"
+        >
+          Next →
+        </Button>
+      </FixedBottomContainer>
     </div>
   );
 }

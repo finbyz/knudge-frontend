@@ -32,7 +32,7 @@ export default function Deck() {
   const currentIndex = totalCards - cards.length + 1;
 
   return (
-    <div className="h-screen bg-background pb-20 flex flex-col overflow-hidden">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border">
         <div className="flex items-center justify-between px-4 h-16">
@@ -99,11 +99,11 @@ export default function Deck() {
             </Link>
           </motion.div>
         ) : (
-          <div className="absolute inset-0">
-            {/* Cards stack - full height */}
-            <div className="relative h-full">
+          <div className="absolute inset-0 flex items-center justify-center">
+            {/* Cards stack container */}
+            <div className="relative w-full h-full">
               <AnimatePresence mode="popLayout">
-                {cards.slice(0, 3).reverse().map((card, index, arr) => (
+                {cards.slice(0, 4).reverse().map((card, index, arr) => (
                   <SwipeableCard
                     key={card.id}
                     card={card}
