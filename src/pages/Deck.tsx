@@ -33,22 +33,29 @@ export default function Deck() {
 
   return (
     <div className="h-screen bg-background pb-20 flex flex-col overflow-hidden">
-      {/* Header - minimal */}
-      <header className="absolute top-0 left-0 right-0 z-40 bg-gradient-to-b from-background via-background/80 to-transparent">
-        <div className="flex items-center justify-between px-4 h-14">
+      {/* Header */}
+      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border">
+        <div className="flex items-center justify-between px-4 h-16">
           <Link to="/" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
             <ChevronDown className="h-5 w-5 rotate-90" />
             <span className="text-sm font-medium">Back</span>
           </Link>
-          <span className="font-semibold text-foreground">The Deck</span>
+          <div className="text-center">
+            <span className="font-semibold text-foreground">The Deck</span>
+            {!isEmpty && (
+              <p className="text-xs text-muted-foreground">
+                {currentIndex} of {totalCards}
+              </p>
+            )}
+          </div>
           <div className="w-16" />
         </div>
         
-        {/* Progress bar - visual only */}
+        {/* Progress bar */}
         {!isEmpty && (
-          <div className="h-1 bg-muted mx-4 rounded-full overflow-hidden">
+          <div className="h-1 bg-muted">
             <motion.div
-              className="h-full gradient-primary rounded-full"
+              className="h-full gradient-primary"
               initial={{ width: 0 }}
               animate={{ width: `${(currentIndex / totalCards) * 100}%` }}
               transition={{ duration: 0.3 }}
