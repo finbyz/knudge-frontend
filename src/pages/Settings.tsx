@@ -9,6 +9,7 @@ interface Circle {
   name: string;
   frequency: string;
   contacts: number;
+  outreachAgenda: string;
 }
 
 interface UserProfile {
@@ -21,9 +22,9 @@ interface UserProfile {
 }
 
 const initialCircles: Circle[] = [
-  { name: 'VIP Investors', frequency: 'Every 2 weeks', contacts: 12 },
-  { name: 'Team', frequency: 'Weekly', contacts: 8 },
-  { name: 'Friends', frequency: 'Monthly', contacts: 24 },
+  { name: 'VIP Investors', frequency: 'Every 2 weeks', contacts: 12, outreachAgenda: 'Discuss investment opportunities and share portfolio updates' },
+  { name: 'Team', frequency: 'Weekly', contacts: 8, outreachAgenda: 'Weekly sync, project updates, and team coordination' },
+  { name: 'Friends', frequency: 'Monthly', contacts: 24, outreachAgenda: 'Catch up, share life updates, plan meetups' },
 ];
 
 const frequencyOptions = ['Daily', 'Weekly', 'Every 2 weeks', 'Monthly', 'Quarterly'];
@@ -38,7 +39,7 @@ export default function Settings() {
   const [circles, setCircles] = useState<Circle[]>(initialCircles);
   const [showCircleForm, setShowCircleForm] = useState(false);
   const [editingCircle, setEditingCircle] = useState<Circle | null>(null);
-  const [circleForm, setCircleForm] = useState({ name: '', frequency: 'Weekly', contacts: 0 });
+  const [circleForm, setCircleForm] = useState({ name: '', frequency: 'Weekly', contacts: 0, outreachAgenda: '' });
   
   const [showProfileForm, setShowProfileForm] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile>({
@@ -56,7 +57,7 @@ export default function Settings() {
 
   const handleAddCircle = () => {
     setEditingCircle(null);
-    setCircleForm({ name: '', frequency: 'Weekly', contacts: 0 });
+    setCircleForm({ name: '', frequency: 'Weekly', contacts: 0, outreachAgenda: '' });
     setShowCircleForm(true);
   };
 
@@ -67,7 +68,7 @@ export default function Settings() {
   };
 
   const handleSaveCircle = () => {
-    if (!circleForm.name) return;
+    if (!circleForm.name || !circleForm.outreachAgenda) return;
     
     if (editingCircle) {
       setCircles((prev) => 
@@ -353,6 +354,20 @@ export default function Settings() {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-2 block">
+                    Outreach Agenda <span className="text-destructive">*</span>
+                  </label>
+                  <textarea
+                    value={circleForm.outreachAgenda}
+                    onChange={(e) => setCircleForm({ ...circleForm, outreachAgenda: e.target.value })}
+                    placeholder="e.g., Discuss investment opportunities, share product updates"
+                    rows={3}
+                    className="w-full px-4 py-3 rounded-xl bg-muted/50 border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">This will guide AI when generating drafts for contacts in this circle</p>
                 </div>
 
                 <div className="flex gap-3 pt-2">

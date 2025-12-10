@@ -99,32 +99,33 @@ export default function Deck() {
             </Link>
           </motion.div>
         ) : (
-          <div className="absolute inset-0 pt-6">
-            <AnimatePresence mode="popLayout">
-              {cards.slice(0, 3).reverse().map((card, index, arr) => (
-                <SwipeableCard
-                  key={card.id}
-                  card={card}
-                  onSwipeRight={() => handleSwipeRight(card.id)}
-                  onSwipeLeft={() => handleSwipeLeft(card.id)}
-                  isTop={index === arr.length - 1}
-                />
-              ))}
-            </AnimatePresence>
+          <div className="absolute inset-0 pt-4 flex flex-col">
+            {/* Counter badge at top */}
+            <div className="flex justify-center mb-3">
+              <div className="px-4 py-1.5 rounded-full bg-foreground/10 backdrop-blur-sm border border-border/50">
+                <span className="text-sm font-medium text-foreground">
+                  {cards.length} remaining
+                </span>
+              </div>
+            </div>
+            
+            {/* Cards stack */}
+            <div className="relative flex-1">
+              <AnimatePresence mode="popLayout">
+                {cards.slice(0, 3).reverse().map((card, index, arr) => (
+                  <SwipeableCard
+                    key={card.id}
+                    card={card}
+                    onSwipeRight={() => handleSwipeRight(card.id)}
+                    onSwipeLeft={() => handleSwipeLeft(card.id)}
+                    isTop={index === arr.length - 1}
+                  />
+                ))}
+              </AnimatePresence>
+            </div>
           </div>
         )}
       </main>
-
-      {/* Counter badge */}
-      {!isEmpty && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2">
-          <div className="px-4 py-2 rounded-full bg-card shadow-elevated border border-border">
-            <span className="text-sm font-medium text-foreground">
-              {cards.length} remaining
-            </span>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
