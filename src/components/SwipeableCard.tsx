@@ -50,11 +50,11 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
 
   const platformStyles = getPlatformCardStyles(card.platform);
 
-  // Stack effect calculations - cards behind are smaller and lower with full opacity
-  const stackScale = 1 - (stackIndex * 0.05); // 1, 0.95, 0.90, 0.85
-  const stackTranslateY = stackIndex * 8; // 0, 8, 16, 24
-  const stackOpacity = 1; // All cards fully visible
-  const stackZIndex = 40 - (stackIndex * 10); // 40, 30, 20, 10
+  // Stack effect calculations - cards behind are smaller and lower
+  const stackScale = 1 - (stackIndex * 0.04);
+  const stackTranslateY = stackIndex * 16;
+  const stackOpacity = stackIndex === 0 ? 1 : Math.max(0.4, 1 - (stackIndex * 0.25));
+  const stackZIndex = 40 - (stackIndex * 10);
 
   return (
     <motion.div
