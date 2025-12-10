@@ -302,17 +302,18 @@ export default function Settings() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-foreground/20 backdrop-blur-sm flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 bg-foreground/20 backdrop-blur-sm flex items-start justify-center p-4 pt-12 overflow-y-auto"
             onClick={() => setShowCircleForm(false)}
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-card rounded-2xl shadow-elevated w-full max-w-md overflow-hidden"
+              className="bg-card rounded-2xl shadow-elevated w-full max-w-md overflow-hidden flex flex-col"
+              style={{ maxHeight: 'calc(100vh - 100px)' }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between p-4 border-b border-border">
+              <div className="flex items-center justify-between p-4 border-b border-border flex-shrink-0">
                 <h2 className="font-semibold text-foreground">
                   {editingCircle ? 'Edit Circle' : 'Add Circle'}
                 </h2>
@@ -324,7 +325,7 @@ export default function Settings() {
                 </button>
               </div>
 
-              <div className="p-4 space-y-4">
+              <div className="p-4 space-y-4 overflow-y-auto flex-1">
                 <div>
                   <label className="text-sm font-medium text-foreground mb-2 block">Circle Name</label>
                   <input
@@ -369,8 +370,11 @@ export default function Settings() {
                   />
                   <p className="text-xs text-muted-foreground mt-1">This will guide AI when generating drafts for contacts in this circle</p>
                 </div>
+              </div>
 
-                <div className="flex gap-3 pt-2">
+              {/* Sticky buttons at bottom */}
+              <div className="p-4 border-t border-border bg-card flex-shrink-0">
+                <div className="flex gap-3">
                   {editingCircle && (
                     <Button
                       variant="outline"

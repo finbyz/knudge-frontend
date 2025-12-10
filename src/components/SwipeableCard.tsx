@@ -62,7 +62,8 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop }: Swipea
         opacity, 
         zIndex: isTop ? 10 : 1,
         top: 0,
-        height: 'calc(100vh - 200px)'
+        height: 'calc(100vh - 220px)',
+        marginBottom: '20px'
       }}
       drag={isTop ? 'x' : false}
       dragConstraints={{ left: 0, right: 0 }}
@@ -224,8 +225,8 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop }: Swipea
           </div>
         </div>
 
-        {/* Swipe hint */}
-        <div className="px-5 pb-4">
+        {/* Swipe hint - always visible */}
+        <div className="px-5 pb-5 flex-shrink-0 bg-gradient-to-t from-card/80 to-transparent pt-2">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <div className="flex items-center gap-2">
               <div className="h-6 w-6 rounded-full bg-destructive/10 flex items-center justify-center">
