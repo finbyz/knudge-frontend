@@ -67,8 +67,8 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         rotate: isTop ? rotate : 0, 
         opacity: isTop ? opacity : stackOpacity,
         zIndex: stackZIndex,
-        top: 8,
-        height: 'calc(100% - 16px)',
+        top: 4,
+        height: 'calc(100% - 8px)',
       }}
       drag={isTop ? 'x' : false}
       dragConstraints={{ left: 0, right: 0 }}
