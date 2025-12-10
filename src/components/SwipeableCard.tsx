@@ -1,6 +1,6 @@
 import { motion, useMotionValue, useTransform, PanInfo } from 'framer-motion';
 import { useState } from 'react';
-import { Check, X, Calendar, RefreshCw, Send } from 'lucide-react';
+import { Check, X, Calendar, RefreshCw } from 'lucide-react';
 import { ActionCard } from '@/data/mockData';
 import { Avatar } from './Avatar';
 import { PlatformBadge, getPlatformCardStyles } from './PlatformBadge';
@@ -12,23 +12,24 @@ interface SwipeableCardProps {
   onSwipeRight: () => void;
   onSwipeLeft: () => void;
   isTop: boolean;
+  stackIndex: number;
 }
 
-export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop }: SwipeableCardProps) {
+export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackIndex }: SwipeableCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(card.draft);
   const [regenerateInstructions, setRegenerateInstructions] = useState('');
   const [showRegenerateInput, setShowRegenerateInput] = useState(false);
 
   const x = useMotionValue(0);
-  const rotate = useTransform(x, [-200, 200], [-15, 15]);
+  const rotate = useTransform(x, [-200, 200], [-12, 12]);
   const opacity = useTransform(x, [-200, -100, 0, 100, 200], [0.5, 1, 1, 1, 0.5]);
 
-  const leftIndicatorOpacity = useTransform(x, [-150, -50, 0], [1, 0.5, 0]);
-  const rightIndicatorOpacity = useTransform(x, [0, 50, 150], [0, 0.5, 1]);
+  const leftIndicatorOpacity = useTransform(x, [-100, -40, 0], [1, 0.5, 0]);
+  const rightIndicatorOpacity = useTransform(x, [0, 40, 100], [0, 0.5, 1]);
 
   const handleDragEnd = (_: any, info: PanInfo) => {
-    const threshold = 100;
+    const threshold = 80; // Reduced for better mobile sensitivity
     if (info.offset.x > threshold) {
       onSwipeRight();
     } else if (info.offset.x < -threshold) {
@@ -37,7 +38,6 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop }: Swipea
   };
 
   const handleRegenerate = () => {
-    // Simulate AI regeneration
     const variations = [
       `Hi ${card.contact.name.split(' ')[0]}, just wanted to touch base! ${regenerateInstructions ? `(Based on: ${regenerateInstructions})` : ''} Looking forward to connecting soon.`,
       `Hey ${card.contact.name.split(' ')[0]}! Hope all is well with you. ${regenerateInstructions ? `Specifically regarding: ${regenerateInstructions}` : ''} Let's catch up when you have a moment.`,
@@ -50,6 +50,11 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop }: Swipea
 
   const platformStyles = getPlatformCardStyles(card.platform);
 
+  // Stack effect calculations
+  const stackOffset = stackIndex * 8;
+  const stackScale = 1 - (stackIndex * 0.02);
+  const stackZIndex = 30 - (stackIndex * 10);
+
   return (
     <motion.div
       className={cn(
@@ -57,20 +62,28 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop }: Swipea
         !isTop && 'pointer-events-none'
       )}
       style={{ 
-        x, 
-        rotate, 
-        opacity, 
-        zIndex: isTop ? 10 : 1,
-        top: 0,
-        height: 'calc(100vh - 220px)',
-        marginBottom: '20px'
+        x: isTop ? x : 0, 
+        rotate: isTop ? rotate : 0, 
+        opacity: isTop ? opacity : 1,
+        zIndex: stackZIndex,
+        top: stackOffset,
+        height: 'calc(100vh - 90px)',
       }}
       drag={isTop ? 'x' : false}
       dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={0.7}
+      dragElastic={0.9}
       onDragEnd={handleDragEnd}
-      initial={{ scale: isTop ? 1 : 0.95, y: isTop ? 0 : 20 }}
-      animate={{ scale: isTop ? 1 : 0.95, y: isTop ? 0 : 20 }}
+      initial={{ scale: stackScale, y: 20, opacity: 0 }}
+      animate={{ 
+        scale: stackScale, 
+        y: 0, 
+        opacity: 1,
+      }}
+      exit={{ 
+        x: x.get() > 0 ? 400 : -400,
+        opacity: 0,
+        transition: { duration: 0.3, type: 'spring', stiffness: 100 }
+      }}
       transition={{ type: 'spring', stiffness: 300, damping: 25 }}
     >
       {/* Swipe indicators */}
@@ -99,7 +112,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop }: Swipea
         platformStyles.borderClass
       )}>
         {/* Header */}
-        <div className="p-5 border-b border-border/50 bg-card/60 backdrop-blur-sm">
+        <div className="p-4 border-b border-border/50 bg-card/60 backdrop-blur-sm flex-shrink-0">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
               <Avatar
@@ -107,9 +120,9 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop }: Swipea
                 size="lg"
                 isVIP={card.contact.isVIP}
               />
-              <div>
-                <h3 className="font-semibold text-foreground">{card.contact.name}</h3>
-                <p className="text-sm text-muted-foreground">
+              <div className="min-w-0 flex-1">
+                <h3 className="font-semibold text-foreground text-lg truncate">{card.contact.name}</h3>
+                <p className="text-sm text-muted-foreground truncate">
                   {card.contact.title} {card.contact.company && `at ${card.contact.company}`}
                 </p>
               </div>
@@ -119,13 +132,13 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop }: Swipea
         </div>
 
         {/* Context */}
-        <div className="px-5 py-3 bg-card/40 border-b border-border/50">
+        <div className="px-4 py-2 bg-card/40 border-b border-border/50 flex-shrink-0">
           <p className="text-sm text-muted-foreground">{card.context}</p>
         </div>
 
         {/* Message - Clickable to edit with scroll */}
-        <div className="p-5 flex-1 flex flex-col min-h-0">
-          <div className="flex items-center justify-between mb-3 flex-shrink-0">
+        <div className="p-4 flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className="flex items-center justify-between mb-2 flex-shrink-0">
             <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               AI Draft
             </span>
@@ -136,33 +149,31 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop }: Swipea
           </div>
 
           {/* Scrollable draft container */}
-          <div className="flex-1 min-h-0 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-y-auto">
             {isEditing ? (
               <textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onBlur={() => setIsEditing(false)}
-                className="w-full h-full p-3 rounded-xl bg-card/80 border border-border text-foreground text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 overflow-y-auto"
-                style={{ maxHeight: '180px', minHeight: '120px' }}
+                className="w-full h-full p-3 rounded-xl bg-card/80 border border-border text-foreground text-base leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-primary/20"
                 autoFocus
               />
             ) : (
               <div 
                 onClick={() => setIsEditing(true)}
-                className="h-full p-3 rounded-xl bg-card/50 border border-transparent hover:border-border/50 cursor-text transition-colors overflow-y-auto"
-                style={{ maxHeight: '180px', minHeight: '120px' }}
+                className="p-3 rounded-xl bg-card/50 border border-transparent hover:border-border/50 cursor-text transition-colors"
               >
-                <p className="text-foreground text-sm leading-relaxed">{draft}</p>
+                <p className="text-foreground text-base leading-relaxed">{draft}</p>
               </div>
             )}
           </div>
 
-          {/* Regenerate section - fixed at bottom */}
+          {/* Regenerate section */}
           <div className="mt-3 space-y-2 flex-shrink-0">
             {showRegenerateInput && (
               <input
                 type="text"
-                placeholder="Add instructions for regeneration (optional)..."
+                placeholder="Add instructions for regeneration..."
                 value={regenerateInstructions}
                 onChange={(e) => setRegenerateInstructions(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg bg-card/80 border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
@@ -175,16 +186,16 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop }: Swipea
                     size="sm"
                     variant="outline"
                     onClick={() => setShowRegenerateInput(false)}
-                    className="flex-1"
+                    className="flex-1 h-11"
                   >
                     Cancel
                   </Button>
                   <Button
                     size="sm"
                     onClick={handleRegenerate}
-                    className="flex-1 gradient-primary text-primary-foreground border-0"
+                    className="flex-1 h-11 gradient-primary text-primary-foreground border-0"
                   >
-                    <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                    <RefreshCw className="h-4 w-4 mr-1.5" />
                     Regenerate
                   </Button>
                 </>
@@ -193,9 +204,9 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop }: Swipea
                   size="sm"
                   variant="outline"
                   onClick={() => setShowRegenerateInput(true)}
-                  className="w-full"
+                  className="w-full h-11"
                 >
-                  <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                  <RefreshCw className="h-4 w-4 mr-1.5" />
                   Regenerate with Instructions
                 </Button>
               )}
@@ -204,7 +215,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop }: Swipea
         </div>
 
         {/* Priority indicator */}
-        <div className="px-5 pb-3">
+        <div className="px-4 pb-2 flex-shrink-0">
           <div
             className={cn(
               'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
@@ -225,19 +236,19 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop }: Swipea
           </div>
         </div>
 
-        {/* Swipe hint - always visible */}
-        <div className="px-5 pb-5 flex-shrink-0 bg-gradient-to-t from-card/80 to-transparent pt-2">
+        {/* Swipe hint */}
+        <div className="px-4 pb-4 flex-shrink-0">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <div className="flex items-center gap-2">
-              <div className="h-6 w-6 rounded-full bg-destructive/10 flex items-center justify-center">
-                <X className="h-3.5 w-3.5 text-destructive" />
+              <div className="h-8 w-8 rounded-full bg-destructive/10 flex items-center justify-center">
+                <X className="h-4 w-4 text-destructive" />
               </div>
-              <span>Swipe left to skip</span>
+              <span>Skip</span>
             </div>
             <div className="flex items-center gap-2">
-              <span>Swipe right to send</span>
-              <div className="h-6 w-6 rounded-full bg-success/10 flex items-center justify-center">
-                <Check className="h-3.5 w-3.5 text-success" />
+              <span>Send</span>
+              <div className="h-8 w-8 rounded-full bg-success/10 flex items-center justify-center">
+                <Check className="h-4 w-4 text-success" />
               </div>
             </div>
           </div>

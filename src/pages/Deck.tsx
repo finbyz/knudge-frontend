@@ -32,36 +32,18 @@ export default function Deck() {
   const currentIndex = totalCards - cards.length + 1;
 
   return (
-    <div className="min-h-screen bg-background pb-24 flex flex-col">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border">
-        <div className="flex items-center justify-between px-4 h-16">
+    <div className="h-screen bg-background pb-20 flex flex-col overflow-hidden">
+      {/* Header - minimal */}
+      <header className="absolute top-0 left-0 right-0 z-40 bg-gradient-to-b from-background via-background/80 to-transparent">
+        <div className="flex items-center justify-between px-4 h-14">
           <Link to="/" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
             <ChevronDown className="h-5 w-5 rotate-90" />
             <span className="text-sm font-medium">Back</span>
           </Link>
-          <div className="text-center">
-            <span className="font-semibold text-foreground">The Deck</span>
-            {!isEmpty && (
-              <p className="text-xs text-muted-foreground">
-                {currentIndex} of {totalCards}
-              </p>
-            )}
-          </div>
-          <div className="w-16" /> {/* Spacer for centering */}
+          <span className="font-semibold text-foreground">The Deck</span>
+          <div className="w-16" />
         </div>
 
-        {/* Progress bar */}
-        {!isEmpty && (
-          <div className="h-1 bg-muted">
-            <motion.div
-              className="h-full gradient-primary"
-              initial={{ width: 0 }}
-              animate={{ width: `${(currentIndex / totalCards) * 100}%` }}
-              transition={{ duration: 0.3 }}
-            />
-          </div>
-        )}
       </header>
 
       {/* Card Stack */}
@@ -99,18 +81,9 @@ export default function Deck() {
             </Link>
           </motion.div>
         ) : (
-          <div className="absolute inset-0 pt-4 flex flex-col">
-            {/* Counter badge at top */}
-            <div className="flex justify-center mb-3">
-              <div className="px-4 py-1.5 rounded-full bg-foreground/10 backdrop-blur-sm border border-border/50">
-                <span className="text-sm font-medium text-foreground">
-                  {cards.length} remaining
-                </span>
-              </div>
-            </div>
-            
-            {/* Cards stack */}
-            <div className="relative flex-1">
+          <div className="absolute inset-0">
+            {/* Cards stack - full height */}
+            <div className="relative h-full">
               <AnimatePresence mode="popLayout">
                 {cards.slice(0, 3).reverse().map((card, index, arr) => (
                   <SwipeableCard
@@ -119,6 +92,7 @@ export default function Deck() {
                     onSwipeRight={() => handleSwipeRight(card.id)}
                     onSwipeLeft={() => handleSwipeLeft(card.id)}
                     isTop={index === arr.length - 1}
+                    stackIndex={arr.length - 1 - index}
                   />
                 ))}
               </AnimatePresence>

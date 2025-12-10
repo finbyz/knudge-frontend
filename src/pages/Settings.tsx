@@ -5,12 +5,23 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
+type ChannelType = 'whatsapp' | 'linkedin' | 'email' | 'signal' | 'telegram';
+
 interface Circle {
   name: string;
+  channels: ChannelType[];
   frequency: string;
   contacts: number;
   outreachAgenda: string;
 }
+
+const channelOptions: { id: ChannelType; label: string; color: string; icon: string }[] = [
+  { id: 'whatsapp', label: 'WhatsApp', color: '#25D366', icon: 'whatsapp' },
+  { id: 'linkedin', label: 'LinkedIn', color: '#0A66C2', icon: 'linkedin' },
+  { id: 'email', label: 'Email', color: '#6B7280', icon: 'email' },
+  { id: 'signal', label: 'Signal', color: '#3A76F0', icon: 'signal' },
+  { id: 'telegram', label: 'Telegram', color: '#26A5E4', icon: 'telegram' },
+];
 
 interface UserProfile {
   firstName: string;
@@ -22,9 +33,9 @@ interface UserProfile {
 }
 
 const initialCircles: Circle[] = [
-  { name: 'VIP Investors', frequency: 'Every 2 weeks', contacts: 12, outreachAgenda: 'Discuss investment opportunities and share portfolio updates' },
-  { name: 'Team', frequency: 'Weekly', contacts: 8, outreachAgenda: 'Weekly sync, project updates, and team coordination' },
-  { name: 'Friends', frequency: 'Monthly', contacts: 24, outreachAgenda: 'Catch up, share life updates, plan meetups' },
+  { name: 'VIP Investors', channels: ['whatsapp', 'email', 'linkedin'], frequency: 'Every 2 weeks', contacts: 12, outreachAgenda: 'Discuss investment opportunities and share portfolio updates' },
+  { name: 'Team', channels: ['whatsapp', 'signal'], frequency: 'Weekly', contacts: 8, outreachAgenda: 'Weekly sync, project updates, and team coordination' },
+  { name: 'Friends', channels: ['whatsapp', 'telegram'], frequency: 'Monthly', contacts: 24, outreachAgenda: 'Catch up, share life updates, plan meetups' },
 ];
 
 const frequencyOptions = ['Daily', 'Weekly', 'Every 2 weeks', 'Monthly', 'Quarterly'];
@@ -39,7 +50,7 @@ export default function Settings() {
   const [circles, setCircles] = useState<Circle[]>(initialCircles);
   const [showCircleForm, setShowCircleForm] = useState(false);
   const [editingCircle, setEditingCircle] = useState<Circle | null>(null);
-  const [circleForm, setCircleForm] = useState({ name: '', frequency: 'Weekly', contacts: 0, outreachAgenda: '' });
+  const [circleForm, setCircleForm] = useState<Circle>({ name: '', channels: [], frequency: 'Weekly', contacts: 0, outreachAgenda: '' });
   
   const [showProfileForm, setShowProfileForm] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile>({
@@ -57,8 +68,17 @@ export default function Settings() {
 
   const handleAddCircle = () => {
     setEditingCircle(null);
-    setCircleForm({ name: '', frequency: 'Weekly', contacts: 0, outreachAgenda: '' });
+    setCircleForm({ name: '', channels: [], frequency: 'Weekly', contacts: 0, outreachAgenda: '' });
     setShowCircleForm(true);
+  };
+
+  const toggleChannel = (channel: ChannelType) => {
+    setCircleForm(prev => ({
+      ...prev,
+      channels: prev.channels.includes(channel)
+        ? prev.channels.filter(c => c !== channel)
+        : [...prev.channels, channel]
+    }));
   };
 
   const handleEditCircle = (circle: Circle) => {
@@ -68,7 +88,7 @@ export default function Settings() {
   };
 
   const handleSaveCircle = () => {
-    if (!circleForm.name || !circleForm.outreachAgenda) return;
+    if (!circleForm.name || !circleForm.outreachAgenda || circleForm.channels.length === 0) return;
     
     if (editingCircle) {
       setCircles((prev) => 
@@ -325,7 +345,7 @@ export default function Settings() {
                 </button>
               </div>
 
-              <div className="p-4 space-y-4 overflow-y-auto flex-1">
+              <div className="p-4 space-y-5 overflow-y-auto flex-1">
                 <div>
                   <label className="text-sm font-medium text-foreground mb-2 block">Circle Name</label>
                   <input
@@ -333,27 +353,72 @@ export default function Settings() {
                     value={circleForm.name}
                     onChange={(e) => setCircleForm({ ...circleForm, name: e.target.value })}
                     placeholder="e.g., VIP Clients"
-                    className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    className="w-full h-12 px-4 rounded-xl bg-muted/50 border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
                 </div>
 
+                {/* Channels Multi-select */}
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-2 block">
+                    Channels <span className="text-destructive">*</span>
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {channelOptions.map((channel) => {
+                      const isSelected = circleForm.channels.includes(channel.id);
+                      return (
+                        <button
+                          key={channel.id}
+                          type="button"
+                          onClick={() => toggleChannel(channel.id)}
+                          className={cn(
+                            'flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium transition-all border',
+                            isSelected
+                              ? 'border-transparent text-white'
+                              : 'bg-muted/50 border-border text-muted-foreground hover:bg-muted'
+                          )}
+                          style={isSelected ? { backgroundColor: channel.color } : {}}
+                        >
+                          <span className="text-xs">{isSelected ? '✓' : '○'}</span>
+                          {channel.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">AI will draft messages for selected channels</p>
+                </div>
+
+                {/* Contact Frequency - 2x2 Grid */}
                 <div>
                   <label className="text-sm font-medium text-foreground mb-2 block">Contact Frequency</label>
                   <div className="grid grid-cols-2 gap-2">
-                    {frequencyOptions.map((freq) => (
+                    {frequencyOptions.slice(0, 4).map((freq) => (
                       <button
                         key={freq}
                         onClick={() => setCircleForm({ ...circleForm, frequency: freq })}
                         className={cn(
-                          'py-2.5 rounded-xl text-sm font-medium transition-all',
+                          'h-12 rounded-xl text-sm transition-all',
                           circleForm.frequency === freq
-                            ? 'gradient-primary text-primary-foreground'
-                            : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                            ? 'gradient-primary text-primary-foreground font-semibold'
+                            : 'bg-muted/50 text-foreground hover:bg-muted font-medium'
                         )}
                       >
                         {freq}
                       </button>
                     ))}
+                  </div>
+                  {/* Quarterly centered */}
+                  <div className="flex justify-center mt-2">
+                    <button
+                      onClick={() => setCircleForm({ ...circleForm, frequency: 'Quarterly' })}
+                      className={cn(
+                        'h-12 px-8 rounded-xl text-sm transition-all',
+                        circleForm.frequency === 'Quarterly'
+                          ? 'gradient-primary text-primary-foreground font-semibold'
+                          : 'bg-muted/50 text-foreground hover:bg-muted font-medium'
+                      )}
+                    >
+                      Quarterly
+                    </button>
                   </div>
                 </div>
 
