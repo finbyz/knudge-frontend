@@ -103,7 +103,7 @@ export default function Deck() {
             {/* Cards stack - full height */}
             <div className="relative h-full">
               <AnimatePresence mode="popLayout">
-                {cards.slice(0, 3).reverse().map((card, index, arr) => (
+                {cards.slice(0, 4).reverse().map((card, index, arr) => (
                   <SwipeableCard
                     key={card.id}
                     card={card}
