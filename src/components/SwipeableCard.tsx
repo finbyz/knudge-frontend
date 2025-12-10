@@ -52,14 +52,14 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
   const platformStyles = getPlatformCardStyles(card.platform);
 
   // Stack effect calculations for visible depth
-  const stackOffset = stackIndex * 12; // 12px offset per card going down
+  const stackOffset = stackIndex * 14; // 14px offset per card going down
   const stackScale = 1 - (stackIndex * 0.05); // 5% smaller per card (100%, 95%, 90%, 85%)
   const stackZIndex = 40 - (stackIndex * 10); // z-40, z-30, z-20, z-10
 
   return (
     <motion.div
       className={cn(
-        'absolute left-4 right-4 touch-none',
+        'absolute left-4 right-4 top-0 touch-none',
         !isTop && 'pointer-events-none'
       )}
       style={{ 
@@ -67,6 +67,8 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         rotate: isTop ? rotate : 0, 
         opacity: isTop ? opacity : 1,
         zIndex: stackZIndex,
+        height: 'calc(100% - 50px)', // Leave room for stack offset
+        transformOrigin: 'top center',
       }}
       drag={isTop ? 'x' : false}
       dragConstraints={{ left: 0, right: 0 }}
@@ -115,7 +117,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
 
       {/* Card content with platform-specific background */}
       <div className={cn(
-        'rounded-3xl border overflow-hidden flex flex-col',
+        'rounded-3xl border overflow-hidden flex flex-col h-full',
         platformStyles.cardBg,
         platformStyles.borderClass,
         // Add shadow depth for stacked cards

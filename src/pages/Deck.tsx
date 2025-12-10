@@ -99,9 +99,9 @@ export default function Deck() {
             </Link>
           </motion.div>
         ) : (
-          <div className="absolute inset-0 pt-4 pb-8">
-            {/* Cards stack container */}
-            <div className="relative h-full max-h-[calc(100vh-180px)]">
+          <div className="absolute inset-0 flex items-start justify-center pt-2">
+            {/* Cards stack container - needs extra padding at bottom for stacked cards */}
+            <div className="relative w-full h-[calc(100%-60px)]">
               <AnimatePresence mode="popLayout">
                 {cards.slice(0, 4).reverse().map((card, index, arr) => (
                   <SwipeableCard
