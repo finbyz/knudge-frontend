@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { ChevronLeft, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useOnboardingStore, GoalType } from '@/stores/onboardingStore';
+import { FixedBottomContainer } from '@/components/FixedBottomContainer';
 import { cn } from '@/lib/utils';
 
 const goals = [
@@ -44,7 +45,7 @@ export default function OnboardingGoal() {
   };
 
   return (
-    <div className="min-h-screen bg-muted flex flex-col">
+    <div className="min-h-screen bg-muted flex flex-col pb-24">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-background border-b border-border px-4 py-4">
         <div className="flex items-center justify-between">
@@ -110,23 +111,14 @@ export default function OnboardingGoal() {
       </main>
 
       {/* Fixed bottom button */}
-      <AnimatePresence>
-        {selected && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 20 }}
-            className="sticky bottom-0 p-4 bg-background border-t border-border"
-          >
-            <Button
-              onClick={handleNext}
-              className="w-full h-12 rounded-xl font-semibold gradient-primary text-primary-foreground"
-            >
-              Next
-            </Button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <FixedBottomContainer show={!!selected}>
+        <Button
+          onClick={handleNext}
+          className="w-full h-12 rounded-xl font-semibold gradient-primary text-primary-foreground"
+        >
+          Next
+        </Button>
+      </FixedBottomContainer>
     </div>
   );
 }

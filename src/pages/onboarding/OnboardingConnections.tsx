@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft, Chrome, Linkedin, Mail, Loader2, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useOnboardingStore } from '@/stores/onboardingStore';
+import { FixedBottomContainer } from '@/components/FixedBottomContainer';
 import { cn } from '@/lib/utils';
 
 interface Connection {
@@ -74,7 +75,7 @@ export default function OnboardingConnections() {
   const canProceed = connections.length >= 1;
 
   return (
-    <div className="min-h-screen bg-muted flex flex-col">
+    <div className="min-h-screen bg-muted flex flex-col pb-24">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-background border-b border-border px-4 py-4">
         <div className="flex items-center justify-between">
@@ -181,37 +182,22 @@ export default function OnboardingConnections() {
             })}
           </div>
 
-          <p className="text-xs text-muted-foreground text-center mb-8">
+          <p className="text-xs text-muted-foreground text-center">
             We never message anyone without your permission
           </p>
-
-          {/* Next button */}
-          <AnimatePresence>
-            {canProceed && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                <Button
-                  onClick={handleNext}
-                  className="w-full h-12 rounded-xl font-semibold gradient-primary text-primary-foreground"
-                >
-                  Next →
-                </Button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {!canProceed && (
-            <Button
-              disabled
-              className="w-full h-12 rounded-xl font-semibold bg-muted text-muted-foreground cursor-not-allowed"
-            >
-              Connect at least one source
-            </Button>
-          )}
         </motion.div>
       </main>
+
+      {/* Fixed bottom button */}
+      <FixedBottomContainer show={true}>
+        <Button
+          onClick={handleNext}
+          disabled={!canProceed}
+          className="w-full h-12 rounded-xl font-semibold gradient-primary text-primary-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {canProceed ? 'Next →' : 'Connect at least one source'}
+        </Button>
+      </FixedBottomContainer>
     </div>
   );
 }

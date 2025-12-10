@@ -29,7 +29,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
   const rightIndicatorOpacity = useTransform(x, [0, 40, 100], [0, 0.5, 1]);
 
   const handleDragEnd = (_: any, info: PanInfo) => {
-    const threshold = 80; // Reduced for better mobile sensitivity
+    const threshold = 80;
     if (info.offset.x > threshold) {
       onSwipeRight();
     } else if (info.offset.x < -threshold) {
@@ -50,67 +50,81 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
 
   const platformStyles = getPlatformCardStyles(card.platform);
 
-  // Stack effect calculations
-  const stackOffset = stackIndex * 8;
-  const stackScale = 1 - (stackIndex * 0.02);
-  const stackZIndex = 30 - (stackIndex * 10);
+  // Stack effect calculations - improved visibility
+  const stackScale = 1 - (stackIndex * 0.05);
+  const stackTranslateY = stackIndex * 12;
+  const stackOpacity = 1 - (stackIndex * 0.2);
+  const stackZIndex = 40 - (stackIndex * 10);
 
   return (
     <motion.div
       className={cn(
-        'absolute inset-x-4 touch-none',
+        'absolute left-4 right-4 touch-none',
         !isTop && 'pointer-events-none'
       )}
       style={{ 
         x: isTop ? x : 0, 
         rotate: isTop ? rotate : 0, 
-        opacity: isTop ? opacity : 1,
+        opacity: isTop ? opacity : stackOpacity,
         zIndex: stackZIndex,
-        top: stackOffset,
-        height: 'calc(100vh - 90px)',
+        top: '50%',
+        translateY: '-50%',
       }}
       drag={isTop ? 'x' : false}
       dragConstraints={{ left: 0, right: 0 }}
       dragElastic={0.9}
       onDragEnd={handleDragEnd}
-      initial={{ scale: stackScale, y: 20, opacity: 0 }}
+      initial={{ 
+        scale: stackScale, 
+        y: stackTranslateY + 20, 
+        opacity: 0 
+      }}
       animate={{ 
         scale: stackScale, 
-        y: 0, 
-        opacity: 1,
+        y: stackTranslateY,
+        opacity: stackOpacity,
       }}
       exit={{ 
         x: x.get() > 0 ? 400 : -400,
         opacity: 0,
         transition: { duration: 0.3, type: 'spring', stiffness: 100 }
       }}
-      transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 25, duration: 0.3 }}
     >
-      {/* Swipe indicators */}
-      <motion.div
-        className="absolute inset-0 rounded-3xl gradient-danger flex items-center justify-center z-10 pointer-events-none"
-        style={{ opacity: leftIndicatorOpacity }}
-      >
-        <div className="bg-card/90 rounded-full p-4">
-          <X className="h-8 w-8 text-destructive" />
-        </div>
-      </motion.div>
+      {/* Swipe indicators - only on top card */}
+      {isTop && (
+        <>
+          <motion.div
+            className="absolute inset-0 rounded-3xl gradient-danger flex items-center justify-center z-10 pointer-events-none"
+            style={{ opacity: leftIndicatorOpacity }}
+          >
+            <div className="bg-card/90 rounded-full p-4">
+              <X className="h-8 w-8 text-destructive" />
+            </div>
+          </motion.div>
 
-      <motion.div
-        className="absolute inset-0 rounded-3xl gradient-success flex items-center justify-center z-10 pointer-events-none"
-        style={{ opacity: rightIndicatorOpacity }}
-      >
-        <div className="bg-card/90 rounded-full p-4">
-          <Check className="h-8 w-8 text-success" />
-        </div>
-      </motion.div>
+          <motion.div
+            className="absolute inset-0 rounded-3xl gradient-success flex items-center justify-center z-10 pointer-events-none"
+            style={{ opacity: rightIndicatorOpacity }}
+          >
+            <div className="bg-card/90 rounded-full p-4">
+              <Check className="h-8 w-8 text-success" />
+            </div>
+          </motion.div>
+        </>
+      )}
 
       {/* Card content with platform-specific background */}
       <div className={cn(
-        'rounded-3xl shadow-elevated border overflow-hidden h-full flex flex-col',
+        'rounded-3xl shadow-xl border overflow-hidden flex flex-col',
+        stackIndex === 0 && 'shadow-2xl',
+        stackIndex === 1 && 'shadow-lg',
+        stackIndex === 2 && 'shadow-md',
         platformStyles.cardBg,
         platformStyles.borderClass
-      )}>
+      )}
+      style={{ maxHeight: 'calc(100vh - 180px)' }}
+      >
         {/* Header */}
         <div className="p-4 border-b border-border/50 bg-card/60 backdrop-blur-sm flex-shrink-0">
           <div className="flex items-start justify-between">
