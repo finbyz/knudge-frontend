@@ -1,11 +1,12 @@
-import { useState } from 'react';
+
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Users, Sparkles, Bell, Crown, LogOut, ChevronRight, Plus, Edit2, X, Phone, Mail, Linkedin as LinkedinIcon } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { User, Users, Sparkles, Bell, Crown, LogOut, ChevronRight, Plus, Edit2, X, Phone, Mail, Linkedin as LinkedinIcon, MessageCircle, Send } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-type ChannelType = 'whatsapp' | 'linkedin' | 'email' | 'signal' | 'telegram';
+type ChannelType = 'whatsapp' | 'linkedin' | 'email' | 'calls' | 'telegram';
 
 interface Circle {
   name: string;
@@ -15,12 +16,12 @@ interface Circle {
   outreachAgenda: string;
 }
 
-const channelOptions: { id: ChannelType; label: string; color: string; icon: string }[] = [
-  { id: 'whatsapp', label: 'WhatsApp', color: '#25D366', icon: 'whatsapp' },
-  { id: 'linkedin', label: 'LinkedIn', color: '#0A66C2', icon: 'linkedin' },
-  { id: 'email', label: 'Email', color: '#6B7280', icon: 'email' },
-  { id: 'signal', label: 'Signal', color: '#3A76F0', icon: 'signal' },
-  { id: 'telegram', label: 'Telegram', color: '#26A5E4', icon: 'telegram' },
+const channelOptions: { id: ChannelType; label: string; color: string; icon: React.ReactNode }[] = [
+  { id: 'whatsapp', label: 'WhatsApp', color: '#25D366', icon: <MessageCircle className="h-4 w-4" /> },
+  { id: 'linkedin', label: 'LinkedIn', color: '#0A66C2', icon: <LinkedinIcon className="h-4 w-4" /> },
+  { id: 'email', label: 'Email', color: '#6B7280', icon: <Mail className="h-4 w-4" /> },
+  { id: 'calls', label: 'Calls', color: '#8B5CF6', icon: <Phone className="h-4 w-4" /> },
+  { id: 'telegram', label: 'Telegram', color: '#26A5E4', icon: <Send className="h-4 w-4" /> },
 ];
 
 interface UserProfile {
@@ -34,7 +35,7 @@ interface UserProfile {
 
 const initialCircles: Circle[] = [
   { name: 'VIP Investors', channels: ['whatsapp', 'email', 'linkedin'], frequency: 'Every 2 weeks', contacts: 12, outreachAgenda: 'Discuss investment opportunities and share portfolio updates' },
-  { name: 'Team', channels: ['whatsapp', 'signal'], frequency: 'Weekly', contacts: 8, outreachAgenda: 'Weekly sync, project updates, and team coordination' },
+  { name: 'Team', channels: ['whatsapp', 'calls'], frequency: 'Weekly', contacts: 8, outreachAgenda: 'Weekly sync, project updates, and team coordination' },
   { name: 'Friends', channels: ['whatsapp', 'telegram'], frequency: 'Monthly', contacts: 24, outreachAgenda: 'Catch up, share life updates, plan meetups' },
 ];
 
@@ -378,7 +379,7 @@ export default function Settings() {
                           )}
                           style={isSelected ? { backgroundColor: channel.color } : {}}
                         >
-                          <span className="text-xs">{isSelected ? '✓' : '○'}</span>
+                          {channel.icon}
                           {channel.label}
                         </button>
                       );
@@ -428,12 +429,21 @@ export default function Settings() {
                   </label>
                   <textarea
                     value={circleForm.outreachAgenda}
-                    onChange={(e) => setCircleForm({ ...circleForm, outreachAgenda: e.target.value })}
-                    placeholder="e.g., Discuss investment opportunities, share product updates"
+                    onChange={(e) => {
+                      setCircleForm({ ...circleForm, outreachAgenda: e.target.value });
+                      // Auto-resize
+                      e.target.style.height = 'auto';
+                      e.target.style.height = Math.min(e.target.scrollHeight, 400) + 'px';
+                    }}
+                    placeholder="e.g., Discuss investment opportunities, share portfolio updates, schedule quarterly reviews"
                     rows={3}
-                    className="w-full px-4 py-3 rounded-xl bg-muted/50 border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                    className="w-full px-4 py-3 rounded-xl bg-muted/50 border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none overflow-hidden"
+                    style={{ minHeight: '80px', maxHeight: '400px' }}
                   />
-                  <p className="text-xs text-muted-foreground mt-1">This will guide AI when generating drafts for contacts in this circle</p>
+                  <div className="flex justify-between mt-1">
+                    <p className="text-xs text-muted-foreground">This will guide AI when generating drafts for contacts in this circle</p>
+                    <span className="text-xs text-muted-foreground">{circleForm.outreachAgenda.length} characters</span>
+                  </div>
                 </div>
               </div>
 
