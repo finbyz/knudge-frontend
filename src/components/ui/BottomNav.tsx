@@ -1,4 +1,4 @@
-import { Home, Layers, Users, Rss, Settings } from 'lucide-react';
+import { Home, Layers, Users, Rss, Inbox } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
@@ -7,7 +7,7 @@ const navItems = [
   { path: '/deck', icon: Layers, label: 'Deck' },
   { path: '/contacts', icon: Users, label: 'Contacts' },
   { path: '/feed', icon: Rss, label: 'Feed' },
-  { path: '/settings', icon: Settings, label: 'Settings' },
+  { path: '/inbox', icon: Inbox, label: 'Inbox' },
 ];
 
 export function BottomNav() {

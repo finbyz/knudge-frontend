@@ -11,6 +11,7 @@ import Connections from "./pages/Connections";
 import Contacts from "./pages/Contacts";
 import Feed from "./pages/Feed";
 import Settings from "./pages/Settings";
+import Inbox from "./pages/Inbox";
 import Activities from "./pages/Activities";
 import NotFound from "./pages/NotFound";
 import OnboardingLogin from "./pages/onboarding/OnboardingLogin";
@@ -60,6 +61,7 @@ function AppRoutes() {
         <Route path="/contacts" element={<Contacts />} />
         <Route path="/feed" element={<Feed />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/inbox" element={<Inbox />} />
         <Route path="/activities" element={<Activities />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
