@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, MoreVertical, Plus, Sparkles, Send, MessageCircle, Linkedin, Check, CheckCheck, Clock } from 'lucide-react';
+import { ChevronLeft, MoreVertical, Plus, Sparkles, Send, MessageCircle, Linkedin, Check, CheckCheck, Clock, Camera, FileText, MapPin, User, Mic, X, Image } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -11,6 +11,12 @@ interface ChatMessage {
   text: string;
   timestamp: string;
   status?: 'pending' | 'sent' | 'delivered' | 'read';
+  attachment?: {
+    name: string;
+    size: string;
+    type: 'image' | 'document';
+    url?: string;
+  };
 }
 
 interface ContactInfo {
@@ -63,6 +69,20 @@ const aiDraftResponses = [
   "Looking forward to it! Thursday at noon works for me. Just send me the address!",
 ];
 
+const attachmentMenuItems = [
+  { id: 'photo', icon: Camera, label: 'Photo', color: 'text-blue-500', accept: 'image/*' },
+  { id: 'document', icon: FileText, label: 'Document', color: 'text-green-500', accept: '.pdf,.doc,.docx,.txt' },
+  { id: 'location', icon: MapPin, label: 'Location', color: 'text-red-500', comingSoon: true },
+  { id: 'contact', icon: User, label: 'Contact', color: 'text-purple-500', comingSoon: true },
+  { id: 'voice', icon: Mic, label: 'Voice Message', color: 'text-orange-500', comingSoon: true },
+];
+
+const formatFileSize = (bytes: number): string => {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+};
+
 export default function ChatDetail() {
   const navigate = useNavigate();
   const { contactId } = useParams<{ contactId: string }>();
@@ -71,8 +91,12 @@ export default function ChatDetail() {
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [showUndo, setShowUndo] = useState(false);
   const [originalText, setOriginalText] = useState('');
+  const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<{ file: File; preview?: string; type: 'image' | 'document' } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fileAccept, setFileAccept] = useState('');
   const { toast } = useToast();
 
   const contact = sampleContacts[contactId || '1'] || sampleContacts['1'];
@@ -145,8 +169,61 @@ export default function ChatDetail() {
     setShowUndo(false);
   };
 
+  const handleAttachmentClick = (item: typeof attachmentMenuItems[0]) => {
+    if (item.comingSoon) {
+      toast({ description: `${item.label} coming soon!` });
+      setIsAttachmentMenuOpen(false);
+      return;
+    }
+    
+    setFileAccept(item.accept || '');
+    setIsAttachmentMenuOpen(false);
+    setTimeout(() => {
+      fileInputRef.current?.click();
+    }, 100);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ description: "File too large. Max 10MB", variant: "destructive" });
+      return;
+    }
+
+    const isImage = file.type.startsWith('image/');
+    
+    if (isImage) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setSelectedFile({
+          file,
+          preview: e.target?.result as string,
+          type: 'image'
+        });
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setSelectedFile({
+        file,
+        type: 'document'
+      });
+    }
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const removeSelectedFile = () => {
+    setSelectedFile(null);
+  };
+
   const handleSend = useCallback(() => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() && !selectedFile) return;
 
     const tempId = Date.now();
     const newMessage: ChatMessage = {
@@ -155,10 +232,19 @@ export default function ChatDetail() {
       text: inputText.trim(),
       timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
       status: 'pending',
+      ...(selectedFile && {
+        attachment: {
+          name: selectedFile.file.name,
+          size: formatFileSize(selectedFile.file.size),
+          type: selectedFile.type,
+          url: selectedFile.preview,
+        }
+      })
     };
 
     setMessages(prev => [...prev, newMessage]);
     setInputText('');
+    setSelectedFile(null);
     setShowUndo(false);
 
     // Simulate status updates
@@ -169,7 +255,7 @@ export default function ChatDetail() {
     setTimeout(() => {
       setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'delivered' } : m));
     }, 2500);
-  }, [inputText]);
+  }, [inputText, selectedFile]);
 
   const renderStatus = (status?: string) => {
     switch (status) {
@@ -185,16 +271,6 @@ export default function ChatDetail() {
         return null;
     }
   };
-
-  // Group consecutive messages from same sender
-  const groupedMessages = messages.reduce<{ messages: ChatMessage[]; showTimestamp: boolean }[]>((acc, msg, idx) => {
-    const prevMsg = messages[idx - 1];
-    const nextMsg = messages[idx + 1];
-    const isLastInGroup = !nextMsg || nextMsg.type !== msg.type;
-    
-    acc.push({ messages: [msg], showTimestamp: isLastInGroup });
-    return acc;
-  }, []);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -232,12 +308,10 @@ export default function ChatDetail() {
       </header>
 
       {/* Messages */}
-      <main className="flex-1 overflow-y-auto p-4 pb-28 space-y-1">
+      <main className="flex-1 overflow-y-auto p-4 pb-36 space-y-1">
         <AnimatePresence>
           {messages.map((message, idx) => {
-            const prevMsg = messages[idx - 1];
             const nextMsg = messages[idx + 1];
-            const isFirstInGroup = !prevMsg || prevMsg.type !== message.type;
             const isLastInGroup = !nextMsg || nextMsg.type !== message.type;
             
             return (
@@ -261,7 +335,34 @@ export default function ChatDetail() {
                       : 'bg-muted text-foreground rounded-2xl rounded-tl-sm'
                   )}
                 >
-                  <p className="text-base leading-relaxed">{message.text}</p>
+                  {/* Attachment Preview */}
+                  {message.attachment && (
+                    <div className="mb-2">
+                      {message.attachment.type === 'image' && message.attachment.url ? (
+                        <img 
+                          src={message.attachment.url} 
+                          alt={message.attachment.name}
+                          className="rounded-lg max-w-full h-auto"
+                        />
+                      ) : (
+                        <div className={cn(
+                          "flex items-center gap-2 p-2 rounded-lg",
+                          message.type === 'outgoing' ? 'bg-white/20' : 'bg-background'
+                        )}>
+                          <FileText className="h-5 w-5" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{message.attachment.name}</p>
+                            <p className="text-xs opacity-70">{message.attachment.size}</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {message.text && (
+                    <p className="text-base leading-relaxed">{message.text}</p>
+                  )}
+                  
                   {isLastInGroup && (
                     <div className={cn(
                       'flex items-center gap-1 mt-1',
@@ -284,15 +385,102 @@ export default function ChatDetail() {
         <div ref={messagesEndRef} />
       </main>
 
+      {/* Attachment Menu Backdrop */}
+      <AnimatePresence>
+        {isAttachmentMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-35 bg-black/20"
+            onClick={() => setIsAttachmentMenuOpen(false)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Attachment Menu */}
+      <AnimatePresence>
+        {isAttachmentMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="fixed bottom-36 left-4 z-40 bg-card rounded-xl border border-border shadow-xl py-2 w-56"
+          >
+            {attachmentMenuItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => handleAttachmentClick(item)}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted transition-colors duration-150"
+                >
+                  <Icon className={cn('h-5 w-5', item.color)} />
+                  <span className="text-foreground font-medium">{item.label}</span>
+                </button>
+              );
+            })}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Hidden File Input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={fileAccept}
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+
       {/* Input Bar - Fixed above bottom navigation */}
       <div className="fixed bottom-20 left-0 right-0 z-30 bg-card border-t border-border shadow-lg px-4 py-3">
+        {/* File Preview */}
+        <AnimatePresence>
+          {selectedFile && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="mb-3"
+            >
+              <div className="flex items-center gap-3 p-3 bg-muted rounded-xl">
+                {selectedFile.type === 'image' && selectedFile.preview ? (
+                  <img src={selectedFile.preview} alt="Preview" className="h-12 w-12 rounded-lg object-cover" />
+                ) : (
+                  <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <FileText className="h-6 w-6 text-primary" />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">{selectedFile.file.name}</p>
+                  <p className="text-xs text-muted-foreground">{formatFileSize(selectedFile.file.size)}</p>
+                </div>
+                <button
+                  onClick={removeSelectedFile}
+                  className="h-8 w-8 rounded-full bg-muted-foreground/10 hover:bg-muted-foreground/20 flex items-center justify-center transition-colors"
+                >
+                  <X className="h-4 w-4 text-muted-foreground" />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div className="max-w-lg mx-auto flex items-center gap-3">
           {/* Attachment Button */}
           <button 
-            onClick={() => toast({ description: "Attachments coming soon" })}
-            className="flex-shrink-0 h-10 w-10 rounded-full bg-muted hover:bg-muted/80 flex items-center justify-center transition-colors"
+            onClick={() => setIsAttachmentMenuOpen(!isAttachmentMenuOpen)}
+            className={cn(
+              "flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center transition-all",
+              isAttachmentMenuOpen 
+                ? "bg-primary text-primary-foreground rotate-45" 
+                : "bg-muted hover:bg-muted/80 text-muted-foreground"
+            )}
           >
-            <Plus className="h-5 w-5 text-muted-foreground" />
+            <Plus className="h-5 w-5 transition-transform" />
           </button>
           
           {/* Text Input */}
@@ -341,10 +529,10 @@ export default function ChatDetail() {
           {/* Send Button */}
           <button
             onClick={handleSend}
-            disabled={!inputText.trim()}
+            disabled={!inputText.trim() && !selectedFile}
             className={cn(
               "flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center transition-all",
-              inputText.trim()
+              (inputText.trim() || selectedFile)
                 ? "bg-primary hover:bg-primary/90 text-primary-foreground"
                 : "bg-muted text-muted-foreground cursor-not-allowed opacity-70"
             )}
