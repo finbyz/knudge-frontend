@@ -284,22 +284,34 @@ export default function ChatDetail() {
         <div ref={messagesEndRef} />
       </main>
 
-      {/* Input Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-card border-t border-border p-4">
+      {/* Input Bar - Fixed above bottom navigation */}
+      <div className="fixed bottom-20 left-0 right-0 z-30 bg-card border-t border-border shadow-lg px-4 py-3">
         <div className="max-w-lg mx-auto flex items-center gap-3">
-          <button className="flex-shrink-0 h-10 w-10 rounded-full bg-muted hover:bg-muted/80 flex items-center justify-center transition-colors">
+          {/* Attachment Button */}
+          <button 
+            onClick={() => toast({ description: "Attachments coming soon" })}
+            className="flex-shrink-0 h-10 w-10 rounded-full bg-muted hover:bg-muted/80 flex items-center justify-center transition-colors"
+          >
             <Plus className="h-5 w-5 text-muted-foreground" />
           </button>
           
+          {/* Text Input */}
           <div className="flex-1 relative">
             <textarea
               ref={textareaRef}
               value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
+              onChange={(e) => {
+                setInputText(e.target.value);
+                // Auto-resize
+                if (textareaRef.current) {
+                  textareaRef.current.style.height = 'auto';
+                  textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 96) + 'px';
+                }
+              }}
               placeholder="Type a message..."
               rows={1}
-              className="w-full bg-muted rounded-full px-4 py-2.5 pr-12 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none max-h-32"
-              style={{ minHeight: '40px' }}
+              className="w-full bg-muted rounded-full px-4 py-2.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 resize-none overflow-hidden"
+              style={{ minHeight: '40px', maxHeight: '96px' }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
@@ -310,29 +322,31 @@ export default function ChatDetail() {
             {showUndo && (
               <button
                 onClick={handleUndo}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-primary hover:underline"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-primary font-medium hover:underline"
               >
                 Undo
               </button>
             )}
           </div>
           
+          {/* AI Sparkles Button */}
           <button
             onClick={handleAiSparkle}
             disabled={isAiLoading}
-            className="flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-r from-primary to-cyan-500 text-white flex items-center justify-center hover:scale-110 transition-transform disabled:opacity-50"
+            className="flex-shrink-0 h-10 w-10 rounded-full bg-gradient-to-r from-primary to-cyan-500 text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Sparkles className={cn("h-5 w-5", isAiLoading && "animate-spin")} />
           </button>
           
+          {/* Send Button */}
           <button
             onClick={handleSend}
             disabled={!inputText.trim()}
             className={cn(
-              "flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center transition-colors",
+              "flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center transition-all",
               inputText.trim()
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground cursor-not-allowed"
+                ? "bg-primary hover:bg-primary/90 text-primary-foreground"
+                : "bg-muted text-muted-foreground cursor-not-allowed opacity-70"
             )}
           >
             <Send className="h-5 w-5" />
