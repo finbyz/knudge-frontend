@@ -5,15 +5,15 @@ import { StatsCard } from '@/components/StatsCard';
 import { ActivityItem } from '@/components/ActivityItem';
 import { PlatformBadge } from '@/components/PlatformBadge';
 import { Button } from '@/components/ui/button';
-import { AppHeader } from '@/components/AppHeader';
+import { TopBar } from '@/components/TopBar';
 import { mockActivities, mockConnections, mockActionCards } from '@/data/mockData';
 
 export default function Dashboard() {
   const connectedPlatforms = mockConnections.filter((c) => c.status === 'connected');
 
   return (
-    <div className="min-h-screen bg-background pb-24">
-      <AppHeader />
+    <div className="min-h-screen bg-background pb-24 pt-20">
+      <TopBar title="Knudge" />
 
       <main className="px-4 py-6 space-y-6">
         {/* Stats Grid */}

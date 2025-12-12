@@ -32,8 +32,8 @@ export default function Deck() {
   const currentIndex = totalCards - cards.length + 1;
 
   return (
-    <div className="h-screen bg-background flex flex-col overflow-hidden">
-      {/* Header */}
+    <div className="h-screen bg-background flex flex-col overflow-hidden pt-16">
+      {/* Header - Deck has its own minimal header */}
       <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border">
         <div className="flex items-center justify-between px-4 h-16">
           <Link to="/" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">

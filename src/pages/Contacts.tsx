@@ -5,6 +5,7 @@ import { ContactItem } from '@/components/ContactItem';
 import { Avatar } from '@/components/Avatar';
 import { PlatformBadge } from '@/components/PlatformBadge';
 import { Button } from '@/components/ui/button';
+import { TopBar } from '@/components/TopBar';
 import { mockContacts, circles, Contact } from '@/data/mockData';
 
 // Mock recent conversations
@@ -35,13 +36,8 @@ export default function Contacts() {
   });
 
   return (
-    <div className="min-h-screen bg-background pb-24">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border">
-        <div className="flex items-center justify-center px-4 h-16">
-          <span className="font-semibold text-foreground">Contacts</span>
-        </div>
-      </header>
+    <div className="min-h-screen bg-background pb-24 pt-20">
+      <TopBar title="Contacts" />
 
       <main className="px-4 py-4 space-y-4">
         {/* Search Bar */}

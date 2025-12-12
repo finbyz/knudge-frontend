@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { FeedItemCard } from '@/components/FeedItemCard';
+import { TopBar } from '@/components/TopBar';
 import { mockFeedItems } from '@/data/mockData';
 import { toast } from '@/hooks/use-toast';
+import { useUnreadStore } from '@/stores/unreadStore';
 
 const tabs = [
   { id: 'all', label: 'All' },
@@ -14,6 +16,12 @@ const tabs = [
 export default function Feed() {
   const [activeTab, setActiveTab] = useState('all');
   const [items, setItems] = useState(mockFeedItems);
+  const { clearUnreadFeed } = useUnreadStore();
+
+  // Clear unread count when page mounts
+  useEffect(() => {
+    clearUnreadFeed();
+  }, [clearUnreadFeed]);
 
   const filteredItems = activeTab === 'all' 
     ? items 
@@ -31,15 +39,12 @@ export default function Feed() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-24">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border">
-        <div className="flex items-center justify-center px-4 h-16">
-          <span className="font-semibold text-foreground">Feed Monitor</span>
-        </div>
+    <div className="min-h-screen bg-background pb-24 pt-20">
+      <TopBar title="Feed" />
 
-        {/* Tabs */}
-        <div className="flex items-center gap-1 px-4 pb-3 overflow-x-auto no-scrollbar">
+      {/* Tabs - positioned below fixed header */}
+      <div className="sticky top-16 z-40 bg-background/80 backdrop-blur-xl border-b border-border">
+        <div className="flex items-center gap-1 px-4 py-3 overflow-x-auto no-scrollbar">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -54,7 +59,7 @@ export default function Feed() {
             </button>
           ))}
         </div>
-      </header>
+      </div>
 
       <main className="px-4 py-4 space-y-4">
         {filteredItems.length > 0 ? (

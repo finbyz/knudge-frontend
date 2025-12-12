@@ -1,9 +1,9 @@
-
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
 import { User, Users, Sparkles, Bell, Crown, LogOut, ChevronRight, Plus, Edit2, X, Phone, Mail, Linkedin as LinkedinIcon, MessageCircle, Send, Search, Check, UserCheck } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
+import { TopBar } from '@/components/TopBar';
 import { cn } from '@/lib/utils';
 import { Checkbox } from '@/components/ui/checkbox';
 
@@ -172,13 +172,8 @@ export default function Settings() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-24">
-      {/* Header */}
-      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border">
-        <div className="flex items-center justify-center px-4 h-16">
-          <span className="font-semibold text-foreground">Settings</span>
-        </div>
-      </header>
+    <div className="min-h-screen bg-background pb-24 pt-20">
+      <TopBar title="Settings" />
 
       <main className="px-4 py-6 space-y-6">
         {/* Profile Section */}

@@ -2,9 +2,10 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, MessageCircle, Linkedin, Mail, X, Check, Archive, MailOpen } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AppHeader } from '@/components/AppHeader';
+import { TopBar } from '@/components/TopBar';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { useUnreadStore } from '@/stores/unreadStore';
 
 interface InboxMessage {
   id: string;
@@ -130,6 +131,12 @@ export default function Inbox() {
   
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
+  const { clearUnreadInbox } = useUnreadStore();
+  
+  // Clear unread count when page mounts
+  useEffect(() => {
+    clearUnreadInbox();
+  }, [clearUnreadInbox]);
 
   const filteredMessages = messages.filter(
     (msg) =>
@@ -293,25 +300,15 @@ export default function Inbox() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background pb-24">
-      <AppHeader showNotifications={false} />
+    <div className="min-h-screen bg-background pb-24 pt-20">
+      <TopBar title="Inbox" />
 
       <main className="px-4 py-4 space-y-4">
-        {/* Title */}
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          <h1 className="text-2xl font-bold text-foreground">Unified Inbox</h1>
-          <p className="text-sm text-muted-foreground">One stream, any protocol</p>
-        </motion.div>
-
         {/* Search Bar */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.1 }}
+          transition={{ duration: 0.3 }}
           className="relative"
         >
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />

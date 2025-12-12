@@ -114,13 +114,12 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         </>
       )}
 
-      {/* Card content with platform-specific background */}
+      {/* Card content with platform-specific background - SOLID, not transparent */}
       <div className={cn(
-        'h-full rounded-3xl shadow-xl border overflow-hidden flex flex-col',
+        'h-full rounded-3xl shadow-xl border overflow-hidden flex flex-col bg-card',
         stackIndex === 0 && 'shadow-2xl',
         stackIndex === 1 && 'shadow-lg',
         stackIndex === 2 && 'shadow-md',
-        platformStyles.cardBg,
         platformStyles.borderClass,
         platformStyles.leftBorder
       )}
