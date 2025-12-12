@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, MoreVertical, Plus, Sparkles, Send, MessageCircle, Linkedin, Check, CheckCheck, Clock, Camera, FileText, MapPin, User, Mic, X, Image } from 'lucide-react';
+import { ChevronLeft, MoreVertical, Plus, Sparkles, Send, MessageCircle, Linkedin, Check, CheckCheck, Clock, Camera, FileText, MapPin, User, Mic, X, Loader2, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { Button } from '@/components/ui/button';
 
 interface ChatMessage {
   id: number;
@@ -93,6 +94,10 @@ export default function ChatDetail() {
   const [originalText, setOriginalText] = useState('');
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<{ file: File; preview?: string; type: 'image' | 'document' } | null>(null);
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  const [replyDraft, setReplyDraft] = useState('');
+  const [replyInstructions, setReplyInstructions] = useState('');
+  const [isGeneratingReply, setIsGeneratingReply] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -257,6 +262,87 @@ export default function ChatDetail() {
     }, 2500);
   }, [inputText, selectedFile]);
 
+  // Reply functionality
+  const handleReplyClick = useCallback((message: ChatMessage) => {
+    if (message.type === 'incoming') {
+      setReplyingTo(message);
+      setReplyDraft('');
+      setReplyInstructions('');
+      // Auto-generate a draft reply
+      generateReplyDraft(message.text);
+    }
+  }, []);
+
+  const generateReplyDraft = async (originalMessage: string, instructions?: string) => {
+    setIsGeneratingReply(true);
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    let draft = '';
+    const lowerMsg = originalMessage.toLowerCase();
+    
+    if (instructions) {
+      // Generate based on instructions
+      if (instructions.toLowerCase().includes('casual')) {
+        draft = "Hey! Yeah totally, that works for me! 😊";
+      } else if (instructions.toLowerCase().includes('formal') || instructions.toLowerCase().includes('professional')) {
+        draft = "Thank you for your message. I would be delighted to proceed with your suggestion. Please let me know the next steps.";
+      } else if (instructions.toLowerCase().includes('short')) {
+        draft = "Sounds good, let's do it!";
+      } else {
+        draft = `Based on your request: "${instructions}" - Here's my suggested reply: That sounds wonderful! I'm looking forward to it.`;
+      }
+    } else {
+      // Auto-generate based on message content
+      if (lowerMsg.includes('meet') || lowerMsg.includes('lunch') || lowerMsg.includes('celebrate')) {
+        draft = "That sounds perfect! I'd love to. Just let me know the time and place, and I'll be there.";
+      } else if (lowerMsg.includes('?')) {
+        draft = "Great question! I'll look into that and get back to you with more details soon.";
+      } else if (lowerMsg.includes('congratulations') || lowerMsg.includes('awesome') || lowerMsg.includes('great')) {
+        draft = "Thank you so much! I really appreciate your kind words. It means a lot!";
+      } else {
+        draft = "Thanks for reaching out! I'm happy to continue this conversation. Let me know how I can help.";
+      }
+    }
+    
+    setReplyDraft(draft);
+    setIsGeneratingReply(false);
+  };
+
+  const handleRegenerateReply = () => {
+    if (replyingTo) {
+      generateReplyDraft(replyingTo.text, replyInstructions);
+    }
+  };
+
+  const handleSendReply = () => {
+    if (!replyDraft.trim()) return;
+    
+    const tempId = Date.now();
+    const newMessage: ChatMessage = {
+      id: tempId,
+      type: 'outgoing',
+      text: replyDraft.trim(),
+      timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+      status: 'pending',
+    };
+
+    setMessages(prev => [...prev, newMessage]);
+    setReplyingTo(null);
+    setReplyDraft('');
+    setReplyInstructions('');
+    
+    // Simulate status updates
+    setTimeout(() => {
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'sent' } : m));
+    }, 1000);
+
+    setTimeout(() => {
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'delivered' } : m));
+    }, 2500);
+    
+    toast({ description: "Reply sent!" });
+  };
+
   const renderStatus = (status?: string) => {
     switch (status) {
       case 'pending':
@@ -328,11 +414,12 @@ export default function ChatDetail() {
                 )}
               >
                 <div
+                  onClick={() => handleReplyClick(message)}
                   className={cn(
-                    'px-4 py-2.5 max-w-[70%]',
+                    'px-4 py-2.5 max-w-[70%] transition-all',
                     message.type === 'outgoing'
                       ? 'bg-gradient-to-r from-primary to-cyan-500 text-white rounded-2xl rounded-tr-sm'
-                      : 'bg-muted text-foreground rounded-2xl rounded-tl-sm'
+                      : 'bg-muted text-foreground rounded-2xl rounded-tl-sm cursor-pointer hover:bg-muted/80'
                   )}
                 >
                   {/* Attachment Preview */}
@@ -377,6 +464,11 @@ export default function ChatDetail() {
                       {message.type === 'outgoing' && renderStatus(message.status)}
                     </div>
                   )}
+                  
+                  {/* Reply hint for incoming messages */}
+                  {message.type === 'incoming' && isLastInGroup && (
+                    <p className="text-xs text-muted-foreground/60 mt-1">Tap to reply</p>
+                  )}
                 </div>
               </motion.div>
             );
@@ -384,6 +476,112 @@ export default function ChatDetail() {
         </AnimatePresence>
         <div ref={messagesEndRef} />
       </main>
+
+      {/* Reply Interface Modal */}
+      <AnimatePresence>
+        {replyingTo && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-foreground/20 backdrop-blur-sm flex items-end justify-center"
+            onClick={() => setReplyingTo(null)}
+          >
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="bg-card rounded-t-3xl shadow-elevated w-full max-w-lg overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between p-4 border-b border-border">
+                <h2 className="font-semibold text-foreground">Replying to {contact.name}</h2>
+                <button
+                  onClick={() => setReplyingTo(null)}
+                  className="h-8 w-8 rounded-full bg-muted flex items-center justify-center"
+                >
+                  <X className="h-4 w-4 text-muted-foreground" />
+                </button>
+              </div>
+
+              <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
+                {/* Original Message Preview */}
+                <div className="bg-muted/50 rounded-xl p-3 border-l-4 border-primary">
+                  <p className="text-xs text-muted-foreground mb-1">Original message:</p>
+                  <p className="text-sm text-foreground">{replyingTo.text}</p>
+                </div>
+
+                {/* AI Draft Reply */}
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-2 block flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    AI Draft Reply
+                  </label>
+                  <div className="relative">
+                    {isGeneratingReply ? (
+                      <div className="bg-primary/5 rounded-xl p-4 border border-primary/20 flex items-center justify-center gap-2">
+                        <Loader2 className="h-5 w-5 text-primary animate-spin" />
+                        <span className="text-sm text-muted-foreground">Generating reply...</span>
+                      </div>
+                    ) : (
+                      <textarea
+                        value={replyDraft}
+                        onChange={(e) => setReplyDraft(e.target.value)}
+                        className="w-full bg-primary/5 rounded-xl p-4 border border-primary/20 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 min-h-[100px] resize-none"
+                        placeholder="Your reply will appear here..."
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Instructions for AI */}
+                <div>
+                  <label className="text-sm font-medium text-foreground mb-2 block">
+                    Instructions for AI (optional)
+                  </label>
+                  <input
+                    type="text"
+                    value={replyInstructions}
+                    onChange={(e) => setReplyInstructions(e.target.value)}
+                    placeholder="e.g., Make it more casual, keep it short..."
+                    className="w-full bg-muted rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="p-4 border-t border-border flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={handleRegenerateReply}
+                  disabled={isGeneratingReply}
+                  className="flex-1"
+                >
+                  <RefreshCw className={cn("h-4 w-4 mr-2", isGeneratingReply && "animate-spin")} />
+                  Regenerate
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setReplyingTo(null)}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSendReply}
+                  disabled={!replyDraft.trim() || isGeneratingReply}
+                  className="flex-1 gradient-primary text-primary-foreground border-0"
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Send
+                </Button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Attachment Menu Backdrop */}
       <AnimatePresence>
