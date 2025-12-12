@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Search, MessageCircle, Linkedin, Mail, X, Check, Archive, MailOpen } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AppHeader } from '@/components/AppHeader';
@@ -114,6 +115,7 @@ interface SwipeState {
 }
 
 export default function Inbox() {
+  const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [messages, setMessages] = useState<InboxMessage[]>(initialMessages);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -245,14 +247,18 @@ export default function Inbox() {
     });
   }, []);
 
-  const handleRowClick = useCallback((messageId: string) => {
+  const handleRowClick = useCallback((message: InboxMessage) => {
     if (selectionMode) {
-      toggleSelection(messageId);
+      toggleSelection(message.id);
     } else if (!swipeState.isSwiping) {
-      // Would open detail view - placeholder for now
-      console.log('Open message:', messageId);
+      // Navigate to appropriate detail view based on platform
+      if (message.platform === 'email') {
+        navigate(`/inbox/email/${message.id}`);
+      } else {
+        navigate(`/inbox/chat/${message.id}`);
+      }
     }
-  }, [selectionMode, swipeState.isSwiping, toggleSelection]);
+  }, [selectionMode, swipeState.isSwiping, toggleSelection, navigate]);
 
   const exitSelectionMode = useCallback(() => {
     setSelectionMode(false);
@@ -422,7 +428,7 @@ export default function Inbox() {
                       transform: `translateX(${swipeOffset}px)`,
                       transition: swipeState.isSwiping ? 'none' : 'transform 0.2s ease-out'
                     }}
-                    onClick={() => handleRowClick(message.id)}
+                    onClick={() => handleRowClick(message)}
                     onTouchStart={(e) => handleTouchStart(e, message.id)}
                     onTouchMove={handleTouchMove}
                     onTouchEnd={handleTouchEnd}
