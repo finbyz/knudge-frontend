@@ -361,40 +361,43 @@ export default function ChatDetail() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-card border-b border-border h-16 flex items-center justify-between px-4">
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={() => navigate('/inbox')}
-            className="p-2 -ml-2 hover:bg-muted rounded-full transition-colors"
-          >
-            <ChevronLeft className="h-5 w-5 text-foreground" />
+      <header className="sticky top-0 z-50 bg-card border-b border-border">
+        <div className="max-w-4xl mx-auto h-16 flex items-center justify-between px-4">
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => navigate('/inbox')}
+              className="p-2 -ml-2 hover:bg-muted rounded-full transition-colors"
+            >
+              <ChevronLeft className="h-5 w-5 text-foreground" />
+            </button>
+            
+            <div className="relative">
+              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary/20 to-cyan-400/20 flex items-center justify-center">
+                <span className="text-sm font-semibold text-foreground">{contact.initials}</span>
+              </div>
+              <div className={cn(
+                'absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full flex items-center justify-center border-2 border-card',
+                platform.bgColor
+              )}>
+                <PlatformIcon className="h-2 w-2 text-white" />
+              </div>
+            </div>
+            
+            <div>
+              <h1 className="font-semibold text-foreground">{contact.name}</h1>
+              <p className="text-xs text-muted-foreground">Last seen {contact.lastSeen}</p>
+            </div>
+          </div>
+          
+          <button className="p-2 hover:bg-muted rounded-full transition-colors">
+            <MoreVertical className="h-5 w-5 text-muted-foreground" />
           </button>
-          
-          <div className="relative">
-            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary/20 to-cyan-400/20 flex items-center justify-center">
-              <span className="text-sm font-semibold text-foreground">{contact.initials}</span>
-            </div>
-            <div className={cn(
-              'absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full flex items-center justify-center border-2 border-card',
-              platform.bgColor
-            )}>
-              <PlatformIcon className="h-2 w-2 text-white" />
-            </div>
-          </div>
-          
-          <div>
-            <h1 className="font-semibold text-foreground">{contact.name}</h1>
-            <p className="text-xs text-muted-foreground">Last seen {contact.lastSeen}</p>
-          </div>
         </div>
-        
-        <button className="p-2 hover:bg-muted rounded-full transition-colors">
-          <MoreVertical className="h-5 w-5 text-muted-foreground" />
-        </button>
       </header>
 
       {/* Messages */}
-      <main className="flex-1 overflow-y-auto p-4 pb-36 space-y-1">
+      <main className="flex-1 overflow-y-auto">
+        <div className="max-w-4xl mx-auto p-4 pb-36 space-y-1">
         <AnimatePresence>
           {messages.map((message, idx) => {
             const nextMsg = messages[idx + 1];
@@ -482,8 +485,9 @@ export default function ChatDetail() {
               </motion.div>
             );
           })}
-        </AnimatePresence>
-        <div ref={messagesEndRef} />
+          </AnimatePresence>
+          <div ref={messagesEndRef} />
+        </div>
       </main>
 
       {/* Reply Interface Modal */}
@@ -643,40 +647,41 @@ export default function ChatDetail() {
       />
 
       {/* Input Bar - Fixed above bottom navigation */}
-      <div className="fixed bottom-16 left-0 right-0 z-30 bg-card border-t border-border shadow-lg px-3 py-2 safe-area-inset-bottom">
-        {/* File Preview */}
-        <AnimatePresence>
-          {selectedFile && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mb-2"
-            >
-              <div className="flex items-center gap-3 p-3 bg-muted rounded-xl">
-                {selectedFile.type === 'image' && selectedFile.preview ? (
-                  <img src={selectedFile.preview} alt="Preview" className="h-12 w-12 rounded-lg object-cover" />
-                ) : (
-                  <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <FileText className="h-6 w-6 text-primary" />
+      <div className="fixed bottom-16 left-0 right-0 z-30 bg-card border-t border-border shadow-lg safe-area-inset-bottom">
+        <div className="max-w-4xl mx-auto px-3 py-2">
+          {/* File Preview */}
+          <AnimatePresence>
+            {selectedFile && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="mb-2"
+              >
+                <div className="flex items-center gap-3 p-3 bg-muted rounded-xl">
+                  {selectedFile.type === 'image' && selectedFile.preview ? (
+                    <img src={selectedFile.preview} alt="Preview" className="h-12 w-12 rounded-lg object-cover" />
+                  ) : (
+                    <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <FileText className="h-6 w-6 text-primary" />
+                    </div>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-foreground truncate">{selectedFile.file.name}</p>
+                    <p className="text-xs text-muted-foreground">{formatFileSize(selectedFile.file.size)}</p>
                   </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-foreground truncate">{selectedFile.file.name}</p>
-                  <p className="text-xs text-muted-foreground">{formatFileSize(selectedFile.file.size)}</p>
+                  <button
+                    onClick={removeSelectedFile}
+                    className="h-8 w-8 rounded-full bg-muted-foreground/10 hover:bg-muted-foreground/20 flex items-center justify-center transition-colors"
+                  >
+                    <X className="h-4 w-4 text-muted-foreground" />
+                  </button>
                 </div>
-                <button
-                  onClick={removeSelectedFile}
-                  className="h-8 w-8 rounded-full bg-muted-foreground/10 hover:bg-muted-foreground/20 flex items-center justify-center transition-colors"
-                >
-                  <X className="h-4 w-4 text-muted-foreground" />
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-        <div className="flex items-end gap-2">
+          <div className="flex items-end gap-2">
           {/* Attachment Button */}
           <button 
             onClick={() => setIsAttachmentMenuOpen(!isAttachmentMenuOpen)}
@@ -751,7 +756,8 @@ export default function ChatDetail() {
             )}
           >
             <Send className="h-5 w-5" />
-          </button>
+            </button>
+          </div>
         </div>
       </div>
     </div>
