@@ -60,8 +60,8 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
   return (
     <motion.div
       className={cn(
-        'absolute touch-none',
-        !isTop && 'pointer-events-none'
+        'absolute select-none',
+        isTop ? 'cursor-grab active:cursor-grabbing' : 'pointer-events-none'
       )}
       style={{ 
         x: isTop ? x : 0, 
@@ -69,13 +69,15 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         opacity: isTop ? opacity : stackOpacity,
         zIndex: stackZIndex,
         top: 16,
-        left: `${2 + stackIndex * 0.5}%`, // Progressive inset: 2%, 2.5%, 3%, 3.5%
+        left: `${2 + stackIndex * 0.5}%`,
         right: `${2 + stackIndex * 0.5}%`,
         height: 'calc(100% - 32px)',
+        touchAction: isTop ? 'pan-y' : 'none',
       }}
       drag={isTop ? 'x' : false}
       dragConstraints={{ left: 0, right: 0 }}
       dragElastic={0.9}
+      dragMomentum={false}
       onDragEnd={handleDragEnd}
       initial={{ 
         scale: stackScale, 
