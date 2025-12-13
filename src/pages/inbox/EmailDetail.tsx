@@ -309,29 +309,29 @@ export default function EmailDetail() {
       </main>
 
       {/* Action Bar - positioned above BottomNav */}
-      <div className="fixed bottom-20 left-0 right-0 z-40 bg-card border-t border-border shadow-lg px-4 py-3">
-        <div className="max-w-lg mx-auto grid grid-cols-3 gap-2">
+      <div className="fixed bottom-16 left-0 right-0 z-40 bg-card border-t border-border shadow-sm px-4 py-2">
+        <div className="max-w-lg mx-auto flex gap-2">
           <button
             onClick={() => openComposer('reply')}
-            className="flex items-center justify-center gap-1.5 bg-gradient-to-r from-primary to-cyan-500 text-white rounded-xl py-3.5 font-semibold hover:opacity-90 transition-opacity shadow-md"
+            className="flex-1 flex items-center justify-center gap-1.5 bg-gradient-to-r from-primary to-cyan-500 text-white rounded-lg py-2.5 text-sm font-medium hover:opacity-90 transition-opacity"
           >
-            <Reply className="h-5 w-5" />
+            <Reply className="h-4 w-4" />
             <span>Reply</span>
           </button>
           
           <button
             onClick={() => openComposer('replyAll')}
-            className="flex items-center justify-center gap-1.5 bg-card border-2 border-primary/30 text-foreground rounded-xl py-3.5 font-semibold hover:bg-primary/10 hover:border-primary transition-colors"
+            className="flex-1 flex items-center justify-center gap-1.5 bg-card border border-border text-foreground rounded-lg py-2.5 text-sm font-medium hover:bg-muted transition-colors"
           >
-            <ReplyAll className="h-5 w-5" />
-            <span className="text-sm">Reply All</span>
+            <ReplyAll className="h-4 w-4" />
+            <span>Reply All</span>
           </button>
           
           <button
             onClick={() => openComposer('forward')}
-            className="flex items-center justify-center gap-1.5 bg-card border-2 border-primary/30 text-foreground rounded-xl py-3.5 font-semibold hover:bg-primary/10 hover:border-primary transition-colors"
+            className="flex-1 flex items-center justify-center gap-1.5 bg-card border border-border text-foreground rounded-lg py-2.5 text-sm font-medium hover:bg-muted transition-colors"
           >
-            <Forward className="h-5 w-5" />
+            <Forward className="h-4 w-4" />
             <span>Forward</span>
           </button>
         </div>

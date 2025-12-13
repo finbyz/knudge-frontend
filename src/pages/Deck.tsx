@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronDown, Check, PartyPopper } from 'lucide-react';
+import { Check, PartyPopper } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { SwipeableCard } from '@/components/SwipeableCard';
 import { mockActionCards } from '@/data/mockData';
 import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
+import { TopBar } from '@/components/TopBar';
 
 export default function Deck() {
   const [cards, setCards] = useState(mockActionCards);
@@ -32,45 +33,31 @@ export default function Deck() {
   const currentIndex = totalCards - cards.length + 1;
 
   return (
-    <div className="h-screen bg-background flex flex-col overflow-hidden pt-16">
-      {/* Header - Deck has its own minimal header */}
-      <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border">
-        <div className="flex items-center justify-between px-4 h-16">
-          <Link to="/" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
-            <ChevronDown className="h-5 w-5 rotate-90" />
-            <span className="text-sm font-medium">Back</span>
-          </Link>
-          <div className="text-center">
-            <span className="font-semibold text-foreground">The Deck</span>
-            {!isEmpty && (
-              <p className="text-xs text-muted-foreground">
-                {currentIndex} of {totalCards}
-              </p>
-            )}
+    <div className="min-h-screen bg-background pb-24 pt-20">
+      <TopBar title="Deck" />
+      
+      {/* Progress bar - below TopBar */}
+      {!isEmpty && (
+        <div className="sticky top-16 z-40 h-1 bg-muted">
+          <motion.div
+            className="h-full gradient-primary"
+            initial={{ width: 0 }}
+            animate={{ width: `${(currentIndex / totalCards) * 100}%` }}
+            transition={{ duration: 0.3 }}
+          />
+          <div className="absolute right-4 top-2 text-xs text-muted-foreground">
+            {currentIndex} of {totalCards}
           </div>
-          <div className="w-16" />
         </div>
-        
-        {/* Progress bar */}
-        {!isEmpty && (
-          <div className="h-1 bg-muted">
-            <motion.div
-              className="h-full gradient-primary"
-              initial={{ width: 0 }}
-              animate={{ width: `${(currentIndex / totalCards) * 100}%` }}
-              transition={{ duration: 0.3 }}
-            />
-          </div>
-        )}
-      </header>
+      )}
 
       {/* Card Stack */}
-      <main className="flex-1 relative overflow-hidden mb-20" style={{ height: 'calc(100vh - 160px)' }}>
+      <main className="px-4 pt-4 pb-4">
         {isEmpty ? (
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="absolute inset-0 flex flex-col items-center justify-center px-8 text-center"
+            className="flex flex-col items-center justify-center px-8 text-center py-20"
           >
             <motion.div
               initial={{ scale: 0 }}
@@ -99,22 +86,20 @@ export default function Deck() {
             </Link>
           </motion.div>
         ) : (
-          <div className="absolute inset-0">
+          <div className="relative" style={{ height: 'calc(100vh - 180px)' }}>
             {/* Cards stack container */}
-            <div className="relative w-full h-full">
-              <AnimatePresence mode="popLayout">
-                {cards.slice(0, 4).reverse().map((card, index, arr) => (
-                  <SwipeableCard
-                    key={card.id}
-                    card={card}
-                    onSwipeRight={() => handleSwipeRight(card.id)}
-                    onSwipeLeft={() => handleSwipeLeft(card.id)}
-                    isTop={index === arr.length - 1}
-                    stackIndex={arr.length - 1 - index}
-                  />
-                ))}
-              </AnimatePresence>
-            </div>
+            <AnimatePresence mode="popLayout">
+              {cards.slice(0, 4).reverse().map((card, index, arr) => (
+                <SwipeableCard
+                  key={card.id}
+                  card={card}
+                  onSwipeRight={() => handleSwipeRight(card.id)}
+                  onSwipeLeft={() => handleSwipeLeft(card.id)}
+                  isTop={index === arr.length - 1}
+                  stackIndex={arr.length - 1 - index}
+                />
+              ))}
+            </AnimatePresence>
           </div>
         )}
       </main>
