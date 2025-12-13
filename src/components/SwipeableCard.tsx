@@ -50,25 +50,28 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
 
   const platformStyles = getPlatformCardStyles(card.platform);
 
-  // Stack effect calculations - cards behind are smaller and lower
-  // All cards stay fully opaque (solid white) - depth is shown via scale, translateY, and shadows only
-  const stackScale = 1 - (stackIndex * 0.05);
-  const stackTranslateY = stackIndex * 12;
-  const stackZIndex = 40 - (stackIndex * 10);
+  // Stack effect calculations - cards behind are progressively smaller and offset down
+  // This creates visible "edges" peeking from behind the top card
+  const stackScale = 1 - (stackIndex * 0.04); // 1, 0.96, 0.92, 0.88
+  const stackTranslateY = stackIndex * 16; // 0, 16, 32, 48px offset
+  const stackZIndex = 40 - (stackIndex * 10); // 40, 30, 20, 10
+  const stackOpacity = 1 - (stackIndex * 0.15); // 1, 0.85, 0.70, 0.55
 
   return (
     <motion.div
       className={cn(
-        'absolute left-4 right-4 touch-none',
+        'absolute touch-none',
         !isTop && 'pointer-events-none'
       )}
       style={{ 
         x: isTop ? x : 0, 
         rotate: isTop ? rotate : 0, 
-        opacity: isTop ? opacity : 1, // All cards stay fully opaque
+        opacity: isTop ? opacity : stackOpacity,
         zIndex: stackZIndex,
-        top: 4,
-        height: 'calc(100% - 8px)',
+        top: 16,
+        left: `${2 + stackIndex * 0.5}%`, // Progressive inset: 2%, 2.5%, 3%, 3.5%
+        right: `${2 + stackIndex * 0.5}%`,
+        height: 'calc(100% - 32px)',
       }}
       drag={isTop ? 'x' : false}
       dragConstraints={{ left: 0, right: 0 }}
@@ -76,20 +79,20 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
       onDragEnd={handleDragEnd}
       initial={{ 
         scale: stackScale, 
-        y: stackTranslateY + 30, 
+        y: stackTranslateY + 40, 
         opacity: 0 
       }}
       animate={{ 
         scale: stackScale, 
         y: stackTranslateY,
-        opacity: 1, // All cards stay fully opaque - depth shown via scale/shadow only
+        opacity: stackOpacity,
       }}
       exit={{ 
         x: x.get() > 0 ? 400 : -400,
         opacity: 0,
         transition: { duration: 0.3, type: 'spring', stiffness: 100 }
       }}
-      transition={{ type: 'spring', stiffness: 300, damping: 25, duration: 0.3 }}
+      transition={{ type: 'spring', stiffness: 350, damping: 30, duration: 0.4 }}
     >
       {/* Swipe indicators - only on top card */}
       {isTop && (
@@ -114,12 +117,13 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         </>
       )}
 
-      {/* Card content with platform-specific background - SOLID, not transparent */}
+      {/* Card content with platform-specific background - stacked shadow effect */}
       <div className={cn(
-        'h-full rounded-3xl shadow-xl border overflow-hidden flex flex-col bg-card',
-        stackIndex === 0 && 'shadow-2xl',
-        stackIndex === 1 && 'shadow-lg',
-        stackIndex === 2 && 'shadow-md',
+        'h-full rounded-3xl border overflow-hidden flex flex-col bg-card',
+        stackIndex === 0 && 'shadow-2xl ring-1 ring-border/20',
+        stackIndex === 1 && 'shadow-xl',
+        stackIndex === 2 && 'shadow-lg',
+        stackIndex >= 3 && 'shadow-md',
         platformStyles.borderClass,
         platformStyles.leftBorder
       )}
