@@ -308,15 +308,39 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
               value={body}
               onChange={(e) => setBody(e.target.value)}
               placeholder="Compose your email..."
-              className="w-full h-full p-6 text-base text-foreground bg-card resize-none focus:outline-none"
+              className="w-full h-full p-6 pr-20 text-base text-foreground bg-card resize-none focus:outline-none"
               autoFocus
             />
+            
+            {/* Floating AI Sparkle Button */}
+            <button
+              onClick={handleAiSparkle}
+              disabled={isAiLoading}
+              className={cn(
+                "absolute bottom-6 right-6 w-14 h-14 rounded-full",
+                "bg-gradient-to-r from-purple-500 via-pink-500 to-primary",
+                "text-white shadow-lg hover:shadow-xl",
+                "hover:scale-110 active:scale-95",
+                "transition-all duration-200",
+                "flex items-center justify-center",
+                "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              )}
+              title={body.split('\n\n\n---')[0].trim() === '' ? 'AI Draft Email' : 'AI Polish Text'}
+            >
+              {isAiLoading ? (
+                <span className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <Sparkles className="w-7 h-7" />
+              )}
+            </button>
+            
+            {/* Undo Button */}
             {showUndo && (
               <button
                 onClick={handleUndo}
-                className="absolute top-4 right-4 text-sm text-primary hover:underline bg-card px-2 py-1 rounded"
+                className="absolute bottom-6 right-24 px-4 py-2 bg-foreground text-background text-sm font-medium rounded-full shadow-lg hover:opacity-90 transition-all"
               >
-                Undo
+                ↶ Undo
               </button>
             )}
           </div>
