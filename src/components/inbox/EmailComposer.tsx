@@ -220,22 +220,22 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
           className="fixed inset-0 z-50 bg-background flex flex-col"
         >
-          {/* Header */}
-          <div className="bg-gradient-to-r from-primary to-cyan-500 text-white p-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
+          {/* Header - Mobile optimized */}
+          <div className="flex-shrink-0 bg-gradient-to-r from-primary to-cyan-500 text-white px-3 py-3 md:px-4 md:py-4 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
               <button
                 onClick={handleClose}
-                className="p-2 hover:bg-white/20 rounded-full transition-colors"
+                className="flex-shrink-0 p-2 hover:bg-white/20 rounded-full transition-colors"
               >
                 <X className="h-5 w-5" />
               </button>
-              <h2 className="font-semibold text-lg truncate">{getTitle()}</h2>
+              <h2 className="font-semibold text-base md:text-lg truncate">{getTitle()}</h2>
             </div>
             <button
               onClick={handleSend}
               disabled={isSending || !to.length || !subject.trim()}
               className={cn(
-                "flex items-center gap-2 px-5 py-2 rounded-lg font-semibold transition-all shadow-lg",
+                "flex-shrink-0 flex items-center gap-1.5 md:gap-2 px-3 md:px-5 py-2 rounded-lg font-semibold transition-all shadow-lg",
                 to.length && subject.trim()
                   ? "bg-white text-primary hover:bg-primary-foreground hover:shadow-xl"
                   : "bg-white/50 text-white/70 cursor-not-allowed"
@@ -244,12 +244,12 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
               {isSending ? (
                 <>
                   <span className="animate-spin h-4 w-4 border-2 border-primary/30 border-t-primary rounded-full" />
-                  <span>Sending...</span>
+                  <span className="hidden sm:inline">Sending...</span>
                 </>
               ) : (
                 <>
                   <Send className="h-4 w-4" />
-                  <span>Send</span>
+                  <span className="hidden sm:inline">Send</span>
                 </>
               )}
             </button>
@@ -325,36 +325,37 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
             </div>
           </div>
 
-          {/* Text Editor */}
-          <div className="flex-1 overflow-hidden relative">
+          {/* Text Editor - Mobile optimized */}
+          <div className="flex-1 overflow-y-auto relative">
             <textarea
               ref={textareaRef}
               value={body}
               onChange={(e) => setBody(e.target.value)}
               placeholder="Compose your email..."
-              className="w-full h-full p-6 pr-20 text-base text-foreground bg-card resize-none focus:outline-none"
+              className="w-full min-h-[200px] md:min-h-[300px] h-full p-4 md:p-6 pr-16 md:pr-20 text-base text-foreground bg-card resize-none focus:outline-none"
               autoFocus
             />
             
-            {/* Floating AI Sparkle Button */}
+            {/* Floating AI Sparkle Button - Mobile responsive */}
             <button
               onClick={handleAiSparkle}
               disabled={isAiLoading}
               className={cn(
-                "absolute bottom-6 right-6 w-14 h-14 rounded-full",
+                "absolute bottom-4 right-4 md:bottom-6 md:right-6 w-12 h-12 md:w-14 md:h-14 rounded-full",
                 "bg-gradient-to-r from-purple-500 via-pink-500 to-primary",
                 "text-white shadow-lg hover:shadow-xl",
                 "hover:scale-110 active:scale-95",
                 "transition-all duration-200",
                 "flex items-center justify-center",
-                "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100",
+                "z-10"
               )}
               title={body.split('\n\n\n---')[0].trim() === '' ? 'AI Draft Email' : 'AI Polish Text'}
             >
               {isAiLoading ? (
-                <span className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span className="w-5 h-5 md:w-6 md:h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
-                <Sparkles className="w-7 h-7" />
+                <Sparkles className="w-6 h-6 md:w-7 md:h-7" />
               )}
             </button>
             
@@ -362,7 +363,7 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
             {showUndo && (
               <button
                 onClick={handleUndo}
-                className="absolute bottom-6 right-24 px-4 py-2 bg-foreground text-background text-sm font-medium rounded-full shadow-lg hover:opacity-90 transition-all"
+                className="absolute bottom-4 right-20 md:bottom-6 md:right-24 px-3 md:px-4 py-1.5 md:py-2 bg-foreground text-background text-xs md:text-sm font-medium rounded-full shadow-lg hover:opacity-90 transition-all z-10"
               >
                 ↶ Undo
               </button>

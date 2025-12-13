@@ -155,32 +155,37 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
 
         {/* Message - Clickable to edit with scroll */}
         <div className="p-4 flex-1 flex flex-col min-h-0 overflow-hidden">
-          <div className="flex items-center justify-between mb-2 flex-shrink-0">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              AI Draft
-            </span>
+          <div className="flex items-center justify-between mb-3 flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="h-6 w-6 rounded-full bg-gradient-to-r from-purple-500 to-primary flex items-center justify-center">
+                <span className="text-white text-xs">✨</span>
+              </div>
+              <span className="text-sm font-semibold text-foreground uppercase tracking-wider">
+                AI Draft
+              </span>
+            </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Calendar className="h-3.5 w-3.5" />
               <span>{card.createdAt}</span>
             </div>
           </div>
 
-          {/* Scrollable draft container */}
-          <div className="flex-1 min-h-0 overflow-y-auto">
+          {/* Scrollable draft container - visible on mobile */}
+          <div className="flex-1 min-h-[120px] md:min-h-[160px] overflow-y-auto">
             {isEditing ? (
               <textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onBlur={() => setIsEditing(false)}
-                className="w-full h-full p-3 rounded-xl bg-card/80 border border-border text-foreground text-base leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-primary/20"
+                className="w-full min-h-[120px] md:min-h-[160px] h-full p-4 rounded-xl bg-primary/5 border border-primary/20 text-foreground text-base md:text-lg leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
                 autoFocus
               />
             ) : (
               <div 
                 onClick={() => setIsEditing(true)}
-                className="p-3 rounded-xl bg-card/50 border border-transparent hover:border-border/50 cursor-text transition-colors"
+                className="min-h-[120px] md:min-h-[160px] p-4 rounded-xl bg-primary/5 border border-primary/20 hover:border-primary/40 cursor-text transition-colors"
               >
-                <p className="text-foreground text-base leading-relaxed">{draft}</p>
+                <p className="text-foreground text-base md:text-lg leading-relaxed whitespace-pre-wrap break-words">{draft}</p>
               </div>
             )}
           </div>
