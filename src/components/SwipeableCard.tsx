@@ -1,5 +1,5 @@
-import { motion, useMotionValue, useTransform, PanInfo } from 'framer-motion';
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { motion, useMotionValue, useTransform } from 'framer-motion';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Check, X, Calendar, RefreshCw } from 'lucide-react';
 import { useSwipeable } from 'react-swipeable';
 import { ActionCard } from '@/types';
@@ -26,16 +26,25 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
   // Use refs to prevent double-firing and track swipe state
   const hasSwipedRef = useRef(false);
   const swipeDirectionRef = useRef<'left' | 'right' | null>(null);
+  const cardIdRef = useRef(card.id);
 
   const x = useMotionValue(0);
 
-  // Critical: Reset all swipe state when card.id changes (fixes Brave mobile bug)
+  // Critical: Reset ALL state when card.id changes (fixes Brave mobile bug)
   useEffect(() => {
+    // Force reset when card changes
+    if (cardIdRef.current !== card.id) {
+      cardIdRef.current = card.id;
+    }
     hasSwipedRef.current = false;
     swipeDirectionRef.current = null;
     setIsSwiping(false);
-    x.set(0);
-  }, [card.id, x]);
+    setDraft(card.draft);
+    // Use requestAnimationFrame to ensure Brave mobile processes the reset
+    requestAnimationFrame(() => {
+      x.set(0);
+    });
+  }, [card.id, card.draft, x]);
 
   const rotate = useTransform(x, [-200, 200], [-12, 12]);
   const opacity = useTransform(x, [-200, -100, 0, 100, 200], [0.5, 1, 1, 1, 0.5]);
@@ -45,22 +54,19 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
 
   const SWIPE_THRESHOLD = 80;
 
-  const handleSwipeComplete = (direction: 'left' | 'right') => {
+  // Handle swipe completion - only fires ONCE
+  const handleSwipeComplete = useCallback((direction: 'left' | 'right') => {
+    if (hasSwipedRef.current) return; // Prevent double-firing
+    hasSwipedRef.current = true;
+    swipeDirectionRef.current = direction;
     if (direction === 'right') {
       onSwipeRight(draft);
     } else {
       onSwipeLeft();
     }
-  };
-
-  const handleDragEnd = useCallback((_: any, info: PanInfo) => {
-    const threshold = 80;
-    if (info.offset.x > threshold) {
-      onSwipeRight(draft);
-    } else if (info.offset.x < -threshold) {
-      onSwipeLeft();
-    }
   }, [onSwipeRight, onSwipeLeft, draft]);
+
+
 
   // Reset card state
   const resetCardState = useCallback(() => {
@@ -70,35 +76,44 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
   }, [x]);
 
   // Cross-browser swipe handlers using react-swipeable
-  const swipeHandlers = useSwipeable({
-    onSwiping: (eventData) => {
-      if (!isTop || hasSwipedRef.current) return;
-      setIsSwiping(true);
-      x.set(eventData.deltaX);
+  // useMemo with card.id dependency forces handler recreation for Brave mobile
+  const swipeHandlers = useMemo(() => {
+    // This will be recreated when card.id changes
+    return {
+      onSwiping: (eventData: { deltaX: number }) => {
+        if (!isTop || hasSwipedRef.current) return;
+        setIsSwiping(true);
+        x.set(eventData.deltaX);
 
-      // Track direction based on current position
-      if (eventData.deltaX > SWIPE_THRESHOLD) {
-        swipeDirectionRef.current = 'right';
-      } else if (eventData.deltaX < -SWIPE_THRESHOLD) {
-        swipeDirectionRef.current = 'left';
-      } else {
-        swipeDirectionRef.current = null;
-      }
-    },
-    onSwiped: (eventData) => {
-      if (!isTop || hasSwipedRef.current) return;
+        // Track direction based on current position
+        if (eventData.deltaX > SWIPE_THRESHOLD) {
+          swipeDirectionRef.current = 'right';
+        } else if (eventData.deltaX < -SWIPE_THRESHOLD) {
+          swipeDirectionRef.current = 'left';
+        } else {
+          swipeDirectionRef.current = null;
+        }
+      },
+      onSwiped: (eventData: { deltaX: number }) => {
+        if (!isTop || hasSwipedRef.current) return;
 
-      const absX = Math.abs(eventData.deltaX);
+        const absX = Math.abs(eventData.deltaX);
 
-      if (absX > SWIPE_THRESHOLD) {
-        // Swipe threshold crossed - execute action based on direction
-        const direction = eventData.deltaX > 0 ? 'right' : 'left';
-        handleSwipeComplete(direction);
-      } else {
-        // Didn't cross threshold - snap back
-        resetCardState();
-      }
-    },
+        if (absX > SWIPE_THRESHOLD) {
+          // Swipe threshold crossed - execute action based on direction
+          const direction = eventData.deltaX > 0 ? 'right' : 'left';
+          handleSwipeComplete(direction);
+        } else {
+          // Didn't cross threshold - snap back
+          resetCardState();
+        }
+      },
+    };
+  }, [card.id, isTop, x, handleSwipeComplete, resetCardState]);
+
+  // Use useSwipeable with the memoized handlers
+  const swipeableHandlers = useSwipeable({
+    ...swipeHandlers,
     trackMouse: true,
     trackTouch: true,
     preventScrollOnSwipe: true,
@@ -128,7 +143,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
 
   return (
     <motion.div
-      {...(isTop ? swipeHandlers : {})}
+      {...(isTop ? swipeableHandlers : {})}
       className={cn(
         'absolute select-none',
         isTop ? 'cursor-grab active:cursor-grabbing' : 'pointer-events-none'
@@ -142,10 +157,15 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         left: `${2 + stackIndex * 0.5}%`,
         right: `${2 + stackIndex * 0.5}%`,
         height: 'calc(100% - 32px)',
+        // Brave mobile specific: use will-change for GPU acceleration
+        willChange: 'transform',
+        // Allow vertical scroll but capture horizontal gestures
         touchAction: 'pan-y',
         WebkitTouchCallout: 'none',
         WebkitUserSelect: 'none',
         userSelect: 'none',
+        // Use transform3d for better Brave mobile compatibility
+        transform: isSwiping ? undefined : 'translate3d(0, 0, 0)',
         transition: isSwiping ? 'none' : 'transform 0.3s ease-out',
       }}
       initial={{
