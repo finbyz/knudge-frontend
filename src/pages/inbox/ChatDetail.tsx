@@ -646,8 +646,8 @@ export default function ChatDetail() {
         className="hidden"
       />
 
-      {/* Input Bar - Fixed above bottom navigation */}
-      <div className="fixed bottom-16 left-0 right-0 z-30 bg-card border-t border-border shadow-lg">
+      {/* Input Bar - Fixed above bottom navigation with proper spacing */}
+      <div className="fixed bottom-20 left-0 right-0 z-30 bg-card border-t border-border shadow-lg" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
         <div className="w-full max-w-3xl mx-auto px-4 py-3">
           {/* File Preview */}
           <AnimatePresence>
@@ -695,14 +695,15 @@ export default function ChatDetail() {
               <Plus className="h-5 w-5 transition-transform" />
             </button>
             
-            {/* Text Input - 44px height, takes remaining space */}
+            {/* Text Input - 44px height, proper padding for text visibility */}
             <div className="flex-1 relative min-w-0">
               <input
                 type="text"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 placeholder="Type a message..."
-                className="w-full h-11 bg-muted rounded-full px-4 pr-12 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                className="w-full h-11 bg-muted rounded-full px-4 pr-12 text-base leading-[44px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                style={{ fontSize: '16px' }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();

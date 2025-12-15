@@ -1,5 +1,5 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
-import { X, Bold, Italic, Underline, Link2, Sparkles, Paperclip, Send, ChevronDown, Plus } from 'lucide-react';
+import { useState, useCallback, useRef, useEffect, KeyboardEvent } from 'react';
+import { X, Bold, Italic, Underline, Link2, Sparkles, Paperclip, Send } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
@@ -18,6 +18,15 @@ interface EmailComposerProps {
     timestamp: string;
   };
 }
+
+interface RecipientChip {
+  email: string;
+  isValid: boolean;
+}
+
+const validateEmail = (email: string): boolean => {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+};
 
 const aiDraftEmails = {
   reply: `Hi {name},
@@ -47,10 +56,103 @@ Looking forward to it!
 Best regards`,
 };
 
+// Recipient Chip Component
+function RecipientChipInput({
+  recipients,
+  setRecipients,
+  placeholder,
+}: {
+  recipients: RecipientChip[];
+  setRecipients: (recipients: RecipientChip[]) => void;
+  placeholder: string;
+}) {
+  const [inputValue, setInputValue] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const addRecipient = (email: string) => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) return;
+    
+    // Check if already exists
+    if (recipients.some(r => r.email.toLowerCase() === trimmedEmail.toLowerCase())) {
+      setInputValue('');
+      return;
+    }
+
+    const isValid = validateEmail(trimmedEmail);
+    setRecipients([...recipients, { email: trimmedEmail, isValid }]);
+    setInputValue('');
+  };
+
+  const removeRecipient = (index: number) => {
+    setRecipients(recipients.filter((_, i) => i !== index));
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',' || e.key === ' ') {
+      e.preventDefault();
+      addRecipient(inputValue);
+    } else if (e.key === 'Backspace' && !inputValue && recipients.length > 0) {
+      removeRecipient(recipients.length - 1);
+    }
+  };
+
+  const handleBlur = () => {
+    if (inputValue.trim()) {
+      addRecipient(inputValue);
+    }
+  };
+
+  return (
+    <div 
+      className="flex-1 flex flex-wrap items-center gap-1.5 min-h-[36px] cursor-text"
+      onClick={() => inputRef.current?.focus()}
+    >
+      {recipients.map((recipient, index) => (
+        <span
+          key={index}
+          className={cn(
+            "inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-sm",
+            recipient.isValid
+              ? "bg-muted text-foreground"
+              : "bg-destructive/10 text-destructive border border-destructive/30"
+          )}
+        >
+          <span className="max-w-[150px] truncate">{recipient.email}</span>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              removeRecipient(index);
+            }}
+            className={cn(
+              "flex-shrink-0 h-4 w-4 rounded-full flex items-center justify-center transition-colors",
+              recipient.isValid
+                ? "hover:bg-muted-foreground/20 hover:text-destructive"
+                : "hover:bg-destructive/20"
+            )}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+      <input
+        ref={inputRef}
+        type="email"
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+        onBlur={handleBlur}
+        placeholder={recipients.length === 0 ? placeholder : ''}
+        className="flex-1 min-w-[120px] bg-transparent text-foreground focus:outline-none text-sm py-1"
+      />
+    </div>
+  );
+}
+
 export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: EmailComposerProps) {
-  const [to, setTo] = useState<string[]>([]);
-  const [cc, setCc] = useState<string[]>([]);
-  const [bcc, setBcc] = useState<string[]>([]);
+  const [toRecipients, setToRecipients] = useState<RecipientChip[]>([]);
+  const [ccRecipients, setCcRecipients] = useState<RecipientChip[]>([]);
+  const [bccRecipients, setBccRecipients] = useState<RecipientChip[]>([]);
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [showCc, setShowCc] = useState(false);
@@ -66,17 +168,20 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
   useEffect(() => {
     if (isOpen && originalEmail) {
       if (mode === 'reply') {
-        setTo([originalEmail.from]);
+        setToRecipients([{ email: originalEmail.from, isValid: true }]);
         setSubject(`Re: ${originalEmail.subject.replace(/^Re: /, '')}`);
         setBody(`\n\n\n---\nOn ${originalEmail.timestamp}, ${originalEmail.sender} <${originalEmail.from}> wrote:\n\n${originalEmail.body.split('\n').map(line => `> ${line}`).join('\n')}`);
       } else if (mode === 'replyAll') {
-        setTo([originalEmail.from, ...originalEmail.to.filter(e => e !== 'me@company.com')]);
-        if (originalEmail.cc) setCc(originalEmail.cc);
-        setShowCc(!!originalEmail.cc?.length);
+        const allTo = [originalEmail.from, ...originalEmail.to.filter(e => e !== 'me@company.com')];
+        setToRecipients(allTo.map(email => ({ email, isValid: true })));
+        if (originalEmail.cc) {
+          setCcRecipients(originalEmail.cc.map(email => ({ email, isValid: true })));
+          setShowCc(true);
+        }
         setSubject(`Re: ${originalEmail.subject.replace(/^Re: /, '')}`);
         setBody(`\n\n\n---\nOn ${originalEmail.timestamp}, ${originalEmail.sender} <${originalEmail.from}> wrote:\n\n${originalEmail.body.split('\n').map(line => `> ${line}`).join('\n')}`);
       } else if (mode === 'forward') {
-        setTo([]);
+        setToRecipients([]);
         setSubject(`Fwd: ${originalEmail.subject.replace(/^Fwd: /, '')}`);
         setBody(`\n\n\n---\nForwarded message from ${originalEmail.sender} <${originalEmail.from}>:\n\n${originalEmail.body}`);
       }
@@ -86,9 +191,9 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
   // Reset when closed
   useEffect(() => {
     if (!isOpen) {
-      setTo([]);
-      setCc([]);
-      setBcc([]);
+      setToRecipients([]);
+      setCcRecipients([]);
+      setBccRecipients([]);
       setSubject('');
       setBody('');
       setShowCc(false);
@@ -127,13 +232,11 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
     const composedPart = body.split('\n\n\n---')[0].trim();
     
     if (!composedPart) {
-      // STATE 1: Empty - Generate draft
       const draftKey = mode === 'forward' ? 'forward' : 'reply';
       const draft = aiDraftEmails[draftKey].replace('{name}', originalEmail?.sender.split(' ')[0] || 'there');
       setIsAiLoading(false);
       typeText(draft, true);
     } else {
-      // STATE 2: Has content - Polish
       setOriginalBody(body);
       const polished = polishEmail(composedPart);
       const quotedPart = body.split('\n\n\n---')[1] || '';
@@ -148,15 +251,12 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
   }, [body, mode, originalEmail, toast, typeText]);
 
   const polishEmail = (text: string): string => {
-    // Simple polish - in real app this would be AI
     let polished = text.charAt(0).toUpperCase() + text.slice(1);
     
-    // Add greeting if missing
     if (!polished.toLowerCase().startsWith('hi') && !polished.toLowerCase().startsWith('hello') && !polished.toLowerCase().startsWith('dear')) {
       polished = `Hi ${originalEmail?.sender.split(' ')[0] || 'there'},\n\n${polished}`;
     }
     
-    // Add closing if missing
     if (!polished.toLowerCase().includes('best') && !polished.toLowerCase().includes('regards') && !polished.toLowerCase().includes('thanks')) {
       polished = `${polished}\n\nBest regards`;
     }
@@ -170,7 +270,7 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
   };
 
   const handleSend = async () => {
-    if (!to.length || !subject.trim()) {
+    if (!toRecipients.length || !subject.trim()) {
       toast({
         variant: "destructive",
         description: "Please fill in To and Subject fields",
@@ -178,9 +278,17 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
       return;
     }
 
+    // Check for invalid emails
+    const hasInvalidEmails = [...toRecipients, ...ccRecipients, ...bccRecipients].some(r => !r.isValid);
+    if (hasInvalidEmails) {
+      toast({
+        variant: "destructive",
+        description: "Please fix invalid email addresses",
+      });
+      return;
+    }
+
     setIsSending(true);
-    
-    // Simulate sending
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     toast({
@@ -194,7 +302,6 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
   const handleClose = () => {
     const composedPart = body.split('\n\n\n---')[0].trim();
     if (composedPart) {
-      // In real app, show confirmation dialog
       onClose();
     } else {
       onClose();
@@ -220,7 +327,7 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
           className="fixed inset-0 z-50 bg-background flex flex-col"
         >
-          {/* Header - Mobile optimized */}
+          {/* Header */}
           <div className="flex-shrink-0 bg-gradient-to-r from-primary to-cyan-500 text-white px-3 py-3 md:px-4 md:py-4 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
               <button
@@ -233,10 +340,10 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
             </div>
             <button
               onClick={handleSend}
-              disabled={isSending || !to.length || !subject.trim()}
+              disabled={isSending || !toRecipients.length || !subject.trim()}
               className={cn(
                 "flex-shrink-0 flex items-center gap-1.5 md:gap-2 px-3 md:px-5 py-2 rounded-lg font-semibold transition-all shadow-lg",
-                to.length && subject.trim()
+                toRecipients.length && subject.trim()
                   ? "bg-white text-primary hover:bg-primary-foreground hover:shadow-xl"
                   : "bg-white/50 text-white/70 cursor-not-allowed"
               )}
@@ -255,66 +362,81 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
             </button>
           </div>
 
-          {/* Fields */}
+          {/* Fields with Gmail-style chips */}
           <div className="bg-muted/50 p-4 space-y-2">
-            {/* To */}
-            <div className="flex items-center gap-2 bg-card rounded-lg border border-border px-3 py-2">
-              <span className="text-sm text-muted-foreground w-8">To:</span>
-              <input
-                type="email"
-                value={to.join(', ')}
-                onChange={(e) => setTo(e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-                className="flex-1 bg-transparent text-foreground focus:outline-none text-sm"
+            {/* To Field with Cc/Bcc buttons */}
+            <div className="flex items-start gap-2 bg-card rounded-lg border border-border px-3 py-2">
+              <span className="text-sm text-muted-foreground w-8 py-1">To</span>
+              <RecipientChipInput
+                recipients={toRecipients}
+                setRecipients={setToRecipients}
                 placeholder="recipient@email.com"
               />
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              <div className="flex items-center gap-2 flex-shrink-0 py-1">
+                {!showCc && (
+                  <button
+                    onClick={() => setShowCc(true)}
+                    className="text-sm text-primary hover:underline font-medium"
+                  >
+                    Cc
+                  </button>
+                )}
+                {!showBcc && (
+                  <button
+                    onClick={() => setShowBcc(true)}
+                    className="text-sm text-primary hover:underline font-medium"
+                  >
+                    Bcc
+                  </button>
+                )}
+              </div>
             </div>
 
-            {/* CC */}
-            {showCc ? (
-              <div className="flex items-center gap-2 bg-card rounded-lg border border-border px-3 py-2">
-                <span className="text-sm text-muted-foreground w-8">CC:</span>
-                <input
-                  type="email"
-                  value={cc.join(', ')}
-                  onChange={(e) => setCc(e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-                  className="flex-1 bg-transparent text-foreground focus:outline-none text-sm"
+            {/* CC Field */}
+            {showCc && (
+              <div className="flex items-start gap-2 bg-card rounded-lg border border-border px-3 py-2">
+                <span className="text-sm text-muted-foreground w-8 py-1">Cc</span>
+                <RecipientChipInput
+                  recipients={ccRecipients}
+                  setRecipients={setCcRecipients}
                   placeholder="cc@email.com"
                 />
+                <button
+                  onClick={() => {
+                    setShowCc(false);
+                    setCcRecipients([]);
+                  }}
+                  className="flex-shrink-0 p-1 hover:bg-muted rounded transition-colors"
+                >
+                  <X className="h-4 w-4 text-muted-foreground" />
+                </button>
               </div>
-            ) : (
-              <button
-                onClick={() => setShowCc(true)}
-                className="flex items-center gap-1 text-sm text-primary hover:underline"
-              >
-                <Plus className="h-3 w-3" /> Add CC
-              </button>
             )}
 
-            {/* BCC */}
-            {showBcc ? (
-              <div className="flex items-center gap-2 bg-card rounded-lg border border-border px-3 py-2">
-                <span className="text-sm text-muted-foreground w-8">BCC:</span>
-                <input
-                  type="email"
-                  value={bcc.join(', ')}
-                  onChange={(e) => setBcc(e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-                  className="flex-1 bg-transparent text-foreground focus:outline-none text-sm"
+            {/* BCC Field */}
+            {showBcc && (
+              <div className="flex items-start gap-2 bg-card rounded-lg border border-border px-3 py-2">
+                <span className="text-sm text-muted-foreground w-8 py-1">Bcc</span>
+                <RecipientChipInput
+                  recipients={bccRecipients}
+                  setRecipients={setBccRecipients}
                   placeholder="bcc@email.com"
                 />
+                <button
+                  onClick={() => {
+                    setShowBcc(false);
+                    setBccRecipients([]);
+                  }}
+                  className="flex-shrink-0 p-1 hover:bg-muted rounded transition-colors"
+                >
+                  <X className="h-4 w-4 text-muted-foreground" />
+                </button>
               </div>
-            ) : (
-              <button
-                onClick={() => setShowBcc(true)}
-                className="flex items-center gap-1 text-sm text-primary hover:underline"
-              >
-                <Plus className="h-3 w-3" /> Add BCC
-              </button>
             )}
 
             {/* Subject */}
             <div className="flex items-center gap-2 bg-card rounded-lg border border-border px-3 py-2">
-              <span className="text-sm text-muted-foreground">Subject:</span>
+              <span className="text-sm text-muted-foreground">Subject</span>
               <input
                 type="text"
                 value={subject}
@@ -325,7 +447,7 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
             </div>
           </div>
 
-          {/* Text Editor - Mobile optimized */}
+          {/* Text Editor */}
           <div className="flex-1 overflow-y-auto relative">
             <textarea
               ref={textareaRef}
@@ -336,7 +458,7 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
               autoFocus
             />
             
-            {/* Floating AI Sparkle Button - Mobile responsive */}
+            {/* Floating AI Sparkle Button */}
             <button
               onClick={handleAiSparkle}
               disabled={isAiLoading}
@@ -404,10 +526,10 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
               
               <button
                 onClick={handleSend}
-                disabled={isSending || !to.length || !subject.trim()}
+                disabled={isSending || !toRecipients.length || !subject.trim()}
                 className={cn(
                   "flex items-center gap-2 px-6 py-2.5 rounded-xl font-semibold transition-all",
-                  to.length && subject.trim()
+                  toRecipients.length && subject.trim()
                     ? "bg-gradient-to-r from-primary to-cyan-500 text-white hover:opacity-90"
                     : "bg-muted text-muted-foreground cursor-not-allowed"
                 )}
