@@ -98,6 +98,8 @@ const PlatformIcon = ({ platform, className }: { platform: Platform; className?:
           <path d="M6.18 15.64a2.18 2.18 0 0 1 2.18 2.18C8.36 19 7.38 20 6.18 20C5 20 4 19 4 17.82a2.18 2.18 0 0 1 2.18-2.18M4 4.44A15.56 15.56 0 0 1 19.56 20h-2.83A12.73 12.73 0 0 0 4 7.27V4.44m0 5.66a9.9 9.9 0 0 1 9.9 9.9h-2.83A7.07 7.07 0 0 0 4 12.93V10.1z"/>
         </svg>
       );
+    default:
+      return null;
   }
 };
 
@@ -114,7 +116,7 @@ const iconSizes = {
 };
 
 export function PlatformBadge({ platform, size = 'md', showLabel = false }: PlatformBadgeProps) {
-  const config = platformConfig[platform];
+  const config = platformConfig[platform] || platformConfig.rss; // Fallback to RSS styles
 
   return (
     <div className={cn('flex items-center gap-2', showLabel && 'pr-2')}>
@@ -136,6 +138,6 @@ export function PlatformBadge({ platform, size = 'md', showLabel = false }: Plat
   );
 }
 
-export function getPlatformCardStyles(platform: Platform) {
-  return platformConfig[platform];
+export function getPlatformCardStyles(platform: Platform | string) {
+  return platformConfig[platform as Platform] || platformConfig.rss; // Fallback to RSS styles
 }

@@ -1,5 +1,5 @@
-import { Check, RefreshCw, AlertCircle } from 'lucide-react';
-import { Connection } from '@/data/mockData';
+import { Check, RefreshCw, AlertCircle, Loader2 } from 'lucide-react';
+import { Connection } from '@/types';
 import { PlatformBadge } from './PlatformBadge';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
@@ -8,6 +8,8 @@ interface ConnectionCardProps {
   connection: Connection;
   onConnect: () => void;
   onDisconnect: () => void;
+  onSync?: () => void;
+  isSyncing?: boolean;
 }
 
 const platformNames = {
@@ -17,9 +19,9 @@ const platformNames = {
   email: 'Email',
 };
 
-export function ConnectionCard({ connection, onConnect, onDisconnect }: ConnectionCardProps) {
+export function ConnectionCard({ connection, onConnect, onDisconnect, onSync, isSyncing = false }: ConnectionCardProps) {
   const isConnected = connection.status === 'connected';
-  const isSyncing = connection.status === 'syncing';
+  const isStatusSyncing = connection.status === 'syncing';
 
   return (
     <div className="bg-card rounded-2xl shadow-card border border-border p-4">
@@ -35,7 +37,7 @@ export function ConnectionCard({ connection, onConnect, onDisconnect }: Connecti
                   <span className="text-xs text-success font-medium">Connected</span>
                 </>
               )}
-              {isSyncing && (
+              {isStatusSyncing && (
                 <>
                   <RefreshCw className="h-3.5 w-3.5 text-primary animate-spin" />
                   <span className="text-xs text-primary font-medium">Syncing...</span>
@@ -65,10 +67,30 @@ export function ConnectionCard({ connection, onConnect, onDisconnect }: Connecti
         </Button>
       </div>
 
-      {(isConnected || isSyncing) && (
+      {(isConnected || isStatusSyncing) && (
         <div className="mt-3 pt-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground">
           <span>{connection.contactCount} contacts</span>
-          <span>Last synced: {connection.lastSync}</span>
+          <div className="flex items-center gap-2">
+            {connection.lastSync && <span>Last synced: {connection.lastSync}</span>}
+            {onSync && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onSync}
+                disabled={isSyncing}
+                className="h-6 px-2 text-xs"
+              >
+                {isSyncing ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <>
+                    <RefreshCw className="h-3 w-3 mr-1" />
+                    Sync
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -15,47 +15,6 @@ interface NotificationPanelProps {
   onClose: () => void;
 }
 
-const mockNotifications: Notification[] = [
-  {
-    id: 'n1',
-    type: 'feed',
-    title: 'New Feeds Available',
-    description: 'You have 4 new feeds from YouTube and LinkedIn',
-    timestamp: '2 minutes ago',
-    isNew: true,
-  },
-  {
-    id: 'n2',
-    type: 'connects',
-    title: 'Suggested Connects',
-    description: 'You have 5 new suggested connects based on your network',
-    timestamp: '15 minutes ago',
-    isNew: true,
-  },
-  {
-    id: 'n3',
-    type: 'message',
-    title: 'Message from Sarah Chen',
-    description: 'Replied to your LinkedIn connection request',
-    timestamp: '1 hour ago',
-    isNew: true,
-  },
-  {
-    id: 'n4',
-    type: 'reminder',
-    title: 'Follow-up Reminder',
-    description: "Time to reach out to John Investor",
-    timestamp: '3 hours ago',
-  },
-  {
-    id: 'n5',
-    type: 'feed',
-    title: 'Trending Content',
-    description: 'Your connection posted about AI trends',
-    timestamp: '5 hours ago',
-  },
-];
-
 const typeConfig = {
   feed: {
     icon: Youtube,
@@ -80,6 +39,9 @@ const typeConfig = {
 };
 
 export function NotificationPanel({ isOpen, onClose }: NotificationPanelProps) {
+  // TODO: Fetch real notifications
+  const notifications: Notification[] = []; // Starting empty
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -114,33 +76,40 @@ export function NotificationPanel({ isOpen, onClose }: NotificationPanelProps) {
 
             {/* Notifications List */}
             <div className="overflow-y-auto max-h-[calc(70vh-64px)]">
-              {mockNotifications.map((notification) => {
-                const config = typeConfig[notification.type];
-                const Icon = config.icon;
+              {notifications.length > 0 ? (
+                notifications.map((notification) => {
+                  const config = typeConfig[notification.type];
+                  const Icon = config.icon;
 
-                return (
-                  <div
-                    key={notification.id}
-                    className="p-4 border-b border-border last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
-                  >
-                    <div className="flex gap-3">
-                      <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${config.bgClass}`}>
-                        <Icon className={`h-5 w-5 ${config.iconClass}`} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2">
-                          <h3 className="font-medium text-foreground text-sm">{notification.title}</h3>
-                          {notification.isNew && (
-                            <span className="h-2 w-2 rounded-full bg-primary shrink-0 mt-1.5" />
-                          )}
+                  return (
+                    <div
+                      key={notification.id}
+                      className="p-4 border-b border-border last:border-0 hover:bg-muted/30 transition-colors cursor-pointer"
+                    >
+                      <div className="flex gap-3">
+                        <div className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${config.bgClass}`}>
+                          <Icon className={`h-5 w-5 ${config.iconClass}`} />
                         </div>
-                        <p className="text-sm text-muted-foreground mt-0.5">{notification.description}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{notification.timestamp}</p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <h3 className="font-medium text-foreground text-sm">{notification.title}</h3>
+                            {notification.isNew && (
+                              <span className="h-2 w-2 rounded-full bg-primary shrink-0 mt-1.5" />
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground mt-0.5">{notification.description}</p>
+                          <p className="text-xs text-muted-foreground mt-1">{notification.timestamp}</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })
+              ) : (
+                <div className="p-8 text-center text-muted-foreground">
+                  <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>No new notifications</p>
+                </div>
+              )}
             </div>
           </motion.div>
         </>

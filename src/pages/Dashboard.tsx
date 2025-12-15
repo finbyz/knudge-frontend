@@ -1,4 +1,5 @@
-import { Layers, MessageSquare, Users, Wifi } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Bell, Layers, MessageSquare, Users, Wifi, Loader2, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { StatsCard } from '@/components/StatsCard';
@@ -6,10 +7,55 @@ import { ActivityItem } from '@/components/ActivityItem';
 import { PlatformBadge } from '@/components/PlatformBadge';
 import { Button } from '@/components/ui/button';
 import { TopBar } from '@/components/TopBar';
-import { mockActivities, mockConnections, mockActionCards } from '@/data/mockData';
+import { NotificationPanel } from '@/components/NotificationPanel';
+import { bridgesApi, BridgeStatus } from '@/api/bridges';
+import { deckApi } from '@/api/deck';
+import { Connection, Activity } from '@/types';
+import { toast } from 'sonner';
 
 export default function Dashboard() {
-  const connectedPlatforms = mockConnections.filter((c) => c.status === 'connected');
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [connections, setConnections] = useState<Connection[]>([]);
+  const [deckCount, setDeckCount] = useState(0);
+  const [activities] = useState<Activity[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, []);
+
+  const loadDashboardData = async () => {
+    try {
+      const [status, deckItems] = await Promise.all([
+        bridgesApi.getStatus(),
+        deckApi.getDeck()
+      ]);
+
+      // Map BridgeStatus to Connection objects for UI
+      const mappedConnections: Connection[] = [
+        { platform: 'whatsapp', status: status.whatsapp ? 'connected' : 'disconnected', lastSync: null },
+        { platform: 'signal', status: status.signal ? 'connected' : 'disconnected', lastSync: null },
+        { platform: 'linkedin', status: status.linkedin ? 'connected' : 'disconnected', lastSync: null },
+      ];
+      setConnections(mappedConnections);
+      setDeckCount(deckItems.length);
+    } catch (error) {
+      console.error("Failed to load dashboard:", error);
+      toast.error("Failed to load dashboard data");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const connectedPlatforms = connections.filter((c) => c.status === 'connected');
+
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background pb-24 pt-20">
@@ -26,7 +72,7 @@ export default function Dashboard() {
             <StatsCard
               icon={MessageSquare}
               label="Pending Messages"
-              value={mockActionCards.length}
+              value={deckCount}
               variant="primary"
             />
             <StatsCard
@@ -89,7 +135,7 @@ export default function Dashboard() {
               className="w-full h-14 gradient-primary text-primary-foreground border-0 text-base font-semibold shadow-glow hover:shadow-elevated transition-shadow"
             >
               <Layers className="h-5 w-5 mr-2" />
-              View Deck ({mockActionCards.length} pending)
+              View Deck ({deckCount} pending)
             </Button>
           </Link>
         </motion.section>
@@ -104,13 +150,20 @@ export default function Dashboard() {
             <h2 className="font-semibold text-foreground">Recent Activity</h2>
             <Link to="/activities" className="text-sm text-primary font-medium">View all</Link>
           </div>
-          <div className="bg-card rounded-2xl border border-border divide-y divide-border">
-            {mockActivities.slice(0, 5).map((activity) => (
-              <div key={activity.id} className="px-4">
-                <ActivityItem activity={activity} />
-              </div>
-            ))}
-          </div>
+          {activities.length > 0 ? (
+            <div className="bg-card rounded-2xl border border-border divide-y divide-border">
+              {activities.slice(0, 5).map((activity) => (
+                <div key={activity.id} className="px-4">
+                  <ActivityItem activity={activity} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-card rounded-2xl border border-border p-6 text-center">
+              <Clock className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+              <p className="text-muted-foreground text-sm">No recent activity</p>
+            </div>
+          )}
         </motion.section>
       </main>
     </div>

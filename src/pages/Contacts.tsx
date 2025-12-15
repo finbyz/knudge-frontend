@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Plus, X, Calendar, Sparkles, MessageSquare, Clock, Rss, Camera, User } from 'lucide-react';
+import { Search, Plus, X, Calendar, Sparkles, MessageSquare, Rss, Camera, User, Loader2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { ContactItem } from '@/components/ContactItem';
 import { Avatar } from '@/components/Avatar';
 import { PlatformBadge } from '@/components/PlatformBadge';
 import { Button } from '@/components/ui/button';
 import { TopBar } from '@/components/TopBar';
-import { mockContacts, circles, Contact } from '@/data/mockData';
-import { useToast } from '@/hooks/use-toast';
+// Resolved imports calling real API
+import { contactsApi, Contact, Circle } from '@/api/contacts';
+import { toast } from 'sonner';
 
 // Platform options for new contacts
 const platformOptions = [
@@ -16,20 +18,6 @@ const platformOptions = [
   { id: 'email', label: 'Email', color: 'bg-gray-500' },
   { id: 'signal', label: 'Signal', color: 'bg-[#3A76F0]' },
   { id: 'telegram', label: 'Telegram', color: 'bg-[#26A5E4]' },
-];
-
-// Mock recent conversations
-const mockConversations = [
-  { id: 'conv1', message: 'Hey, great meeting you at the conference!', timestamp: '2 days ago', isSent: true },
-  { id: 'conv2', message: 'Thanks! Would love to discuss the partnership further.', timestamp: '2 days ago', isSent: false },
-  { id: 'conv3', message: 'Absolutely, let me send over some details.', timestamp: '1 day ago', isSent: true },
-];
-
-// Mock contact feeds - use supported platform types
-const mockContactFeeds = [
-  { id: 'feed1', title: 'Shared an article about AI trends', platform: 'linkedin' as const, timestamp: '5 hours ago' },
-  { id: 'feed2', title: 'Posted a video: "Future of Tech"', platform: 'youtube' as const, timestamp: '1 day ago' },
-  { id: 'feed3', title: 'Commented on your post', platform: 'linkedin' as const, timestamp: '2 days ago' },
 ];
 
 export default function Contacts() {
@@ -45,85 +33,108 @@ export default function Contacts() {
     company: '',
     platforms: [] as string[],
   });
-  const { toast } = useToast();
 
-  const filteredContacts = mockContacts.filter((contact) => {
+  // Real data state
+  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [circles, setCircles] = useState<Circle[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const [contactsData, circlesData] = await Promise.all([
+        contactsApi.getContacts(),
+        contactsApi.getCircles()
+      ]);
+      setContacts(contactsData);
+      setCircles(circlesData);
+    } catch (error) {
+      console.error("Failed to load contacts:", error);
+      toast.error("Failed to load contacts.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filterOptions = ['All', ...circles.map(c => c.name)];
+
+  const filteredContacts = contacts.filter((contact) => {
     const matchesSearch = contact.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = activeFilter === 'All' || 
-      (activeFilter === 'VIP' && contact.isVIP) ||
-      contact.circle === activeFilter;
-    return matchesSearch && matchesFilter;
+
+    if (activeFilter === 'All') return matchesSearch;
+
+    const activeCircle = circles.find(c => c.name === activeFilter);
+    const matchesCircle = activeCircle ? contact.circle_id === activeCircle.id : false;
+
+    return matchesSearch && matchesCircle;
   });
+
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background pb-24 pt-20">
       <TopBar title="Contacts" />
 
-      <main className="px-4 py-4 space-y-4">
-        {/* Search Bar */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="relative"
-        >
+      {/* Filter Bar - from api integrate but styled to fit under TopBar */}
+      <div className="px-4 pb-4 space-y-4">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             type="text"
             placeholder="Search contacts..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-11 pl-10 pr-4 rounded-xl bg-muted/50 border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+            className="w-full h-10 pl-10 pr-4 rounded-xl bg-card border border-border focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
-        </motion.div>
+        </div>
 
-        {/* Filter Chips */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.1 }}
-          className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-2"
-        >
-          {circles.map((circle) => (
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+          {filterOptions.map((filter) => (
             <button
-              key={circle}
-              onClick={() => setActiveFilter(circle)}
-              className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
-                activeFilter === circle
-                  ? 'gradient-primary text-primary-foreground'
-                  : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-              }`}
+              key={filter}
+              onClick={() => setActiveFilter(filter)}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${activeFilter === filter
+                ? 'bg-foreground text-background'
+                : 'bg-card border border-border text-muted-foreground hover:bg-muted'
+                }`}
             >
-              {circle}
+              {filter}
             </button>
           ))}
-        </motion.div>
+        </div>
+      </div>
 
-        {/* Contacts List */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
-          className="space-y-2"
-        >
-          {filteredContacts.map((contact) => (
-            <ContactItem
-              key={contact.id}
-              contact={contact}
-              onClick={() => setSelectedContact(contact)}
-            />
-          ))}
-
-          {filteredContacts.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground">No contacts found</p>
+      {/* Contact List */}
+      <main className="flex-1 overflow-y-auto px-4">
+        <div className="divide-y divide-border/50">
+          {filteredContacts.length > 0 ? (
+            filteredContacts.map((contact) => (
+              <ContactItem
+                key={contact.id}
+                contact={contact as any} // Cast because UI might expect slightly diff shape, but ContactItem handles Contact type
+                onClick={() => setSelectedContact(contact)}
+              />
+            ))
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+              <p className="text-muted-foreground">No contacts found.</p>
+              {activeFilter !== 'All' && <Button variant="link" onClick={() => setActiveFilter('All')}>Clear filter</Button>}
             </div>
           )}
-        </motion.div>
+        </div>
       </main>
 
       {/* Add Contact FAB */}
-      <button 
+      <button
         onClick={() => setShowCreateModal(true)}
         className="fixed bottom-24 right-4 h-14 w-14 rounded-full gradient-primary shadow-glow flex items-center justify-center hover:scale-105 transition-transform"
       >
@@ -148,7 +159,6 @@ export default function Contacts() {
               className="bg-card rounded-3xl shadow-elevated w-full max-w-lg mx-auto mt-[10vh] mb-24 overflow-hidden relative"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Close button */}
               <button
                 onClick={() => setShowCreateModal(false)}
                 className="absolute top-4 right-4 h-8 w-8 rounded-full bg-muted flex items-center justify-center z-10"
@@ -156,14 +166,11 @@ export default function Contacts() {
                 <X className="h-4 w-4 text-muted-foreground" />
               </button>
 
-              {/* Header */}
               <div className="px-6 pt-6 pb-4 border-b border-border">
                 <h2 className="text-xl font-bold text-foreground">Create New Contact</h2>
               </div>
 
-              {/* Form */}
               <div className="px-6 py-6 space-y-5">
-                {/* Profile Picture Placeholder */}
                 <div className="flex justify-center">
                   <div className="relative">
                     <div className="h-20 w-20 rounded-full bg-gradient-to-br from-primary/20 to-cyan-400/20 flex items-center justify-center">
@@ -181,7 +188,6 @@ export default function Contacts() {
                   </div>
                 </div>
 
-                {/* Name */}
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block">Name *</label>
                   <input
@@ -193,7 +199,6 @@ export default function Contacts() {
                   />
                 </div>
 
-                {/* Phone */}
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block">Phone Number</label>
                   <input
@@ -205,7 +210,6 @@ export default function Contacts() {
                   />
                 </div>
 
-                {/* Email */}
                 <div>
                   <label className="text-sm font-medium text-foreground mb-1.5 block">Email</label>
                   <input
@@ -217,7 +221,6 @@ export default function Contacts() {
                   />
                 </div>
 
-                {/* Title & Company */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="text-sm font-medium text-foreground mb-1.5 block">Title</label>
@@ -241,7 +244,6 @@ export default function Contacts() {
                   </div>
                 </div>
 
-                {/* Platform Tags */}
                 <div>
                   <label className="text-sm font-medium text-foreground mb-2 block">Platforms</label>
                   <div className="flex flex-wrap gap-2">
@@ -258,11 +260,10 @@ export default function Contacts() {
                                 : [...prev.platforms, platform.id]
                             }));
                           }}
-                          className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
-                            isSelected
+                          className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${isSelected
                               ? `${platform.color} text-white`
                               : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                          }`}
+                            }`}
                         >
                           {platform.label}
                         </button>
@@ -272,23 +273,22 @@ export default function Contacts() {
                 </div>
               </div>
 
-              {/* Actions */}
               <div className="px-6 pb-6 flex gap-3">
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   className="flex-1"
                   onClick={() => setShowCreateModal(false)}
                 >
                   Cancel
                 </Button>
-                <Button 
+                <Button
                   className="flex-1 gradient-primary text-primary-foreground border-0"
                   onClick={() => {
                     if (!newContact.name.trim()) {
-                      toast({ description: "Please enter a name", variant: "destructive" });
+                      toast.error("Please enter a name");
                       return;
                     }
-                    toast({ description: `${newContact.name} added to contacts!` });
+                    toast.success(`${newContact.name} added to contacts!`);
                     setNewContact({ name: '', phone: '', email: '', title: '', company: '', platforms: [] });
                     setShowCreateModal(false);
                   }}
@@ -301,7 +301,6 @@ export default function Contacts() {
         )}
       </AnimatePresence>
 
-      {/* Contact Detail Modal - Positioned at top */}
       <AnimatePresence>
         {selectedContact && (
           <motion.div
@@ -319,7 +318,6 @@ export default function Contacts() {
               className="bg-card rounded-3xl shadow-elevated w-full max-w-lg mx-auto mt-[5vh] mb-24 overflow-hidden relative"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Close button */}
               <button
                 onClick={() => setSelectedContact(null)}
                 className="absolute top-4 right-4 h-8 w-8 rounded-full bg-muted flex items-center justify-center z-10"
@@ -327,46 +325,43 @@ export default function Contacts() {
                 <X className="h-4 w-4 text-muted-foreground" />
               </button>
 
-              {/* Content */}
               <div className="px-6 py-6">
-                {/* Header */}
                 <div className="flex flex-col items-center text-center mb-6">
-                  <Avatar initials={selectedContact.avatar} size="xl" isVIP={selectedContact.isVIP} />
+                  <Avatar initials={selectedContact.avatar || selectedContact.name.substring(0, 2)} size="xl" />
                   <h2 className="text-xl font-bold text-foreground mt-4">{selectedContact.name}</h2>
                   <p className="text-muted-foreground">
-                    {selectedContact.title} {selectedContact.company && `at ${selectedContact.company}`}
+                    {selectedContact.linkedin_url && `via LinkedIn`}
+                    {!selectedContact.linkedin_url && (selectedContact.email || selectedContact.phone)}
                   </p>
-                  
-                  {/* Platforms */}
+
                   <div className="flex items-center gap-2 mt-4">
-                    {selectedContact.platforms.map((platform) => (
-                      <PlatformBadge key={platform} platform={platform} size="md" showLabel />
-                    ))}
+                    {selectedContact.bridge_map ? (
+                      Object.keys(selectedContact.bridge_map).map(p => (
+                        <PlatformBadge key={p} platform={p as any} size="md" showLabel />
+                      ))
+                    ) : (
+                      <span className="text-xs text-muted-foreground">No connected platforms</span>
+                    )}
                   </div>
                 </div>
 
-                {/* AI Summary */}
                 <div className="bg-primary/5 rounded-2xl p-4 mb-4 border border-primary/10">
                   <div className="flex items-center gap-2 mb-2">
                     <Sparkles className="h-4 w-4 text-primary" />
                     <span className="text-sm font-medium text-primary">AI Summary</span>
                   </div>
                   <p className="text-sm text-foreground">
-                    {selectedContact.isVIP 
-                      ? 'VIP contact with high engagement history. Known for quick responses and strategic partnerships. Consider scheduling quarterly check-ins.'
-                      : 'Regular contact with moderate engagement. Last interaction was positive. Good candidate for collaborative opportunities.'}
+                    Regular contact with moderate engagement. Last interaction was positive. Good candidate for collaborative opportunities.
                   </p>
                 </div>
 
-                {/* Last Contact */}
                 <div className="bg-muted/50 rounded-2xl p-4 mb-4">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-muted-foreground">Last contacted</span>
-                    <span className="text-sm font-medium text-foreground">{selectedContact.lastContacted}</span>
+                    <span className="text-sm font-medium text-foreground">{selectedContact.last_contacted_at || 'Never'}</span>
                   </div>
                 </div>
 
-                {/* Recent Conversations - Timeline style */}
                 <div className="mb-6">
                   <div className="flex items-center gap-2 mb-3">
                     <MessageSquare className="h-4 w-4 text-primary" />
@@ -374,60 +369,26 @@ export default function Contacts() {
                     <span className="text-xs text-muted-foreground">(Last 10)</span>
                   </div>
                   <div className="relative pl-4 border-l-2 border-primary/20 space-y-3 max-h-48 overflow-y-auto">
-                    {mockConversations.map((conv, index) => (
-                      <div key={conv.id} className="relative">
-                        <div className={`absolute -left-[21px] top-2 h-3 w-3 rounded-full border-2 ${
-                          conv.isSent ? 'bg-primary border-primary' : 'bg-secondary border-secondary'
-                        }`} />
-                        <div className={`p-3 rounded-xl text-sm ${
-                          conv.isSent 
-                            ? 'bg-primary/10 border border-primary/20' 
-                            : 'bg-muted/50 border border-border'
-                        }`}>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className={`text-xs font-medium ${conv.isSent ? 'text-primary' : 'text-muted-foreground'}`}>
-                              {conv.isSent ? 'You' : selectedContact.name.split(' ')[0]}
-                            </span>
-                            <Clock className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-xs text-muted-foreground">{conv.timestamp}</span>
-                          </div>
-                          <p className="text-foreground">{conv.message}</p>
-                        </div>
-                      </div>
-                    ))}
+                    <div className="p-3 rounded-xl bg-muted/50 text-center">
+                      <MessageSquare className="h-5 w-5 text-muted-foreground mx-auto mb-1" />
+                      <p className="text-xs text-muted-foreground">No conversations yet</p>
+                    </div>
                   </div>
                 </div>
 
-                {/* Contact's Feeds - Card grid */}
                 <div className="mb-6">
                   <div className="flex items-center gap-2 mb-3">
                     <Rss className="h-4 w-4 text-secondary" />
                     <span className="text-sm font-semibold text-foreground">Their Feeds</span>
                   </div>
                   <div className="grid grid-cols-1 gap-3">
-                    {mockContactFeeds.map((feed) => (
-                      <div
-                        key={feed.id}
-                        className="p-4 rounded-xl bg-gradient-to-r from-muted/50 to-muted/30 border border-border hover:border-primary/30 transition-colors"
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center flex-shrink-0">
-                            <PlatformBadge platform={feed.platform as any} size="md" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-foreground line-clamp-2">{feed.title}</p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <Clock className="h-3 w-3 text-muted-foreground" />
-                              <span className="text-xs text-muted-foreground">{feed.timestamp}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                    <div className="p-4 rounded-xl bg-muted/30 border border-border border-dashed text-center">
+                      <Rss className="h-5 w-5 text-muted-foreground mx-auto mb-1" />
+                      <p className="text-xs text-muted-foreground">No recent feeds from this contact</p>
+                    </div>
                   </div>
                 </div>
 
-                {/* Actions */}
                 <div className="flex gap-3">
                   <Button variant="outline" className="flex-1">
                     <Calendar className="h-4 w-4 mr-2" />

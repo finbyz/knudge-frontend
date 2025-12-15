@@ -1,41 +1,97 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Check, PartyPopper } from 'lucide-react';
+import { ChevronDown, Check, PartyPopper, Loader2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { SwipeableCard } from '@/components/SwipeableCard';
-import { mockActionCards } from '@/data/mockData';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { TopBar } from '@/components/TopBar';
+import { deckApi, DeckItem } from '@/api/deck';
+import { ActionCard } from '@/types';
+
+// Helper to map API data to UI mock format until we fully unify types
+const mapDeckItemToCard = (item: DeckItem): ActionCard => ({
+  id: item.id,
+  contact: {
+    id: 'temp-deck-id', // Placeholder ID
+    name: item.ui_title.replace('Send Follow-up to ', '').replace('Message ', '') || 'Unknown',
+    // Optional fields from Contact interface are omitted (undefined)
+    // bridge_map is undefined
+  },
+  context: item.ui_subtitle,
+  draft: item.content_payload.draft_text || '',
+  platform: item.platform as any,
+  createdAt: new Date(item.created_at || Date.now()).toLocaleDateString(),
+  priority: 'medium'
+});
 
 export default function Deck() {
-  const [cards, setCards] = useState(mockActionCards);
+  const [cards, setCards] = useState<ActionCard[]>([]);
   const [completedCount, setCompletedCount] = useState(0);
+  const [loading, setLoading] = useState(true);
 
-  const handleSwipeRight = (cardId: string) => {
-    const card = cards.find((c) => c.id === cardId);
-    if (card) {
-      toast({
-        title: 'Message Sent! ✨',
-        description: `Your message to ${card.contact.name} has been queued.`,
-      });
-      setCompletedCount((prev) => prev + 1);
+  useEffect(() => {
+    loadDeck();
+  }, []);
+
+  const loadDeck = async () => {
+    try {
+      const items = await deckApi.getDeck();
+      const mappedCards = items.map(mapDeckItemToCard);
+      setCards(mappedCards);
+    } catch (error) {
+      console.error("Failed to load deck:", error);
+      toast.error("Failed to load action cards.");
+    } finally {
+      setLoading(false);
     }
-    setCards((prev) => prev.filter((c) => c.id !== cardId));
   };
 
-  const handleSwipeLeft = (cardId: string) => {
+  const handleSwipeRight = async (cardId: string, updatedDraft?: string) => {
+    // Optimistic UI update
+    const card = cards.find((c) => c.id === cardId);
     setCards((prev) => prev.filter((c) => c.id !== cardId));
+
+    if (card) {
+      toast.success(`Message sent to ${card.contact.name}! ✨`);
+      setCompletedCount((prev) => prev + 1);
+
+      try {
+        // Send EXECUTE action with updated draft if edited
+        await deckApi.swipe(cardId, 'EXECUTE', updatedDraft ? { draft_text: updatedDraft } : undefined);
+      } catch (error) {
+        console.error("Failed to execute card:", error);
+        toast.error("Failed to process action. Please try again.");
+        // Revert optimistic update? For now, we assume success or reload.
+      }
+    }
+  };
+
+  const handleSwipeLeft = async (cardId: string) => {
+    setCards((prev) => prev.filter((c) => c.id !== cardId));
+    try {
+      await deckApi.swipe(cardId, 'SNOOZE');
+    } catch (error) {
+      console.error("Failed to snooze card:", error);
+    }
   };
 
   const isEmpty = cards.length === 0;
-  const totalCards = mockActionCards.length;
+  const totalCards = cards.length + completedCount; // Approx total
   const currentIndex = totalCards - cards.length + 1;
+
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background pb-20 pt-16">
       <TopBar title="Deck" />
-      
+
       {/* Progress bar - below TopBar */}
       {!isEmpty && (
         <div className="sticky top-16 z-40 h-1 bg-muted">
@@ -88,18 +144,20 @@ export default function Deck() {
         ) : (
           <div className="relative" style={{ height: 'calc(100vh - 160px)' }}>
             {/* Cards stack container */}
-            <AnimatePresence mode="popLayout">
-              {cards.slice(0, 4).reverse().map((card, index, arr) => (
-                <SwipeableCard
-                  key={card.id}
-                  card={card}
-                  onSwipeRight={() => handleSwipeRight(card.id)}
-                  onSwipeLeft={() => handleSwipeLeft(card.id)}
-                  isTop={index === arr.length - 1}
-                  stackIndex={arr.length - 1 - index}
-                />
-              ))}
-            </AnimatePresence>
+            <div className="relative w-full h-full">
+              <AnimatePresence mode="popLayout">
+                {cards.slice(0, 4).reverse().map((card, index, arr) => (
+                  <SwipeableCard
+                    key={card.id}
+                    card={card}
+                    onSwipeRight={(draft) => handleSwipeRight(card.id, draft)}
+                    onSwipeLeft={() => handleSwipeLeft(card.id)}
+                    isTop={index === arr.length - 1}
+                    stackIndex={arr.length - 1 - index}
+                  />
+                ))}
+              </AnimatePresence>
+            </div>
           </div>
         )}
       </main>

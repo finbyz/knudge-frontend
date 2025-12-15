@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Youtube, Rss, Linkedin, Sparkles, RefreshCw, Send, X, Calendar } from 'lucide-react';
-import { FeedItem } from '@/data/mockData';
+import { FeedItem } from '@/types';
 import { Button } from './ui/button';
 import { cn } from '@/lib/utils';
 

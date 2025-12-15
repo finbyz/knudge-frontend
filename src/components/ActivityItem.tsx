@@ -1,5 +1,5 @@
 import { Send, MessageCircle, Bell, Link2 } from 'lucide-react';
-import { Activity } from '@/data/mockData';
+import { Activity } from '@/types';
 import { cn } from '@/lib/utils';
 
 interface ActivityItemProps {

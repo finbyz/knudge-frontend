@@ -5,6 +5,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { BottomNav } from "@/components/ui/BottomNav";
 import { useOnboardingStore } from "@/stores/onboardingStore";
+import { useAuthStore } from "@/stores/authStore";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import Deck from "./pages/Deck";
 import Connections from "./pages/Connections";
@@ -24,21 +26,24 @@ import OnboardingKnowledge from "./pages/onboarding/OnboardingKnowledge";
 import OnboardingConnections from "./pages/onboarding/OnboardingConnections";
 import OnboardingTrial from "./pages/onboarding/OnboardingTrial";
 import OnboardingComplete from "./pages/onboarding/OnboardingComplete";
+import GmailCallback from "./pages/GmailCallback";
+import OutlookCallback from "./pages/OutlookCallback";
 
 const queryClient = new QueryClient();
 
 function AppRoutes() {
   const location = useLocation();
   const { completed } = useOnboardingStore();
+  const { accessToken } = useAuthStore();
   const isOnboardingRoute = location.pathname.startsWith('/onboarding');
 
-  // Redirect to onboarding if not completed
-  if (!completed && !isOnboardingRoute) {
+  // If not on onboarding route and no token or onboarding not complete, redirect to login
+  if (!isOnboardingRoute && (!accessToken || !completed)) {
     return <Navigate to="/onboarding/login" replace />;
   }
 
-  // Redirect to main app if onboarding is complete and user tries to access onboarding
-  if (completed && isOnboardingRoute) {
+  // If trying to access onboarding but user is fully authenticated and completed, go to main app
+  if (isOnboardingRoute && accessToken && completed && location.pathname !== '/onboarding/login') {
     return <Navigate to="/" replace />;
   }
 
@@ -55,18 +60,22 @@ function AppRoutes() {
         <Route path="/onboarding/connections" element={<OnboardingConnections />} />
         <Route path="/onboarding/trial" element={<OnboardingTrial />} />
         <Route path="/onboarding/complete" element={<OnboardingComplete />} />
-        
-        {/* Main app routes */}
-        <Route path="/" element={<Index />} />
-        <Route path="/deck" element={<Deck />} />
-        <Route path="/connections" element={<Connections />} />
-        <Route path="/contacts" element={<Contacts />} />
-        <Route path="/feed" element={<Feed />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/inbox" element={<Inbox />} />
-        <Route path="/inbox/chat/:contactId" element={<ChatDetail />} />
-        <Route path="/inbox/email/:emailId" element={<EmailDetail />} />
-        <Route path="/activities" element={<Activities />} />
+
+        {/* Protected app routes */}
+        <Route element={<ProtectedRoute />}>
+          <Route path="/" element={<Index />} />
+          <Route path="/deck" element={<Deck />} />
+          <Route path="/connections" element={<Connections />} />
+          <Route path="/contacts" element={<Contacts />} />
+          <Route path="/feed" element={<Feed />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/inbox" element={<Inbox />} />
+          <Route path="/inbox/chat/:contactId" element={<ChatDetail />} />
+          <Route path="/inbox/email/:emailId" element={<EmailDetail />} />
+          <Route path="/activities" element={<Activities />} />
+          <Route path="/gmail/callback" element={<GmailCallback />} />
+          <Route path="/outlook/callback" element={<OutlookCallback />} />
+        </Route>
         <Route path="*" element={<NotFound />} />
       </Routes>
       {!isOnboardingRoute && <BottomNav />}

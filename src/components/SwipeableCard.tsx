@@ -2,7 +2,7 @@ import { motion, useMotionValue, useTransform } from 'framer-motion';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Check, X, Calendar, RefreshCw } from 'lucide-react';
 import { useSwipeable } from 'react-swipeable';
-import { ActionCard } from '@/data/mockData';
+import { ActionCard } from '@/types';
 import { Avatar } from './Avatar';
 import { PlatformBadge, getPlatformCardStyles } from './PlatformBadge';
 import { cn } from '@/lib/utils';
@@ -10,7 +10,7 @@ import { Button } from './ui/button';
 
 interface SwipeableCardProps {
   card: ActionCard;
-  onSwipeRight: () => void;
+  onSwipeRight: (draft?: string) => void;
   onSwipeLeft: () => void;
   isTop: boolean;
   stackIndex: number;
@@ -22,7 +22,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
   const [regenerateInstructions, setRegenerateInstructions] = useState('');
   const [showRegenerateInput, setShowRegenerateInput] = useState(false);
   const [isSwiping, setIsSwiping] = useState(false);
-  
+
   // Use refs to prevent double-firing and track swipe state
   const hasSwipedRef = useRef(false);
   const swipeDirectionRef = useRef<'left' | 'right' | null>(null);
@@ -43,16 +43,11 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
   const leftIndicatorOpacity = useTransform(x, [-100, -40, 0], [1, 0.5, 0]);
   const rightIndicatorOpacity = useTransform(x, [0, 40, 100], [0, 0.5, 1]);
 
-  const SWIPE_THRESHOLD = 80;
-
-  // Handle swipe completion - only fires ONCE
-  const handleSwipeComplete = useCallback((direction: 'left' | 'right') => {
-    if (hasSwipedRef.current) return; // Prevent double-firing
-    hasSwipedRef.current = true;
-    
-    if (direction === 'right') {
-      onSwipeRight();
-    } else {
+  const handleDragEnd = (_: any, info: PanInfo) => {
+    const threshold = 80;
+    if (info.offset.x > threshold) {
+      onSwipeRight(draft);
+    } else if (info.offset.x < -threshold) {
       onSwipeLeft();
     }
   }, [onSwipeRight, onSwipeLeft]);
@@ -70,7 +65,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
       if (!isTop || hasSwipedRef.current) return;
       setIsSwiping(true);
       x.set(eventData.deltaX);
-      
+
       // Track direction based on current position
       if (eventData.deltaX > SWIPE_THRESHOLD) {
         swipeDirectionRef.current = 'right';
@@ -82,9 +77,9 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
     },
     onSwiped: (eventData) => {
       if (!isTop || hasSwipedRef.current) return;
-      
+
       const absX = Math.abs(eventData.deltaX);
-      
+
       if (absX > SWIPE_THRESHOLD) {
         // Swipe threshold crossed - execute action based on direction
         const direction = eventData.deltaX > 0 ? 'right' : 'left';
@@ -128,9 +123,9 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         'absolute select-none',
         isTop ? 'cursor-grab active:cursor-grabbing' : 'pointer-events-none'
       )}
-      style={{ 
-        x: isTop ? x : 0, 
-        rotate: isTop ? rotate : 0, 
+      style={{
+        x: isTop ? x : 0,
+        rotate: isTop ? rotate : 0,
         opacity: isTop ? opacity : stackOpacity,
         zIndex: stackZIndex,
         top: 16,
@@ -143,17 +138,17 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         userSelect: 'none',
         transition: isSwiping ? 'none' : 'transform 0.3s ease-out',
       }}
-      initial={{ 
-        scale: stackScale, 
-        y: stackTranslateY + 40, 
-        opacity: 0 
+      initial={{
+        scale: stackScale,
+        y: stackTranslateY + 40,
+        opacity: 0
       }}
-      animate={{ 
-        scale: stackScale, 
+      animate={{
+        scale: stackScale,
         y: stackTranslateY,
         opacity: stackOpacity,
       }}
-      exit={{ 
+      exit={{
         x: swipeDirectionRef.current === 'right' ? 400 : -400,
         opacity: 0,
         transition: { duration: 0.3, type: 'spring', stiffness: 100 }
@@ -199,14 +194,13 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
           <div className="flex items-start justify-between gap-2">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
               <Avatar
-                initials={card.contact.avatar}
+                initials={card.contact.avatar || card.contact.name.substring(0, 2)}
                 size="lg"
-                isVIP={card.contact.isVIP}
               />
               <div className="min-w-0 flex-1">
-                <h3 className="font-semibold text-foreground text-base sm:text-lg truncate">{card.contact.name}</h3>
-                <p className="text-xs sm:text-sm text-muted-foreground truncate">
-                  {card.contact.title} {card.contact.company && `at ${card.contact.company}`}
+                <h3 className="font-semibold text-foreground text-lg truncate">{card.contact.name}</h3>
+                <p className="text-sm text-muted-foreground truncate">
+                  {card.contact.email || card.contact.phone || 'Contact'}
                 </p>
               </div>
             </div>
@@ -247,7 +241,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
               autoFocus
             />
           ) : (
-            <div 
+            <div
               onClick={() => setIsEditing(true)}
               className="min-h-[100px] sm:min-h-[120px] p-3 sm:p-4 rounded-xl bg-primary/5 border border-primary/20 hover:border-primary/40 cursor-text transition-colors"
             >

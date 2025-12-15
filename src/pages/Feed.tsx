@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { FeedItemCard } from '@/components/FeedItemCard';
 import { TopBar } from '@/components/TopBar';
-import { mockFeedItems } from '@/data/mockData';
 import { toast } from '@/hooks/use-toast';
+import { Inbox } from 'lucide-react';
+import { FeedItem } from '@/types';
 import { useUnreadStore } from '@/stores/unreadStore';
 
 const tabs = [
@@ -15,7 +16,7 @@ const tabs = [
 
 export default function Feed() {
   const [activeTab, setActiveTab] = useState('all');
-  const [items, setItems] = useState(mockFeedItems);
+  const [items, setItems] = useState<FeedItem[]>([]);
   const { clearUnreadFeed } = useUnreadStore();
 
   // Clear unread count when page mounts
@@ -23,8 +24,8 @@ export default function Feed() {
     clearUnreadFeed();
   }, [clearUnreadFeed]);
 
-  const filteredItems = activeTab === 'all' 
-    ? items 
+  const filteredItems = activeTab === 'all'
+    ? items
     : items.filter((item) => item.type === activeTab);
 
   const handleDraft = (itemId: string) => {
@@ -49,11 +50,10 @@ export default function Feed() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${
-                activeTab === tab.id
+              className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${activeTab === tab.id
                   ? 'gradient-primary text-primary-foreground'
                   : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-              }`}
+                }`}
             >
               {tab.label}
             </button>
@@ -81,9 +81,15 @@ export default function Feed() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-center py-12"
+            className="flex flex-col items-center justify-center py-16 text-center"
           >
-            <p className="text-muted-foreground">No feed items to display</p>
+            <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
+              <Inbox className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-medium text-foreground mb-2">No Feed Items</h3>
+            <p className="text-muted-foreground text-sm max-w-xs">
+              Add monitoring targets to see content from YouTube, LinkedIn, and RSS feeds.
+            </p>
           </motion.div>
         )}
       </main>

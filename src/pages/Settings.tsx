@@ -1,28 +1,24 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { User, Users, Sparkles, Bell, Crown, LogOut, ChevronRight, Plus, Edit2, X, Phone, Mail, Linkedin as LinkedinIcon, MessageCircle, Send, Search, Check, UserCheck } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { TopBar } from '@/components/TopBar';
 import { cn } from '@/lib/utils';
-import { Checkbox } from '@/components/ui/checkbox';
+import { authApi, UserResponse } from '@/api/auth';
+import { contactsApi, Circle, Contact } from '@/api/contacts';
+import { useAuthStore } from '@/stores/authStore';
+import { toast } from 'sonner';
 
 type ChannelType = 'whatsapp' | 'linkedin' | 'email' | 'calls' | 'telegram';
 
-interface Circle {
-  name: string;
+// Helper to determine channels from circle frequency/name (since backend Circle doesn't have channels/outreachAgenda yet)
+// We will use local state or defaults for now until backend supports it fully
+interface CircleWithUI extends Circle {
   channels: ChannelType[];
-  frequency: string;
-  contactIds: string[];
+  contacts: number; // For display count
   outreachAgenda: string;
-}
-
-interface SettingsContact {
-  id: string;
-  name: string;
-  avatar: string;
-  title: string;
-  company?: string;
+  contact_ids?: string[]; // IDs of members
 }
 
 const channelOptions: { id: ChannelType; label: string; color: string; icon: React.ReactNode }[] = [
@@ -33,65 +29,78 @@ const channelOptions: { id: ChannelType; label: string; color: string; icon: Rea
   { id: 'telegram', label: 'Telegram', color: '#26A5E4', icon: <Send className="h-4 w-4" /> },
 ];
 
-// Sample contacts for testing
-const allContacts: SettingsContact[] = [
-  { id: 'ct1', name: 'John Doe', avatar: 'JD', title: 'Marketing Director', company: 'TechCorp' },
-  { id: 'ct2', name: 'Sarah Smith', avatar: 'SS', title: 'Family Member', company: '' },
-  { id: 'ct3', name: 'Mike Johnson', avatar: 'MJ', title: 'Software Engineer', company: 'StartupXYZ' },
-  { id: 'ct4', name: 'Emily Brown', avatar: 'EB', title: 'CEO', company: 'InnovateTech' },
-  { id: 'ct5', name: 'David Lee', avatar: 'DL', title: 'Family Member', company: '' },
-  { id: 'ct6', name: 'Jessica Wilson', avatar: 'JW', title: 'Product Manager', company: 'BigTech' },
-  { id: 'ct7', name: 'Robert Taylor', avatar: 'RT', title: 'Angel Investor', company: 'Taylor Capital' },
-  { id: 'ct8', name: 'Amanda Garcia', avatar: 'AG', title: 'Designer', company: 'DesignStudio' },
-];
-
-interface UserProfile {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  linkedinUrl: string;
-  personalProfile: string;
-}
-
-const initialCircles: Circle[] = [
-  { name: 'VIP Investors', channels: ['whatsapp', 'email', 'linkedin'], frequency: 'Every 2 weeks', contactIds: ['ct4', 'ct7'], outreachAgenda: 'Discuss investment opportunities and share portfolio updates' },
-  { name: 'Team', channels: ['whatsapp', 'calls'], frequency: 'Weekly', contactIds: ['ct1', 'ct3', 'ct6', 'ct8'], outreachAgenda: 'Weekly sync, project updates, and team coordination' },
-  { name: 'Friends', channels: ['whatsapp', 'telegram'], frequency: 'Monthly', contactIds: ['ct2', 'ct5'], outreachAgenda: 'Catch up, share life updates, plan meetups' },
-];
-
 const frequencyOptions = ['Daily', 'Weekly', 'Every 2 weeks', 'Monthly', 'Quarterly'];
 
 export default function Settings() {
+  const { logout } = useAuthStore();
   const [tone, setTone] = useState('professional');
   const [messageLength, setMessageLength] = useState(1);
   const [birthdayReminders, setBirthdayReminders] = useState(true);
   const [socialMonitoring, setSocialMonitoring] = useState(true);
   const [pushNotifications, setPushNotifications] = useState(true);
-  
-  const [circles, setCircles] = useState<Circle[]>(initialCircles);
+
+  const [circles, setCircles] = useState<CircleWithUI[]>([]);
+  const [allContacts, setAllContacts] = useState<Contact[]>([]);
   const [showCircleForm, setShowCircleForm] = useState(false);
-  const [editingCircle, setEditingCircle] = useState<Circle | null>(null);
-  const [circleForm, setCircleForm] = useState<Circle>({ name: '', channels: [], frequency: 'Weekly', contactIds: [], outreachAgenda: '' });
-  const [contactSearchQuery, setContactSearchQuery] = useState('');
-  
-  const [showProfileForm, setShowProfileForm] = useState(false);
-  const [userProfile, setUserProfile] = useState<UserProfile>({
-    firstName: 'Alex',
-    lastName: 'Johnson',
-    email: 'alex@knudge.io',
-    phone: '+1 (555) 123-4567',
-    linkedinUrl: 'linkedin.com/in/alexjohnson',
-    personalProfile: 'Entrepreneur, AI enthusiast, investor in SaaS startups',
+  const [editingCircle, setEditingCircle] = useState<CircleWithUI | null>(null);
+
+  // Adjusted form state
+  const [circleForm, setCircleForm] = useState<{ name: string; frequency: string; channels: ChannelType[]; outreachAgenda: string; contact_ids: string[] }>({
+    name: '', frequency: 'Weekly', channels: [], outreachAgenda: '', contact_ids: []
   });
-  const [profileForm, setProfileForm] = useState<UserProfile>(userProfile);
+
+  const [contactSearchQuery, setContactSearchQuery] = useState('');
+
+  // New Contact Inline Form
+  const [showNewContactForm, setShowNewContactForm] = useState(false);
+  const [newContactForm, setNewContactForm] = useState({ name: '', email: '', phone: '' });
+
+  const [showProfileForm, setShowProfileForm] = useState(false);
+  const [userProfile, setUserProfile] = useState<UserResponse | null>(null);
+  const [profileForm, setProfileForm] = useState<UserResponse>({
+    id: '', username: '', email: ''
+  });
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const [userData, circlesData, contactsData] = await Promise.all([
+        authApi.getMe(),
+        contactsApi.getCircles(),
+        contactsApi.getContacts()
+      ]);
+      setUserProfile(userData);
+      setAllContacts(contactsData);
+
+      // Enhance circles
+      const enhancedCircles: CircleWithUI[] = await Promise.all(circlesData.map(async (c) => {
+        // Fetch contacts for this circle to get count and IDs
+        // This is N+1 but okay for limited circles
+        const members = await contactsApi.getContacts(c.id as any); // Type cast until updated
+        return {
+          ...c,
+          channels: ['whatsapp'],
+          contacts: members.length,
+          contact_ids: members.map(m => m.id),
+          outreachAgenda: ''
+        };
+      }));
+      setCircles(enhancedCircles);
+    } catch (error) {
+      console.error("Failed to load settings data", error);
+      toast.error("Failed to load data");
+    }
+  };
 
   const tones = ['Casual', 'Professional', 'Friendly'];
   const lengths = ['Short', 'Medium', 'Long'];
 
   const handleAddCircle = () => {
     setEditingCircle(null);
-    setCircleForm({ name: '', channels: [], frequency: 'Weekly', contactIds: [], outreachAgenda: '' });
+    setCircleForm({ name: '', channels: [], frequency: 'Weekly', contacts: 0, outreachAgenda: '', contact_ids: [] });
     setContactSearchQuery('');
     setShowCircleForm(true);
   };
@@ -105,32 +114,58 @@ export default function Settings() {
     }));
   };
 
-  const handleEditCircle = (circle: Circle) => {
-    setEditingCircle(circle);
-    setCircleForm(circle);
-    setContactSearchQuery('');
-    setShowCircleForm(true);
-  };
-
-  const toggleContactSelection = (contactId: string) => {
+  const toggleContact = (contactId: string) => {
     setCircleForm(prev => ({
       ...prev,
-      contactIds: prev.contactIds.includes(contactId)
-        ? prev.contactIds.filter(id => id !== contactId)
-        : [...prev.contactIds, contactId]
+      contact_ids: prev.contact_ids.includes(contactId)
+        ? prev.contact_ids.filter(id => id !== contactId)
+        : [...prev.contact_ids, contactId]
     }));
+  };
+
+  const handleCreateNewContact = async () => {
+    if (!newContactForm.name) return;
+    try {
+      const newContact = await contactsApi.createContact({
+        name: newContactForm.name,
+        email: newContactForm.email || undefined,
+        phone: newContactForm.phone || undefined
+      });
+      setAllContacts(prev => [...prev, newContact]);
+      // Auto-select
+      toggleContact(newContact.id);
+
+      setNewContactForm({ name: '', email: '', phone: '' });
+      setShowNewContactForm(false);
+      toast.success("Contact created");
+    } catch (e) {
+      toast.error("Failed to create contact");
+    }
+  };
+
+  const handleEditCircle = (circle: CircleWithUI) => {
+    setEditingCircle(circle);
+    setCircleForm({
+      name: circle.name,
+      frequency: circle.frequency,
+      channels: circle.channels,
+      outreachAgenda: circle.outreachAgenda,
+      contact_ids: circle.contact_ids || []
+    });
+    setContactSearchQuery('');
+    setShowCircleForm(true);
   };
 
   const selectAllContacts = () => {
     const filteredIds = filteredContacts.map(c => c.id);
     setCircleForm(prev => ({
       ...prev,
-      contactIds: [...new Set([...prev.contactIds, ...filteredIds])]
+      contact_ids: [...new Set([...prev.contact_ids, ...filteredIds])]
     }));
   };
 
   const clearAllContacts = () => {
-    setCircleForm(prev => ({ ...prev, contactIds: [] }));
+    setCircleForm(prev => ({ ...prev, contact_ids: [] }));
   };
 
   const filteredContacts = allContacts.filter(contact =>
@@ -139,36 +174,93 @@ export default function Settings() {
     (contact.company && contact.company.toLowerCase().includes(contactSearchQuery.toLowerCase()))
   );
 
-  const handleSaveCircle = () => {
+  const handleSaveCircle = async () => {
     if (!circleForm.name || !circleForm.outreachAgenda || circleForm.channels.length === 0) return;
-    
-    if (editingCircle) {
-      setCircles((prev) => 
-        prev.map((c) => c.name === editingCircle.name ? circleForm : c)
-      );
-    } else {
-      setCircles((prev) => [...prev, circleForm]);
+
+    try {
+      if (editingCircle) {
+        const updated = await contactsApi.updateCircle(editingCircle.id, {
+          name: circleForm.name,
+          frequency: circleForm.frequency,
+          contact_ids: circleForm.contact_ids
+        });
+        // Merge with local UI state (channels, etc.)
+        const merged: CircleWithUI = {
+          ...editingCircle,
+          ...updated,
+          channels: circleForm.channels,
+          outreachAgenda: circleForm.outreachAgenda,
+          contact_ids: circleForm.contact_ids,
+          contacts: circleForm.contact_ids.length
+        };
+
+        setCircles((prev) =>
+          prev.map((c) => c.id === editingCircle.id ? merged : c)
+        );
+        toast.success("Circle updated");
+      } else {
+        const created = await contactsApi.createCircle({
+          name: circleForm.name,
+          frequency: circleForm.frequency,
+          contact_ids: circleForm.contact_ids
+        });
+        // Enhance with local UI state
+        const enhanced: CircleWithUI = {
+          ...created,
+          contacts: circleForm.contact_ids.length,
+          contact_ids: circleForm.contact_ids,
+          channels: circleForm.channels,
+          outreachAgenda: circleForm.outreachAgenda
+        };
+        setCircles((prev) => [...prev, enhanced]);
+        toast.success("Circle created");
+      }
+      setShowCircleForm(false);
+      setEditingCircle(null);
+    } catch (error) {
+      console.error("Failed to save circle", error);
+      toast.error("Failed to save circle");
     }
-    setShowCircleForm(false);
-    setEditingCircle(null);
   };
 
-  const handleDeleteCircle = () => {
+  const handleDeleteCircle = async () => {
     if (editingCircle) {
-      setCircles((prev) => prev.filter((c) => c.name !== editingCircle.name));
+      try {
+        await contactsApi.deleteCircle(editingCircle.id);
+        setCircles((prev) => prev.filter((c) => c.id !== editingCircle.id));
+        toast.success("Circle deleted");
+      } catch (error) {
+        console.error("Failed to delete circle", error);
+        toast.error("Failed to delete circle");
+      }
     }
     setShowCircleForm(false);
     setEditingCircle(null);
   };
 
   const handleEditProfile = () => {
-    setProfileForm(userProfile);
-    setShowProfileForm(true);
+    if (userProfile) {
+      setProfileForm(userProfile);
+      setShowProfileForm(true);
+    }
   };
 
-  const handleSaveProfile = () => {
-    setUserProfile(profileForm);
-    setShowProfileForm(false);
+  const handleSaveProfile = async () => {
+    try {
+      const updated = await authApi.updateMe({
+        first_name: profileForm.first_name,
+        last_name: profileForm.last_name,
+        phone: profileForm.phone,
+        linkedin_url: profileForm.linkedin_url,
+        personal_profile: profileForm.personal_profile
+      });
+      setUserProfile(updated);
+      setShowProfileForm(false);
+      toast.success("Profile updated");
+    } catch (error) {
+      console.error("Failed to update profile", error);
+      toast.error("Failed to update profile");
+    }
   };
 
   return (
@@ -189,10 +281,12 @@ export default function Settings() {
                 <User className="h-6 w-6 text-primary-foreground" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-foreground">{userProfile.firstName} {userProfile.lastName}</h3>
-                <p className="text-sm text-muted-foreground">{userProfile.email}</p>
+                <h3 className="font-semibold text-foreground">
+                  {userProfile ? `${userProfile.first_name || ''} ${userProfile.last_name || ''}` : 'User'}
+                </h3>
+                <p className="text-sm text-muted-foreground">{userProfile?.email}</p>
               </div>
-              <button 
+              <button
                 onClick={handleEditProfile}
                 className="h-9 w-9 rounded-xl bg-muted/50 flex items-center justify-center hover:bg-muted transition-colors"
               >
@@ -201,7 +295,7 @@ export default function Settings() {
             </div>
             <div className="border-t border-border p-4">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Persona Profile</label>
-              <p className="text-sm text-foreground mt-1">{userProfile.personalProfile}</p>
+              <p className="text-sm text-foreground mt-1">{userProfile?.personal_profile || 'No profile description yet.'}</p>
             </div>
           </div>
         </motion.section>
@@ -214,7 +308,7 @@ export default function Settings() {
         >
           <div className="flex items-center justify-between mb-3 px-1">
             <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Circles</h2>
-            <button 
+            <button
               onClick={handleAddCircle}
               className="flex items-center gap-1 text-primary text-sm font-medium"
             >
@@ -224,8 +318,8 @@ export default function Settings() {
           </div>
           <div className="bg-card rounded-2xl border border-border divide-y divide-border">
             {circles.map((circle) => (
-              <button 
-                key={circle.name} 
+              <button
+                key={circle.id}
                 onClick={() => handleEditCircle(circle)}
                 className="w-full p-4 flex items-center justify-between text-left hover:bg-muted/30 transition-colors"
               >
@@ -236,7 +330,7 @@ export default function Settings() {
                   <div>
                     <h3 className="font-medium text-foreground">{circle.name}</h3>
                     <p className="text-sm text-muted-foreground">
-                      {circle.frequency} • {circle.contactIds.length} contacts
+                      {circle.frequency} • {circle.contacts} contacts
                     </p>
                   </div>
                 </div>
@@ -354,7 +448,9 @@ export default function Settings() {
               </div>
               <span className="px-3 py-1 rounded-full bg-warning/10 text-warning text-xs font-medium">Active</span>
             </div>
-            <button className="w-full p-4 flex items-center gap-3 text-destructive border-t border-border hover:bg-destructive/5 transition-colors">
+            <button
+              onClick={logout}
+              className="w-full p-4 flex items-center gap-3 text-destructive border-t border-border hover:bg-destructive/5 transition-colors">
               <LogOut className="h-5 w-5" />
               <span className="font-medium">Log Out</span>
             </button>
@@ -469,6 +565,85 @@ export default function Settings() {
                   </div>
                 </div>
 
+                {/* Member Selection */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-foreground">
+                      Members <span className="text-muted-foreground">({circleForm.contact_ids.length})</span>
+                    </label>
+                    <button
+                      onClick={() => setShowNewContactForm(!showNewContactForm)}
+                      className="text-xs text-primary font-medium flex items-center gap-1"
+                    >
+                      <Plus className="h-3 w-3" /> New Contact
+                    </button>
+                  </div>
+
+                  {/* Inline New Contact Form */}
+                  <AnimatePresence>
+                    {showNewContactForm && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden bg-muted/30 rounded-xl mb-3 border border-primary/20"
+                      >
+                        <div className="p-3 space-y-2">
+                          <input
+                            placeholder="Name"
+                            value={newContactForm.name}
+                            onChange={e => setNewContactForm(p => ({ ...p, name: e.target.value }))}
+                            className="w-full h-9 px-3 rounded-lg text-sm bg-background border border-border"
+                          />
+                          <div className="flex gap-2">
+                            <input
+                              placeholder="Email (Optional)"
+                              value={newContactForm.email}
+                              onChange={e => setNewContactForm(p => ({ ...p, email: e.target.value }))}
+                              className="flex-1 h-9 px-3 rounded-lg text-sm bg-background border border-border"
+                            />
+                            <input
+                              placeholder="Phone (Optional)"
+                              value={newContactForm.phone}
+                              onChange={e => setNewContactForm(p => ({ ...p, phone: e.target.value }))}
+                              className="flex-1 h-9 px-3 rounded-lg text-sm bg-background border border-border"
+                            />
+                          </div>
+                          <div className="flex justify-end gap-2">
+                            <button onClick={() => setShowNewContactForm(false)} className="text-xs px-2 py-1">Cancel</button>
+                            <button onClick={handleCreateNewContact} className="text-xs px-3 py-1 bg-primary text-primary-foreground rounded-lg">Add Contact</button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <div className="max-h-48 overflow-y-auto border border-border rounded-xl bg-card divide-y divide-border">
+                    {filteredContacts.length === 0 ? (
+                      <div className="p-4 text-center text-sm text-muted-foreground">No contacts matching search.</div>
+                    ) : (
+                      filteredContacts.map(contact => (
+                        <button
+                          key={contact.id}
+                          onClick={() => toggleContact(contact.id)}
+                          className="w-full flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors"
+                        >
+                          <div className={cn(
+                            "h-5 w-5 rounded-md border flex items-center justify-center transition-colors",
+                            circleForm.contact_ids.includes(contact.id) ? "bg-primary border-primary" : "border-muted-foreground/30"
+                          )}>
+                            {circleForm.contact_ids.includes(contact.id) && <Plus className="h-3 w-3 text-primary-foreground" />}
+                          </div>
+                          <div className="text-left">
+                            <div className="text-sm font-medium text-foreground">{contact.name}</div>
+                            {(contact.email || contact.phone) && <div className="text-xs text-muted-foreground">{contact.email || contact.phone}</div>}
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+
                 <div>
                   <label className="text-sm font-medium text-foreground mb-2 block">
                     Outreach Agenda <span className="text-destructive">*</span>
@@ -492,110 +667,34 @@ export default function Settings() {
                   </div>
                 </div>
 
-                {/* Assign Contacts Section */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-medium text-foreground flex items-center gap-2">
-                      <UserCheck className="h-4 w-4 text-primary" />
-                      Assign Contacts
-                    </label>
-                    <span className="text-xs font-medium px-2 py-1 rounded-full bg-primary/10 text-primary">
-                      {circleForm.contactIds.length} selected
-                    </span>
-                  </div>
-                  
-                  {/* Search Bar */}
-                  <div className="relative mb-3">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <input
-                      type="text"
-                      value={contactSearchQuery}
-                      onChange={(e) => setContactSearchQuery(e.target.value)}
-                      placeholder="Search contacts..."
-                      className="w-full h-10 pl-10 pr-4 rounded-xl bg-muted/50 border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 text-sm"
-                    />
-                  </div>
+                {/* Assign Contacts Section - Removed as it's redundant with Members selection above */}
 
-                  {/* Select All / Clear All Buttons */}
-                  <div className="flex gap-2 mb-3">
-                    <button
-                      type="button"
-                      onClick={selectAllContacts}
-                      className="flex-1 py-2 text-xs font-medium rounded-lg bg-muted/50 text-muted-foreground hover:bg-muted transition-colors"
-                    >
-                      Select All
-                    </button>
-                    <button
-                      type="button"
-                      onClick={clearAllContacts}
-                      className="flex-1 py-2 text-xs font-medium rounded-lg bg-muted/50 text-muted-foreground hover:bg-muted transition-colors"
-                    >
-                      Clear All
-                    </button>
-                  </div>
-
-                  {/* Contact List */}
-                  <div className="border border-border rounded-xl overflow-hidden max-h-48 overflow-y-auto">
-                    {filteredContacts.length === 0 ? (
-                      <div className="p-4 text-center text-sm text-muted-foreground">
-                        No contacts found
-                      </div>
-                    ) : (
-                      filteredContacts.map((contact) => {
-                        const isSelected = circleForm.contactIds.includes(contact.id);
-                        return (
-                          <button
-                            key={contact.id}
-                            type="button"
-                            onClick={() => toggleContactSelection(contact.id)}
-                            className={cn(
-                              'w-full flex items-center gap-3 p-3 text-left transition-colors border-b border-border last:border-b-0',
-                              isSelected ? 'bg-primary/5' : 'hover:bg-muted/50'
-                            )}
-                          >
-                            <div className={cn(
-                              'h-5 w-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-all',
-                              isSelected 
-                                ? 'bg-primary border-primary' 
-                                : 'border-muted-foreground/30'
-                            )}>
-                              {isSelected && <Check className="h-3 w-3 text-primary-foreground" />}
-                            </div>
-                            <div className="h-9 w-9 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center flex-shrink-0">
-                              <span className="text-xs font-semibold text-foreground">{contact.avatar}</span>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-foreground truncate">{contact.name}</p>
-                              <p className="text-xs text-muted-foreground truncate">
-                                {contact.title}{contact.company ? ` • ${contact.company}` : ''}
-                              </p>
-                            </div>
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
               </div>
 
-              {/* Sticky buttons at bottom */}
-              <div className="p-4 border-t border-border bg-card flex-shrink-0">
-                <div className="flex gap-3">
-                  {editingCircle && (
-                    <Button
-                      variant="outline"
-                      onClick={handleDeleteCircle}
-                      className="text-destructive border-destructive/30 hover:bg-destructive/10"
-                    >
-                      Delete
-                    </Button>
-                  )}
-                  <Button
-                    onClick={handleSaveCircle}
-                    className="flex-1 gradient-primary text-primary-foreground border-0"
+              {/* Footer Actions */}
+              <div className="p-4 border-t border-border flex gap-3">
+                {editingCircle && (
+                  <button
+                    onClick={handleDeleteCircle}
+                    className="px-4 py-3 rounded-xl border border-destructive/30 text-destructive font-medium hover:bg-destructive/5 transition-colors"
                   >
-                    {editingCircle ? 'Save Changes' : 'Add Circle'}
-                  </Button>
+                    Delete
+                  </button>
+                )}
+                <div className="flex-1 flex gap-3">
+                  <button
+                    onClick={() => setShowCircleForm(false)}
+                    className="flex-1 py-3 rounded-xl bg-muted text-muted-foreground font-medium hover:bg-muted/80 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveCircle}
+                    disabled={!circleForm.name || !circleForm.outreachAgenda || circleForm.channels.length === 0}
+                    className="flex-1 py-3 rounded-xl gradient-primary text-primary-foreground font-medium shadow-glow disabled:opacity-50 disabled:shadow-none hover:opacity-90 transition-all"
+                  >
+                    {editingCircle ? 'Save Changes' : 'Create Circle'}
+                  </button>
                 </div>
               </div>
             </motion.div>
@@ -603,21 +702,20 @@ export default function Settings() {
         )}
       </AnimatePresence>
 
-      {/* Profile Edit Modal */}
       <AnimatePresence>
-        {showProfileForm && (
+        {showProfileForm && userProfile && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-foreground/20 backdrop-blur-sm flex items-start justify-center p-4 pt-8 overflow-y-auto"
+            className="fixed inset-0 z-50 bg-foreground/20 backdrop-blur-sm flex items-center justify-center p-4"
             onClick={() => setShowProfileForm(false)}
           >
             <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
+              initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-card rounded-2xl shadow-elevated w-full max-w-md overflow-hidden mb-8"
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-card rounded-2xl shadow-elevated w-full max-w-md overflow-hidden relative"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between p-4 border-b border-border">
@@ -631,90 +729,60 @@ export default function Settings() {
               </div>
 
               <div className="p-4 space-y-4">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm font-medium text-foreground mb-2 block">First Name</label>
+                    <label className="text-sm font-medium text-foreground mb-1 block">First Name</label>
                     <input
                       type="text"
-                      value={profileForm.firstName}
-                      onChange={(e) => setProfileForm({ ...profileForm, firstName: e.target.value })}
-                      className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      value={profileForm.first_name || ''}
+                      onChange={(e) => setProfileForm({ ...profileForm, first_name: e.target.value })}
+                      className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground"
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-foreground mb-2 block">Last Name</label>
+                    <label className="text-sm font-medium text-foreground mb-1 block">Last Name</label>
                     <input
                       type="text"
-                      value={profileForm.lastName}
-                      onChange={(e) => setProfileForm({ ...profileForm, lastName: e.target.value })}
-                      className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                      value={profileForm.last_name || ''}
+                      onChange={(e) => setProfileForm({ ...profileForm, last_name: e.target.value })}
+                      className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">
-                    <Mail className="h-4 w-4 inline mr-2" />
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    value={profileForm.email}
-                    onChange={(e) => setProfileForm({ ...profileForm, email: e.target.value })}
-                    className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">
-                    <Phone className="h-4 w-4 inline mr-2" />
-                    Phone Number
-                  </label>
+                  <label className="text-sm font-medium text-foreground mb-1 block">Phone</label>
                   <input
                     type="tel"
-                    value={profileForm.phone}
+                    value={profileForm.phone || ''}
                     onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
-                    className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground"
                   />
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">
-                    <LinkedinIcon className="h-4 w-4 inline mr-2" />
-                    LinkedIn Profile URL
-                  </label>
+                  <label className="text-sm font-medium text-foreground mb-1 block">LinkedIn URL</label>
                   <input
                     type="url"
-                    value={profileForm.linkedinUrl}
-                    onChange={(e) => setProfileForm({ ...profileForm, linkedinUrl: e.target.value })}
-                    placeholder="linkedin.com/in/yourprofile"
-                    className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                    value={profileForm.linkedin_url || ''}
+                    onChange={(e) => setProfileForm({ ...profileForm, linkedin_url: e.target.value })}
+                    className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground"
                   />
                 </div>
 
                 <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">Personal Profile</label>
+                  <label className="text-sm font-medium text-foreground mb-1 block">Persona/Bio</label>
                   <textarea
-                    value={profileForm.personalProfile}
-                    onChange={(e) => setProfileForm({ ...profileForm, personalProfile: e.target.value })}
-                    placeholder="Describe yourself, your interests, and what you do..."
-                    rows={3}
-                    className="w-full px-4 py-3 rounded-xl bg-muted/50 border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                    value={profileForm.personal_profile || ''}
+                    onChange={(e) => setProfileForm({ ...profileForm, personal_profile: e.target.value })}
+                    rows={4}
+                    className="w-full p-4 rounded-xl bg-muted/50 border border-border text-foreground resize-none"
+                    placeholder="Describe yourself to help AI match your tone..."
                   />
                 </div>
 
-                <div className="flex gap-3 pt-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowProfileForm(false)}
-                    className="flex-1"
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleSaveProfile}
-                    className="flex-1 gradient-primary text-primary-foreground border-0"
-                  >
+                <div className="pt-2">
+                  <Button onClick={handleSaveProfile} className="w-full gradient-primary text-primary-foreground h-12 rounded-xl">
                     Save Profile
                   </Button>
                 </div>
