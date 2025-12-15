@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, ChevronDown, ChevronUp, MoreVertical, Reply, ReplyAll, Forward, Paperclip, Download, Mail, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronDown, ChevronUp, MoreVertical, Reply, ReplyAll, Forward, Paperclip, Download, Mail } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import EmailComposer from '@/components/inbox/EmailComposer';
@@ -73,13 +73,15 @@ Emily`,
       },
       {
         id: 2,
-        sender: 'You',
-        email: 'me@company.com',
-        timestamp: 'Dec 7, 5:20 PM',
-        body: `Thanks Emily! This looks comprehensive. Quick question - will the mobile redesign affect our current API integrations?
+        sender: 'Sarah Williams',
+        email: 'sarah@company.com',
+        timestamp: 'Dec 7, 3:20 PM',
+        body: `Thanks for keeping us updated, Emily. Looking forward to reviewing the roadmap.
+
+Quick question - will the mobile redesign affect our current API integrations?
 
 Best,
-Me`,
+Sarah`,
         attachments: [],
       },
       {
@@ -133,12 +135,10 @@ David`,
   },
 };
 
-// Mock inbox messages for navigation
-const mockInboxEmails = ['3', '6'];
-
 export default function EmailDetail() {
   const navigate = useNavigate();
   const { emailId } = useParams<{ emailId: string }>();
+  const [expandedThreads, setExpandedThreads] = useState<Set<number>>(new Set([1]));
   const [showRecipients, setShowRecipients] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerMode, setComposerMode] = useState<'reply' | 'replyAll' | 'forward'>('reply');
@@ -183,60 +183,31 @@ export default function EmailDetail() {
     }
   }, [emailId, accessToken]);
 
-  // Navigation between messages
-  const currentIndex = mockInboxEmails.indexOf(emailId || '3');
-  const totalMessages = mockInboxEmails.length;
-  const hasPrevious = currentIndex > 0;
-  const hasNext = currentIndex < mockInboxEmails.length - 1;
-
-  const goToPrevious = () => {
-    if (hasPrevious) {
-      navigate(`/inbox/email/${mockInboxEmails[currentIndex - 1]}`, { replace: true });
-    }
+  const toggleThread = (threadId: number) => {
+    setExpandedThreads(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(threadId)) {
+        newSet.delete(threadId);
+      } else {
+        newSet.add(threadId);
+      }
+      return newSet;
+    });
   };
-
-  const goToNext = () => {
-    if (hasNext) {
-      navigate(`/inbox/email/${mockInboxEmails[currentIndex + 1]}`, { replace: true });
-    }
-  };
-
-  // Swipe handlers
-  const swipeHandlers = useSwipeable({
-    onSwipedLeft: () => hasNext && goToNext(),
-    onSwipedRight: () => hasPrevious && goToPrevious(),
-    trackMouse: false,
-    trackTouch: true,
-    delta: 50,
-    preventScrollOnSwipe: false,
-  });
-
-  // Keyboard navigation
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.key === 'ArrowLeft' || e.key === 'k') goToPrevious();
-      if (e.key === 'ArrowRight' || e.key === 'j') goToNext();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIndex]);
-
-  // Mark as read effect
-  useEffect(() => {
-    // In a real app, this would call an API to mark as read
-    toast({ description: 'Message marked as read' });
-  }, [emailId]);
 
   const openComposer = (mode: 'reply' | 'replyAll' | 'forward') => {
     setComposerMode(mode);
     setComposerOpen(true);
   };
 
+  const getInitials = (name: string) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase();
+  };
+
   return (
-    <div className="h-full flex flex-col relative" {...swipeHandlers}>
+    <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-card border-b border-border p-4 flex-shrink-0">
+      <header className="sticky top-0 z-50 bg-card border-b border-border p-4">
         <div className="flex items-center justify-between mb-2">
           <button
             onClick={() => navigate('/inbox')}
@@ -245,39 +216,9 @@ export default function EmailDetail() {
             <ChevronLeft className="h-5 w-5 text-foreground" />
           </button>
 
-          {/* Message counter */}
-          <div className="bg-muted/80 px-3 py-1 rounded-full">
-            <span className="text-xs font-medium text-muted-foreground">
-              {currentIndex + 1} of {totalMessages}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1">
-            {/* Navigation arrows */}
-            <button
-              onClick={goToPrevious}
-              disabled={!hasPrevious}
-              className={cn(
-                "p-2 rounded-full transition-colors",
-                hasPrevious ? "hover:bg-muted" : "opacity-30 cursor-not-allowed"
-              )}
-            >
-              <ChevronLeft className="h-5 w-5 text-muted-foreground" />
-            </button>
-            <button
-              onClick={goToNext}
-              disabled={!hasNext}
-              className={cn(
-                "p-2 rounded-full transition-colors",
-                hasNext ? "hover:bg-muted" : "opacity-30 cursor-not-allowed"
-              )}
-            >
-              <ChevronRight className="h-5 w-5 text-muted-foreground" />
-            </button>
-            <button className="p-2 hover:bg-muted rounded-full transition-colors">
-              <MoreVertical className="h-5 w-5 text-muted-foreground" />
-            </button>
-          </div>
+          <button className="p-2 hover:bg-muted rounded-full transition-colors">
+            <MoreVertical className="h-5 w-5 text-muted-foreground" />
+          </button>
         </div>
 
         <h1 className="text-xl font-bold text-foreground">{email.subject}</h1>
@@ -291,9 +232,7 @@ export default function EmailDetail() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Mail className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium text-foreground">
-              {email.threads.length} messages in thread
-            </span>
+            <span className="text-sm font-medium text-foreground">From: {email.from}</span>
           </div>
           {showRecipients ? (
             <ChevronUp className="h-4 w-4 text-muted-foreground" />
@@ -312,7 +251,6 @@ export default function EmailDetail() {
               className="overflow-hidden"
             >
               <div className="mt-2 space-y-1 text-sm">
-                <p className="text-muted-foreground">From: {email.from}</p>
                 <p className="text-muted-foreground">To: {email.to.join(', ')}</p>
                 {email.cc && <p className="text-muted-foreground">CC: {email.cc.join(', ')}</p>}
               </div>
@@ -321,22 +259,103 @@ export default function EmailDetail() {
         </AnimatePresence>
       </div>
 
-      {/* Email Content - Conversational View - Scrollable */}
-      <div className="flex-1 overflow-y-auto pb-[180px] md:pb-0">
-        <ConversationalEmailView
-          threads={email.threads}
-          currentUserEmail="me@company.com"
-        />
-      </div>
+      {/* Email Threads */}
+      <main className="flex-1 overflow-y-auto p-4 pb-40 space-y-4">
+        {email.threads.map((thread, index) => {
+          const isExpanded = expandedThreads.has(thread.id);
+          const isLatest = index === 0;
 
-      {/* Action Bar - Fixed above bottom nav on mobile, Sticky on Desktop */}
-      <div
-        className="fixed bottom-[calc(64px+env(safe-area-inset-bottom,0px))] left-0 right-0 md:relative md:bottom-auto z-20 bg-card border-t border-border shadow-sm px-4 py-3 mt-auto"
-      >
+          return (
+            <motion.div
+              key={thread.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2, delay: index * 0.05 }}
+              className={cn(
+                'bg-card rounded-xl border border-border overflow-hidden transition-shadow',
+                isExpanded ? 'shadow-md' : 'hover:shadow-md cursor-pointer'
+              )}
+              onClick={() => !isExpanded && toggleThread(thread.id)}
+            >
+              {/* Thread Header */}
+              <div
+                className={cn(
+                  'flex items-center justify-between p-4',
+                  isExpanded && 'border-b border-border cursor-pointer'
+                )}
+                onClick={() => isExpanded && toggleThread(thread.id)}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary/20 to-cyan-400/20 flex items-center justify-center">
+                    <span className="text-sm font-semibold text-foreground">
+                      {getInitials(thread.sender)}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-foreground">{thread.sender}</p>
+                    {!isExpanded && (
+                      <p className="text-sm text-muted-foreground truncate max-w-[200px]">
+                        {thread.body.split('\n')[0]}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">{thread.timestamp}</span>
+                  {isExpanded ? (
+                    <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  )}
+                </div>
+              </div>
+
+              {/* Thread Body (Expanded) */}
+              <AnimatePresence>
+                {isExpanded && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="p-6 pt-4">
+                      <p className="text-base text-foreground leading-relaxed whitespace-pre-wrap">
+                        {thread.body}
+                      </p>
+
+                      {/* Attachments */}
+                      {thread.attachments.length > 0 && (
+                        <div className="mt-6 space-y-2">
+                          {thread.attachments.map((attachment, idx) => (
+                            <div
+                              key={idx}
+                              className="inline-flex items-center gap-2 bg-muted hover:bg-muted/80 rounded-lg px-4 py-2.5 mr-2 mb-2 cursor-pointer transition-colors"
+                            >
+                              <Paperclip className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-sm font-medium text-foreground">{attachment.name}</span>
+                              <span className="text-xs text-muted-foreground">({attachment.size})</span>
+                              <Download className="h-4 w-4 text-muted-foreground ml-2" />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          );
+        })}
+      </main>
+
+      {/* Action Bar - positioned above BottomNav with proper spacing */}
+      <div className="fixed bottom-20 left-0 right-0 z-40 bg-card border-t border-border shadow-sm px-4 py-2">
         <div className="max-w-lg mx-auto flex gap-2">
           <button
             onClick={() => openComposer('reply')}
-            className="flex-1 flex items-center justify-center gap-1 bg-gradient-to-r from-primary to-cyan-500 text-white rounded-lg py-2.5 text-xs font-medium hover:opacity-90 transition-opacity"
+            className="flex-1 flex items-center justify-center gap-1 bg-gradient-to-r from-primary to-cyan-500 text-white rounded-lg py-2 text-xs font-medium hover:opacity-90 transition-opacity"
           >
             <Reply className="h-3.5 w-3.5" />
             <span>Reply</span>
@@ -344,7 +363,7 @@ export default function EmailDetail() {
 
           <button
             onClick={() => openComposer('replyAll')}
-            className="flex-1 flex items-center justify-center gap-1 bg-card border border-border text-foreground rounded-lg py-2.5 text-xs font-medium hover:bg-muted transition-colors"
+            className="flex-1 flex items-center justify-center gap-1 bg-card border border-border text-foreground rounded-lg py-2 text-xs font-medium hover:bg-muted transition-colors"
           >
             <ReplyAll className="h-3.5 w-3.5" />
             <span>Reply All</span>
@@ -352,24 +371,12 @@ export default function EmailDetail() {
 
           <button
             onClick={() => openComposer('forward')}
-            className="flex-1 flex items-center justify-center gap-1 bg-card border border-border text-foreground rounded-lg py-2.5 text-xs font-medium hover:bg-muted transition-colors"
+            className="flex-1 flex items-center justify-center gap-1 bg-card border border-border text-foreground rounded-lg py-2 text-xs font-medium hover:bg-muted transition-colors"
           >
             <Forward className="h-3.5 w-3.5" />
             <span>Forward</span>
           </button>
         </div>
-      </div>
-
-      {/* Swipe indicators */}
-      <div className="fixed inset-y-0 left-0 w-1 pointer-events-none">
-        {hasPrevious && (
-          <div className="absolute top-1/2 -translate-y-1/2 h-16 w-full bg-gradient-to-r from-primary/30 to-transparent rounded-r-full" />
-        )}
-      </div>
-      <div className="fixed inset-y-0 right-0 w-1 pointer-events-none">
-        {hasNext && (
-          <div className="absolute top-1/2 -translate-y-1/2 h-16 w-full bg-gradient-to-l from-primary/30 to-transparent rounded-l-full" />
-        )}
       </div>
 
       {/* Email Composer Modal */}
