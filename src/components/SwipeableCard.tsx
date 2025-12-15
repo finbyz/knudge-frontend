@@ -1,5 +1,5 @@
 import { motion, useMotionValue, useTransform } from 'framer-motion';
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Check, X, Calendar, RefreshCw } from 'lucide-react';
 import { useSwipeable } from 'react-swipeable';
 import { ActionCard } from '@/data/mockData';
@@ -28,6 +28,15 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
   const swipeDirectionRef = useRef<'left' | 'right' | null>(null);
 
   const x = useMotionValue(0);
+
+  // Critical: Reset all swipe state when card.id changes (fixes Brave mobile bug)
+  useEffect(() => {
+    hasSwipedRef.current = false;
+    swipeDirectionRef.current = null;
+    setIsSwiping(false);
+    x.set(0);
+  }, [card.id, x]);
+
   const rotate = useTransform(x, [-200, 200], [-12, 12]);
   const opacity = useTransform(x, [-200, -100, 0, 100, 200], [0.5, 1, 1, 1, 0.5]);
 
