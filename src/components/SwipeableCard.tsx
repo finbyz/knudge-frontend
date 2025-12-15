@@ -1,5 +1,5 @@
 import { motion, useMotionValue, useTransform } from 'framer-motion';
-import { useState } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Check, X, Calendar, RefreshCw } from 'lucide-react';
 import { useSwipeable } from 'react-swipeable';
 import { ActionCard } from '@/data/mockData';
@@ -21,8 +21,11 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
   const [draft, setDraft] = useState(card.draft);
   const [regenerateInstructions, setRegenerateInstructions] = useState('');
   const [showRegenerateInput, setShowRegenerateInput] = useState(false);
-  const [swipeOffset, setSwipeOffset] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
+  
+  // Use refs to prevent double-firing and track swipe state
+  const hasSwipedRef = useRef(false);
+  const swipeDirectionRef = useRef<'left' | 'right' | null>(null);
 
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-12, 12]);
@@ -31,43 +34,62 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
   const leftIndicatorOpacity = useTransform(x, [-100, -40, 0], [1, 0.5, 0]);
   const rightIndicatorOpacity = useTransform(x, [0, 40, 100], [0, 0.5, 1]);
 
+  const SWIPE_THRESHOLD = 80;
+
+  // Handle swipe completion - only fires ONCE
+  const handleSwipeComplete = useCallback((direction: 'left' | 'right') => {
+    if (hasSwipedRef.current) return; // Prevent double-firing
+    hasSwipedRef.current = true;
+    
+    if (direction === 'right') {
+      onSwipeRight();
+    } else {
+      onSwipeLeft();
+    }
+  }, [onSwipeRight, onSwipeLeft]);
+
+  // Reset card state
+  const resetCardState = useCallback(() => {
+    setIsSwiping(false);
+    swipeDirectionRef.current = null;
+    x.set(0);
+  }, [x]);
+
   // Cross-browser swipe handlers using react-swipeable
   const swipeHandlers = useSwipeable({
     onSwiping: (eventData) => {
-      if (!isTop) return;
+      if (!isTop || hasSwipedRef.current) return;
       setIsSwiping(true);
-      setSwipeOffset(eventData.deltaX);
       x.set(eventData.deltaX);
-    },
-    onSwipedLeft: () => {
-      if (!isTop) return;
-      if (Math.abs(swipeOffset) > 80) {
-        onSwipeLeft();
+      
+      // Track direction based on current position
+      if (eventData.deltaX > SWIPE_THRESHOLD) {
+        swipeDirectionRef.current = 'right';
+      } else if (eventData.deltaX < -SWIPE_THRESHOLD) {
+        swipeDirectionRef.current = 'left';
+      } else {
+        swipeDirectionRef.current = null;
       }
-      setSwipeOffset(0);
-      setIsSwiping(false);
-      x.set(0);
     },
-    onSwipedRight: () => {
-      if (!isTop) return;
-      if (Math.abs(swipeOffset) > 80) {
-        onSwipeRight();
+    onSwiped: (eventData) => {
+      if (!isTop || hasSwipedRef.current) return;
+      
+      const absX = Math.abs(eventData.deltaX);
+      
+      if (absX > SWIPE_THRESHOLD) {
+        // Swipe threshold crossed - execute action based on direction
+        const direction = eventData.deltaX > 0 ? 'right' : 'left';
+        handleSwipeComplete(direction);
+      } else {
+        // Didn't cross threshold - snap back
+        resetCardState();
       }
-      setSwipeOffset(0);
-      setIsSwiping(false);
-      x.set(0);
-    },
-    onTouchEndOrOnMouseUp: () => {
-      if (Math.abs(swipeOffset) <= 80) {
-        setSwipeOffset(0);
-        x.set(0);
-      }
-      setIsSwiping(false);
     },
     trackMouse: true,
     trackTouch: true,
     preventScrollOnSwipe: true,
     delta: 10,
+    swipeDuration: 500,
     touchEventOptions: { passive: false },
   });
 
@@ -123,7 +145,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         opacity: stackOpacity,
       }}
       exit={{ 
-        x: swipeOffset > 0 ? 400 : -400,
+        x: swipeDirectionRef.current === 'right' ? 400 : -400,
         opacity: 0,
         transition: { duration: 0.3, type: 'spring', stiffness: 100 }
       }}
