@@ -1,6 +1,7 @@
-import { motion, useMotionValue, useTransform, PanInfo } from 'framer-motion';
+import { motion, useMotionValue, useTransform } from 'framer-motion';
 import { useState } from 'react';
 import { Check, X, Calendar, RefreshCw } from 'lucide-react';
+import { useSwipeable } from 'react-swipeable';
 import { ActionCard } from '@/data/mockData';
 import { Avatar } from './Avatar';
 import { PlatformBadge, getPlatformCardStyles } from './PlatformBadge';
@@ -20,6 +21,8 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
   const [draft, setDraft] = useState(card.draft);
   const [regenerateInstructions, setRegenerateInstructions] = useState('');
   const [showRegenerateInput, setShowRegenerateInput] = useState(false);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [isSwiping, setIsSwiping] = useState(false);
 
   const x = useMotionValue(0);
   const rotate = useTransform(x, [-200, 200], [-12, 12]);
@@ -28,14 +31,45 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
   const leftIndicatorOpacity = useTransform(x, [-100, -40, 0], [1, 0.5, 0]);
   const rightIndicatorOpacity = useTransform(x, [0, 40, 100], [0, 0.5, 1]);
 
-  const handleDragEnd = (_: any, info: PanInfo) => {
-    const threshold = 80;
-    if (info.offset.x > threshold) {
-      onSwipeRight();
-    } else if (info.offset.x < -threshold) {
-      onSwipeLeft();
-    }
-  };
+  // Cross-browser swipe handlers using react-swipeable
+  const swipeHandlers = useSwipeable({
+    onSwiping: (eventData) => {
+      if (!isTop) return;
+      setIsSwiping(true);
+      setSwipeOffset(eventData.deltaX);
+      x.set(eventData.deltaX);
+    },
+    onSwipedLeft: () => {
+      if (!isTop) return;
+      if (Math.abs(swipeOffset) > 80) {
+        onSwipeLeft();
+      }
+      setSwipeOffset(0);
+      setIsSwiping(false);
+      x.set(0);
+    },
+    onSwipedRight: () => {
+      if (!isTop) return;
+      if (Math.abs(swipeOffset) > 80) {
+        onSwipeRight();
+      }
+      setSwipeOffset(0);
+      setIsSwiping(false);
+      x.set(0);
+    },
+    onTouchEndOrOnMouseUp: () => {
+      if (Math.abs(swipeOffset) <= 80) {
+        setSwipeOffset(0);
+        x.set(0);
+      }
+      setIsSwiping(false);
+    },
+    trackMouse: true,
+    trackTouch: true,
+    preventScrollOnSwipe: true,
+    delta: 10,
+    touchEventOptions: { passive: false },
+  });
 
   const handleRegenerate = () => {
     const variations = [
@@ -50,15 +84,15 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
 
   const platformStyles = getPlatformCardStyles(card.platform);
 
-  // Stack effect calculations - cards behind are progressively smaller and offset down
-  // This creates visible "edges" peeking from behind the top card
-  const stackScale = 1 - (stackIndex * 0.04); // 1, 0.96, 0.92, 0.88
-  const stackTranslateY = stackIndex * 16; // 0, 16, 32, 48px offset
-  const stackZIndex = 40 - (stackIndex * 10); // 40, 30, 20, 10
-  const stackOpacity = 1 - (stackIndex * 0.15); // 1, 0.85, 0.70, 0.55
+  // Stack effect calculations
+  const stackScale = 1 - (stackIndex * 0.04);
+  const stackTranslateY = stackIndex * 16;
+  const stackZIndex = 40 - (stackIndex * 10);
+  const stackOpacity = 1 - (stackIndex * 0.15);
 
   return (
     <motion.div
+      {...(isTop ? swipeHandlers : {})}
       className={cn(
         'absolute select-none',
         isTop ? 'cursor-grab active:cursor-grabbing' : 'pointer-events-none'
@@ -72,18 +106,12 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         left: `${2 + stackIndex * 0.5}%`,
         right: `${2 + stackIndex * 0.5}%`,
         height: 'calc(100% - 32px)',
-        touchAction: 'none',
+        touchAction: 'pan-y',
         WebkitTouchCallout: 'none',
         WebkitUserSelect: 'none',
         userSelect: 'none',
+        transition: isSwiping ? 'none' : 'transform 0.3s ease-out',
       }}
-      drag={isTop ? 'x' : false}
-      dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={0.9}
-      dragMomentum={false}
-      dragListener={isTop}
-      onDragEnd={handleDragEnd}
-      whileTap={isTop ? { scale: 1.01 } : undefined}
       initial={{ 
         scale: stackScale, 
         y: stackTranslateY + 40, 
@@ -95,7 +123,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         opacity: stackOpacity,
       }}
       exit={{ 
-        x: x.get() > 0 ? 400 : -400,
+        x: swipeOffset > 0 ? 400 : -400,
         opacity: 0,
         transition: { duration: 0.3, type: 'spring', stiffness: 100 }
       }}
@@ -124,7 +152,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         </>
       )}
 
-      {/* Card content with platform-specific background - stacked shadow effect */}
+      {/* Card content with platform-specific background */}
       <div className={cn(
         'h-full rounded-3xl border overflow-y-auto flex flex-col bg-card',
         stackIndex === 0 && 'shadow-2xl ring-1 ring-border/20',
@@ -178,7 +206,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
             </div>
           </div>
 
-          {/* Draft text area - MUST be visible */}
+          {/* Draft text area */}
           {isEditing ? (
             <textarea
               value={draft}
@@ -197,7 +225,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
           )}
         </div>
 
-        {/* Regenerate section - MUST BE VISIBLE */}
+        {/* Regenerate section */}
         <div className="px-3 sm:px-4 pb-3 sm:pb-4 flex-shrink-0">
           {showRegenerateInput ? (
             <div className="space-y-2">
