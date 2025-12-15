@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { Radar } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { FeedItemCard } from '@/components/FeedItemCard';
 import { TopBar } from '@/components/TopBar';
 import { toast } from '@/hooks/use-toast';
@@ -42,6 +44,15 @@ export default function Feed() {
   return (
     <div className="min-h-screen bg-background pb-24 pt-20">
       <TopBar title="Feed" />
+
+      {/* Manage Sources Button - Fixed top-right below header */}
+      <Link
+        to="/feed/sources"
+        className="fixed top-20 right-4 z-40 h-10 px-4 rounded-full gradient-primary text-primary-foreground flex items-center gap-2 text-sm font-medium shadow-lg hover:scale-105 transition-transform"
+      >
+        <Radar className="h-4 w-4" />
+        <span className="hidden sm:inline">Manage Sources</span>
+      </Link>
 
       {/* Tabs - positioned below fixed header */}
       <div className="sticky top-16 z-40 bg-background/80 backdrop-blur-xl border-b border-border">

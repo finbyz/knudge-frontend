@@ -17,6 +17,8 @@ import Inbox from "./pages/Inbox";
 import ChatDetail from "./pages/inbox/ChatDetail";
 import EmailDetail from "./pages/inbox/EmailDetail";
 import Activities from "./pages/Activities";
+import MySources from "./pages/feed/MySources";
+import AddSource from "./pages/feed/AddSource";
 import NotFound from "./pages/NotFound";
 import OnboardingLogin from "./pages/onboarding/OnboardingLogin";
 import OnboardingGoal from "./pages/onboarding/OnboardingGoal";
@@ -68,6 +70,8 @@ function AppRoutes() {
           <Route path="/connections" element={<Connections />} />
           <Route path="/contacts" element={<Contacts />} />
           <Route path="/feed" element={<Feed />} />
+          <Route path="/feed/sources" element={<MySources />} />
+          <Route path="/feed/sources/add" element={<AddSource />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/inbox" element={<Inbox />} />
           <Route path="/inbox/chat/:contactId" element={<ChatDetail />} />
