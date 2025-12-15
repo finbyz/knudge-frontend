@@ -8,6 +8,8 @@ import { useOnboardingStore } from "@/stores/onboardingStore";
 import { useAuthStore } from "@/stores/authStore";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useEffect, useState } from "react";
+import { useAuthStore } from "@/stores/authStore";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import Deck from "./pages/Deck";
 import Connections from "./pages/Connections";
@@ -33,6 +35,8 @@ import GmailCallback from "./pages/GmailCallback";
 import OutlookCallback from "./pages/OutlookCallback";
 import { DesktopSidebar } from "./components/layout/DesktopSidebar";
 import { cn } from "./lib/utils";
+import GmailCallback from "./pages/GmailCallback";
+import OutlookCallback from "./pages/OutlookCallback";
 
 const queryClient = new QueryClient();
 
