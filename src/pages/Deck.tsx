@@ -33,7 +33,7 @@ export default function Deck() {
   const currentIndex = totalCards - cards.length + 1;
 
   return (
-    <div className="min-h-screen bg-background pb-24 pt-20">
+    <div className="min-h-screen bg-background pb-20 pt-16">
       <TopBar title="Deck" />
       
       {/* Progress bar - below TopBar */}
@@ -52,7 +52,7 @@ export default function Deck() {
       )}
 
       {/* Card Stack */}
-      <main className="px-4 pt-4 pb-4">
+      <main className="px-4 pt-2 pb-2">
         {isEmpty ? (
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}
@@ -86,7 +86,7 @@ export default function Deck() {
             </Link>
           </motion.div>
         ) : (
-          <div className="relative" style={{ height: 'calc(100vh - 180px)' }}>
+          <div className="relative" style={{ height: 'calc(100vh - 160px)' }}>
             {/* Cards stack container */}
             <AnimatePresence mode="popLayout">
               {cards.slice(0, 4).reverse().map((card, index, arr) => (

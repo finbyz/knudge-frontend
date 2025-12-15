@@ -218,7 +218,7 @@ export default function EmailDetail() {
       </div>
 
       {/* Email Threads */}
-      <main className="flex-1 overflow-y-auto p-4 pb-32 space-y-4">
+      <main className="flex-1 overflow-y-auto p-4 pb-40 space-y-4">
         {email.threads.map((thread, index) => {
           const isExpanded = expandedThreads.has(thread.id);
           const isLatest = index === 0;
@@ -308,30 +308,30 @@ export default function EmailDetail() {
         })}
       </main>
 
-      {/* Action Bar - positioned above BottomNav */}
-      <div className="fixed bottom-16 left-0 right-0 z-40 bg-card border-t border-border shadow-sm px-4 py-2">
+      {/* Action Bar - positioned above BottomNav with proper spacing */}
+      <div className="fixed bottom-20 left-0 right-0 z-40 bg-card border-t border-border shadow-sm px-4 py-2">
         <div className="max-w-lg mx-auto flex gap-2">
           <button
             onClick={() => openComposer('reply')}
-            className="flex-1 flex items-center justify-center gap-1.5 bg-gradient-to-r from-primary to-cyan-500 text-white rounded-lg py-2.5 text-sm font-medium hover:opacity-90 transition-opacity"
+            className="flex-1 flex items-center justify-center gap-1 bg-gradient-to-r from-primary to-cyan-500 text-white rounded-lg py-2 text-xs font-medium hover:opacity-90 transition-opacity"
           >
-            <Reply className="h-4 w-4" />
+            <Reply className="h-3.5 w-3.5" />
             <span>Reply</span>
           </button>
           
           <button
             onClick={() => openComposer('replyAll')}
-            className="flex-1 flex items-center justify-center gap-1.5 bg-card border border-border text-foreground rounded-lg py-2.5 text-sm font-medium hover:bg-muted transition-colors"
+            className="flex-1 flex items-center justify-center gap-1 bg-card border border-border text-foreground rounded-lg py-2 text-xs font-medium hover:bg-muted transition-colors"
           >
-            <ReplyAll className="h-4 w-4" />
+            <ReplyAll className="h-3.5 w-3.5" />
             <span>Reply All</span>
           </button>
           
           <button
             onClick={() => openComposer('forward')}
-            className="flex-1 flex items-center justify-center gap-1.5 bg-card border border-border text-foreground rounded-lg py-2.5 text-sm font-medium hover:bg-muted transition-colors"
+            className="flex-1 flex items-center justify-center gap-1 bg-card border border-border text-foreground rounded-lg py-2 text-xs font-medium hover:bg-muted transition-colors"
           >
-            <Forward className="h-4 w-4" />
+            <Forward className="h-3.5 w-3.5" />
             <span>Forward</span>
           </button>
         </div>

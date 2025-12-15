@@ -681,12 +681,12 @@ export default function ChatDetail() {
             )}
           </AnimatePresence>
 
-          <div className="flex items-end gap-2">
+          <div className="flex items-center gap-2">
           {/* Attachment Button */}
           <button 
             onClick={() => setIsAttachmentMenuOpen(!isAttachmentMenuOpen)}
             className={cn(
-              "flex-shrink-0 h-11 w-11 rounded-full flex items-center justify-center transition-all",
+              "flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center transition-all",
               isAttachmentMenuOpen 
                 ? "bg-primary text-primary-foreground rotate-45" 
                 : "bg-muted hover:bg-muted/80 text-muted-foreground"
@@ -710,8 +710,8 @@ export default function ChatDetail() {
               }}
               placeholder="Type a message..."
               rows={1}
-              className="w-full bg-muted rounded-2xl px-4 py-3 pr-12 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none overflow-hidden"
-              style={{ minHeight: '44px', maxHeight: '120px' }}
+              className="w-full bg-muted rounded-2xl px-4 py-2.5 pr-12 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none overflow-hidden"
+              style={{ minHeight: '40px', maxHeight: '100px' }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
@@ -749,7 +749,7 @@ export default function ChatDetail() {
             onClick={handleSend}
             disabled={!inputText.trim() && !selectedFile}
             className={cn(
-              "flex-shrink-0 h-11 w-11 rounded-full flex items-center justify-center transition-all",
+              "flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center transition-all",
               (inputText.trim() || selectedFile)
                 ? "bg-primary hover:bg-primary/90 text-primary-foreground shadow-md"
                 : "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
