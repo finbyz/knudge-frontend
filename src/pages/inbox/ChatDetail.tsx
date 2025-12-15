@@ -647,8 +647,8 @@ export default function ChatDetail() {
       />
 
       {/* Input Bar - Fixed above bottom navigation */}
-      <div className="fixed bottom-16 left-0 right-0 z-30 bg-card border-t border-border shadow-lg safe-area-inset-bottom overflow-hidden">
-        <div className="w-full max-w-4xl mx-auto px-4 py-2">
+      <div className="fixed bottom-16 left-0 right-0 z-30 bg-card border-t border-border shadow-lg">
+        <div className="w-full max-w-3xl mx-auto px-4 py-3">
           {/* File Preview */}
           <AnimatePresence>
             {selectedFile && (
@@ -681,81 +681,72 @@ export default function ChatDetail() {
             )}
           </AnimatePresence>
 
-          <div className="flex items-center gap-2">
-          {/* Attachment Button */}
-          <button 
-            onClick={() => setIsAttachmentMenuOpen(!isAttachmentMenuOpen)}
-            className={cn(
-              "flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center transition-all",
-              isAttachmentMenuOpen 
-                ? "bg-primary text-primary-foreground rotate-45" 
-                : "bg-muted hover:bg-muted/80 text-muted-foreground"
-            )}
-          >
-            <Plus className="h-5 w-5 transition-transform" />
-          </button>
-          
-          {/* Text Input with AI Sparkle inside */}
-          <div className="flex-1 relative">
-            <textarea
-              ref={textareaRef}
-              value={inputText}
-              onChange={(e) => {
-                setInputText(e.target.value);
-                // Auto-resize
-                if (textareaRef.current) {
-                  textareaRef.current.style.height = 'auto';
-                  textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + 'px';
-                }
-              }}
-              placeholder="Type a message..."
-              rows={1}
-              className="w-full bg-muted rounded-2xl px-4 py-2.5 pr-12 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none overflow-hidden"
-              style={{ minHeight: '40px', maxHeight: '100px' }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-            />
-            
-            {/* AI Sparkle Button - Inside text input */}
-            <button
-              onClick={handleAiSparkle}
-              disabled={isAiLoading}
-              className="absolute right-2 bottom-2 h-8 w-8 rounded-full bg-gradient-to-r from-purple-500 to-primary text-white flex items-center justify-center hover:scale-110 active:scale-95 transition-transform disabled:opacity-50"
-              title={inputText.trim() === '' ? 'AI Draft' : 'AI Polish'}
-            >
-              {isAiLoading ? (
-                <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              ) : (
-                <Sparkles className="h-4 w-4" />
+          <div className="flex items-center gap-3">
+            {/* Attachment Button - Fixed 44px */}
+            <button 
+              onClick={() => setIsAttachmentMenuOpen(!isAttachmentMenuOpen)}
+              className={cn(
+                "flex-shrink-0 h-11 w-11 rounded-full flex items-center justify-center transition-all",
+                isAttachmentMenuOpen 
+                  ? "bg-primary text-primary-foreground rotate-45" 
+                  : "bg-muted hover:bg-muted/80 text-muted-foreground"
               )}
+            >
+              <Plus className="h-5 w-5 transition-transform" />
             </button>
             
-            {showUndo && (
+            {/* Text Input - 44px height, takes remaining space */}
+            <div className="flex-1 relative min-w-0">
+              <input
+                type="text"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                placeholder="Type a message..."
+                className="w-full h-11 bg-muted rounded-full px-4 pr-12 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+              />
+              
+              {/* AI Sparkle Button - Inside input */}
               <button
-                onClick={handleUndo}
-                className="absolute right-12 bottom-2 px-2 py-1 text-xs bg-foreground text-background font-medium rounded-full"
+                onClick={handleAiSparkle}
+                disabled={isAiLoading}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full bg-gradient-to-r from-purple-500 to-primary text-white flex items-center justify-center hover:scale-110 active:scale-95 transition-transform disabled:opacity-50"
+                title={inputText.trim() === '' ? 'AI Draft' : 'AI Polish'}
               >
-                ↶ Undo
+                {isAiLoading ? (
+                  <span className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
               </button>
-            )}
-          </div>
-          
-          {/* Send Button */}
-          <button
-            onClick={handleSend}
-            disabled={!inputText.trim() && !selectedFile}
-            className={cn(
-              "flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center transition-all",
-              (inputText.trim() || selectedFile)
-                ? "bg-primary hover:bg-primary/90 text-primary-foreground shadow-md"
-                : "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
-            )}
-          >
-            <Send className="h-5 w-5" />
+              
+              {showUndo && (
+                <button
+                  onClick={handleUndo}
+                  className="absolute right-12 top-1/2 -translate-y-1/2 px-2 py-1 text-xs bg-foreground text-background font-medium rounded-full"
+                >
+                  ↶ Undo
+                </button>
+              )}
+            </div>
+            
+            {/* Send Button - Fixed 44px */}
+            <button
+              onClick={handleSend}
+              disabled={!inputText.trim() && !selectedFile}
+              className={cn(
+                "flex-shrink-0 h-11 w-11 rounded-full flex items-center justify-center transition-all",
+                (inputText.trim() || selectedFile)
+                  ? "bg-primary hover:bg-primary/90 text-primary-foreground shadow-md"
+                  : "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
+              )}
+            >
+              <Send className="h-5 w-5" />
             </button>
           </div>
         </div>

@@ -72,7 +72,8 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         left: `${2 + stackIndex * 0.5}%`,
         right: `${2 + stackIndex * 0.5}%`,
         height: 'calc(100% - 32px)',
-        touchAction: 'pan-y',
+        touchAction: 'none',
+        WebkitTouchCallout: 'none',
         WebkitUserSelect: 'none',
         userSelect: 'none',
       }}
@@ -80,8 +81,9 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
       dragConstraints={{ left: 0, right: 0 }}
       dragElastic={0.9}
       dragMomentum={false}
+      dragListener={isTop}
       onDragEnd={handleDragEnd}
-      whileTap={isTop ? { cursor: 'grabbing' } : undefined}
+      whileTap={isTop ? { scale: 1.01 } : undefined}
       initial={{ 
         scale: stackScale, 
         y: stackTranslateY + 40, 
