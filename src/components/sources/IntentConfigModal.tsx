@@ -119,10 +119,11 @@ export function IntentConfigModal({ isOpen, onClose, onSave, source, editingSour
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="fixed inset-x-0 bottom-0 z-50 max-h-[90vh] overflow-hidden rounded-t-2xl bg-card shadow-xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:max-w-lg sm:rounded-2xl sm:max-h-[80vh]"
+            className="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-card shadow-xl rounded-t-2xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:max-w-lg sm:w-full sm:rounded-2xl"
+            style={{ maxHeight: '85vh' }}
           >
-            {/* Header */}
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-card px-5 py-4">
+            {/* Header - Fixed */}
+            <div className="flex-shrink-0 flex items-center justify-between border-b border-border bg-card px-5 py-4 rounded-t-2xl">
               <div className="flex items-center gap-3">
                 {platform && <PlatformIcon platform={platform} size="md" />}
                 <div>
@@ -140,14 +141,14 @@ export function IntentConfigModal({ isOpen, onClose, onSave, source, editingSour
               </button>
             </div>
 
-            {/* Body */}
-            <div className="overflow-y-auto p-5 pb-24 bg-muted/30">
+            {/* Body - Scrollable */}
+            <div className="flex-1 overflow-y-auto p-5 bg-muted/30">
               <p className="text-muted-foreground mb-5">
                 How should our AI interact with this source?
               </p>
 
-              {/* Intent Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+              {/* Intent Cards - All 4 displayed */}
+              <div className="space-y-3 mb-6">
                 {intents.map((intent) => (
                   <IntentCard
                     key={intent}
@@ -163,16 +164,22 @@ export function IntentConfigModal({ isOpen, onClose, onSave, source, editingSour
                 <div className="space-y-4 pt-4 border-t border-border">
                   <h4 className="font-semibold text-foreground">YouTube Options</h4>
                   
-                  <div className="flex items-center justify-between py-3">
-                    <span className="text-foreground">Notify on Shorts?</span>
+                  <div className="flex items-center justify-between py-3 bg-card rounded-lg px-4">
+                    <div>
+                      <span className="text-foreground font-medium">⚡ Notify on Shorts</span>
+                      <p className="text-sm text-muted-foreground">Get alerts for short-form content</p>
+                    </div>
                     <Switch
                       checked={notifyOnShorts}
                       onCheckedChange={setNotifyOnShorts}
                     />
                   </div>
                   
-                  <div className="flex items-center justify-between py-3">
-                    <span className="text-foreground">Summarize Long Videos?</span>
+                  <div className="flex items-center justify-between py-3 bg-card rounded-lg px-4">
+                    <div>
+                      <span className="text-foreground font-medium">📝 Summarize Long Videos</span>
+                      <p className="text-sm text-muted-foreground">AI creates text summary of 10+ min videos</p>
+                    </div>
                     <Switch
                       checked={summarizeLongVideos}
                       onCheckedChange={setSummarizeLongVideos}
@@ -184,7 +191,7 @@ export function IntentConfigModal({ isOpen, onClose, onSave, source, editingSour
               {/* WhatsApp/Telegram Options */}
               {isMessaging && (
                 <div className="space-y-4 pt-4 border-t border-border">
-                  <h4 className="font-semibold text-foreground">Group Access</h4>
+                  <h4 className="font-semibold text-foreground">Join Group</h4>
                   
                   <div>
                     <label className="text-sm text-muted-foreground mb-2 block">
@@ -207,8 +214,8 @@ export function IntentConfigModal({ isOpen, onClose, onSave, source, editingSour
                         {inviteLinkError}
                       </p>
                     )}
-                    <p className="text-xs text-muted-foreground mt-2">
-                      We'll join this group to monitor conversations
+                    <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                      ℹ️ We'll join this group to monitor messages
                     </p>
                   </div>
                 </div>
@@ -220,18 +227,21 @@ export function IntentConfigModal({ isOpen, onClose, onSave, source, editingSour
                   <div className="flex gap-3">
                     <AlertTriangle className="h-5 w-5 text-warning flex-shrink-0" />
                     <div>
-                      <p className="font-medium text-warning">Public Posts Only</p>
+                      <p className="font-medium text-warning">⚠️ Public Posts Only</p>
                       <p className="text-sm text-warning/80 mt-1">
-                        You're not connected. Only public posts will be monitored.
+                        You're not connected with this profile. Only public posts will be monitored.
                       </p>
                     </div>
                   </div>
                 </div>
               )}
+              
+              {/* Bottom padding to ensure content isn't hidden behind footer */}
+              <div className="h-4" />
             </div>
 
-            {/* Footer */}
-            <div className="fixed bottom-0 left-0 right-0 bg-card border-t border-border p-4 flex gap-3 sm:static">
+            {/* Footer - Fixed at bottom */}
+            <div className="flex-shrink-0 bg-card border-t border-border p-4 flex gap-3 rounded-b-2xl sm:rounded-b-2xl">
               <Button
                 variant="ghost"
                 onClick={onClose}
