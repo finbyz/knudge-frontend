@@ -6,6 +6,7 @@ import { TopBar } from '@/components/TopBar';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useUnreadStore } from '@/stores/unreadStore';
+import { useAuthStore } from '@/stores/authStore';
 
 // Helper function to highlight search terms
 const highlightText = (text: string, query: string): React.ReactNode => {
@@ -146,6 +147,46 @@ export default function Inbox() {
     isSwiping: false,
   });
   const [removingId, setRemovingId] = useState<string | null>(null);
+  const { accessToken } = useAuthStore();
+
+  // Fetch real emails
+  useEffect(() => {
+    const fetchEmails = async () => {
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/emails/?limit=50&direction=INCOMING`, {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const realMessages: InboxMessage[] = data.map((email: any) => ({
+            id: email.id,
+            sender: {
+              name: email.from_email.split('<')[0].replace(/"/g, '').trim() || email.from_email, // Simplistic name extraction
+              initials: (email.from_email[0] || '?').toUpperCase()
+            },
+            platform: 'email',
+            subject: email.subject,
+            preview: email.body_text ? email.body_text.slice(0, 100) : 'No content',
+            timestamp: new Date(email.sent_at).toLocaleDateString(), // Simplistic date
+            unread: email.status === 'RECEIVED', // Assuming RECEIVED means unread/new
+          }));
+
+          setMessages(prev => {
+            // Merge real messages with demo messages, avoiding duplicates by ID
+            const existingIds = new Set(prev.map(m => m.id));
+            const newReal = realMessages.filter(m => !existingIds.has(m.id));
+            return [...newReal, ...prev];
+          });
+        }
+      } catch (error) {
+        console.error("Failed to fetch emails:", error);
+      }
+    };
+
+    if (accessToken) {
+      fetchEmails();
+    }
+  }, [accessToken]);
   
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();

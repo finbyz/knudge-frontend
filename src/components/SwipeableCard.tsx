@@ -1,4 +1,4 @@
-import { motion, useMotionValue, useTransform } from 'framer-motion';
+import { motion, useMotionValue, useTransform, PanInfo } from 'framer-motion';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Check, X, Calendar, RefreshCw } from 'lucide-react';
 import { useSwipeable } from 'react-swipeable';
@@ -43,14 +43,24 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
   const leftIndicatorOpacity = useTransform(x, [-100, -40, 0], [1, 0.5, 0]);
   const rightIndicatorOpacity = useTransform(x, [0, 40, 100], [0, 0.5, 1]);
 
-  const handleDragEnd = (_: any, info: PanInfo) => {
+  const SWIPE_THRESHOLD = 80;
+
+  const handleSwipeComplete = (direction: 'left' | 'right') => {
+    if (direction === 'right') {
+      onSwipeRight(draft);
+    } else {
+      onSwipeLeft();
+    }
+  };
+
+  const handleDragEnd = useCallback((_: any, info: PanInfo) => {
     const threshold = 80;
     if (info.offset.x > threshold) {
       onSwipeRight(draft);
     } else if (info.offset.x < -threshold) {
       onSwipeLeft();
     }
-  }, [onSwipeRight, onSwipeLeft]);
+  }, [onSwipeRight, onSwipeLeft, draft]);
 
   // Reset card state
   const resetCardState = useCallback(() => {

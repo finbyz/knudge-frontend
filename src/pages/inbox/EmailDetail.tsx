@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, ChevronDown, ChevronUp, MoreVertical, Reply, ReplyAll, Forward, Paperclip, Download, Mail } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import EmailComposer from '@/components/inbox/EmailComposer';
+import { useAuthStore } from '@/stores/authStore';
 
 interface EmailAttachment {
   name: string;
@@ -138,8 +139,44 @@ export default function EmailDetail() {
   const [showRecipients, setShowRecipients] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerMode, setComposerMode] = useState<'reply' | 'replyAll' | 'forward'>('reply');
+  const [fetchedEmail, setFetchedEmail] = useState<EmailData | null>(null);
 
-  const email = sampleEmails[emailId || '3'] || sampleEmails['3'];
+  // Use sample if not fetched yet or if using demo IDs
+  const email = fetchedEmail || sampleEmails[emailId || '3'] || sampleEmails['3'];
+
+  // Fetch from API
+  const { accessToken } = useAuthStore();
+
+  useEffect(() => {
+    if (emailId && emailId.length > 10) { // Assume UUID is long
+      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/emails/${emailId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` }
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data) {
+            setFetchedEmail({
+              id: data.id,
+              subject: data.subject || 'No Subject',
+              to: [data.to_email],
+              from: data.from_email.split('<')[0].replace(/"/g, '').trim(),
+              fromEmail: data.from_email,
+              threads: [
+                {
+                  id: 1,
+                  sender: data.from_email.split('<')[0].replace(/"/g, '').trim(),
+                  email: data.from_email,
+                  timestamp: new Date(data.sent_at).toLocaleString(),
+                  body: data.body_text || 'No content',
+                  attachments: []
+                }
+              ]
+            });
+          }
+        })
+        .catch(err => console.error(err));
+    }
+  }, [emailId, accessToken]);
 
   const toggleThread = (threadId: number) => {
     setExpandedThreads(prev => {
