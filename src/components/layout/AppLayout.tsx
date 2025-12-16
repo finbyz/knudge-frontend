@@ -29,7 +29,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   }
 
   return (
-    <div className="min-h-screen bg-background flex w-full">
+    <div className="min-h-screen bg-background flex w-full overflow-x-hidden">
       {/* Desktop Sidebar - Only visible on lg+ screens */}
       {isDesktop && (
         <DesktopSidebar 
@@ -41,18 +41,13 @@ export function AppLayout({ children }: AppLayoutProps) {
       {/* Main Content Area */}
       <main 
         className={cn(
-          'flex-1 min-h-screen transition-all duration-300',
+          'flex-1 min-h-screen w-full transition-all duration-300 overflow-x-hidden',
           isDesktop && !sidebarCollapsed && 'lg:ml-64',
           isDesktop && sidebarCollapsed && 'lg:ml-16',
           !isDesktop && 'pb-16' // Space for bottom nav on mobile
         )}
       >
-        <div className={cn(
-          'max-w-5xl mx-auto w-full',
-          isDesktop ? 'px-6' : 'px-0'
-        )}>
-          {children}
-        </div>
+        {children}
       </main>
 
       {/* Bottom Nav - Only on mobile/tablet */}

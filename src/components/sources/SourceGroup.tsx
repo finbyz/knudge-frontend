@@ -32,17 +32,25 @@ export function SourceGroup({
       <button
         onClick={onToggleExpand}
         className={cn(
-          'w-full flex items-center justify-between p-4 transition-colors',
-          isExpanded ? 'bg-card' : 'bg-muted/50'
+          'w-full flex items-center justify-between p-4 md:px-6 transition-colors',
+          isExpanded ? 'bg-card' : 'bg-muted/30'
         )}
       >
-        <div className="text-left">
-          <h3 className="font-semibold text-lg text-foreground">{title}</h3>
-          <p className="text-sm text-muted-foreground">{subtitle}</p>
+        <div className="text-left flex items-center gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold text-base md:text-lg text-foreground">{title}</h3>
+              <span className="text-xs md:text-sm text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+                {sources.length}
+              </span>
+            </div>
+            <p className="text-xs md:text-sm text-muted-foreground">{subtitle}</p>
+          </div>
         </div>
         <motion.div
           animate={{ rotate: isExpanded ? 180 : 0 }}
           transition={{ duration: 0.3 }}
+          className="flex-shrink-0"
         >
           <ChevronDown className="h-5 w-5 text-muted-foreground" />
         </motion.div>
@@ -59,15 +67,17 @@ export function SourceGroup({
             className="overflow-hidden"
           >
             {sources.length > 0 ? (
-              sources.map((source) => (
-                <SourceRow
-                  key={source.id}
-                  source={source}
-                  onToggle={onToggleSource}
-                  onEdit={onEditSource}
-                  onDelete={onDeleteSource}
-                />
-              ))
+              <div className="divide-y divide-border">
+                {sources.map((source) => (
+                  <SourceRow
+                    key={source.id}
+                    source={source}
+                    onToggle={onToggleSource}
+                    onEdit={onEditSource}
+                    onDelete={onDeleteSource}
+                  />
+                ))}
+              </div>
             ) : (
               <div className="p-8 text-center">
                 <p className="text-muted-foreground text-sm">No sources in this group</p>
