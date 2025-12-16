@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Radar } from 'lucide-react';
+import { Radar, Plus } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { FeedItemCard } from '@/components/FeedItemCard';
 import { TopBar } from '@/components/TopBar';
@@ -45,17 +45,26 @@ export default function Feed() {
     <div className="min-h-screen bg-background pb-24 pt-20">
       <TopBar title="Feed" />
 
-      {/* Manage Sources Button - Fixed top-right below header */}
+      {/* Desktop: Manage Sources Button - Top right */}
       <Link
         to="/feed/sources"
-        className="fixed top-20 right-4 z-40 h-10 px-4 rounded-full gradient-primary text-primary-foreground flex items-center gap-2 text-sm font-medium shadow-lg hover:scale-105 transition-transform"
+        className="fixed top-20 right-4 z-40 h-10 px-4 rounded-full gradient-primary text-primary-foreground items-center gap-2 text-sm font-medium shadow-lg hover:scale-105 transition-transform hidden sm:flex"
       >
         <Radar className="h-4 w-4" />
-        <span className="hidden sm:inline">Manage Sources</span>
+        <span>Manage Sources</span>
+      </Link>
+
+      {/* Mobile: Floating Action Button - Bottom right above nav */}
+      <Link
+        to="/feed/sources"
+        className="fixed bottom-20 right-4 z-40 h-14 w-14 rounded-full gradient-primary text-primary-foreground flex items-center justify-center shadow-lg hover:scale-110 transition-transform sm:hidden"
+        aria-label="Manage Sources"
+      >
+        <Radar className="h-6 w-6" />
       </Link>
 
       {/* Tabs - positioned below fixed header */}
-      <div className="sticky top-16 z-40 bg-background/80 backdrop-blur-xl border-b border-border">
+      <div className="sticky top-16 z-30 bg-background/80 backdrop-blur-xl border-b border-border">
         <div className="flex items-center gap-1 px-4 py-3 overflow-x-auto no-scrollbar">
           {tabs.map((tab) => (
             <button

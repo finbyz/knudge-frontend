@@ -1,10 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, MoreVertical, Plus, Sparkles, Send, MessageCircle, Linkedin, Check, CheckCheck, Clock, Camera, FileText, MapPin, User, Mic, X, Loader2, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, MoreVertical, Plus, Sparkles, Send, MessageCircle, Linkedin, Check, CheckCheck, Clock, Camera, FileText, MapPin, User, Mic, X, Loader2, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
+import { useSwipeable } from 'react-swipeable';
 
 interface ChatMessage {
   id: number;
@@ -84,6 +85,9 @@ const formatFileSize = (bytes: number): string => {
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 };
 
+// Mock inbox contacts for navigation
+const mockInboxChats = ['1', '2', '4', '5'];
+
 export default function ChatDetail() {
   const navigate = useNavigate();
   const { contactId } = useParams<{ contactId: string }>();
@@ -107,6 +111,50 @@ export default function ChatDetail() {
   const contact = sampleContacts[contactId || '1'] || sampleContacts['1'];
   const platform = platformConfig[contact.platform];
   const PlatformIcon = platform.icon;
+
+  // Navigation between messages
+  const currentIndex = mockInboxChats.indexOf(contactId || '1');
+  const totalMessages = mockInboxChats.length;
+  const hasPrevious = currentIndex > 0;
+  const hasNext = currentIndex < mockInboxChats.length - 1;
+
+  const goToPrevious = useCallback(() => {
+    if (hasPrevious) {
+      navigate(`/inbox/chat/${mockInboxChats[currentIndex - 1]}`, { replace: true });
+    }
+  }, [hasPrevious, currentIndex, navigate]);
+
+  const goToNext = useCallback(() => {
+    if (hasNext) {
+      navigate(`/inbox/chat/${mockInboxChats[currentIndex + 1]}`, { replace: true });
+    }
+  }, [hasNext, currentIndex, navigate]);
+
+  // Swipe handlers for navigation
+  const navSwipeHandlers = useSwipeable({
+    onSwipedLeft: () => hasNext && goToNext(),
+    onSwipedRight: () => hasPrevious && goToPrevious(),
+    trackMouse: false,
+    trackTouch: true,
+    delta: 80,
+    preventScrollOnSwipe: false,
+  });
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'ArrowLeft' || e.key === 'k') goToPrevious();
+      if (e.key === 'ArrowRight' || e.key === 'j') goToNext();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [goToPrevious, goToNext]);
+
+  // Mark as read on mount
+  useEffect(() => {
+    toast({ description: 'Message marked as read' });
+  }, [contactId]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -359,7 +407,7 @@ export default function ChatDetail() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-background flex flex-col" {...navSwipeHandlers}>
       {/* Header */}
       <header className="sticky top-0 z-50 bg-card border-b border-border">
         <div className="max-w-4xl mx-auto h-16 flex items-center justify-between px-4">
@@ -389,11 +437,54 @@ export default function ChatDetail() {
             </div>
           </div>
           
-          <button className="p-2 hover:bg-muted rounded-full transition-colors">
-            <MoreVertical className="h-5 w-5 text-muted-foreground" />
-          </button>
+          <div className="flex items-center gap-1">
+            {/* Message counter */}
+            <div className="bg-muted/80 px-2 py-0.5 rounded-full mr-1">
+              <span className="text-xs font-medium text-muted-foreground">
+                {currentIndex + 1} of {totalMessages}
+              </span>
+            </div>
+            
+            {/* Navigation arrows */}
+            <button 
+              onClick={goToPrevious}
+              disabled={!hasPrevious}
+              className={cn(
+                "p-2 rounded-full transition-colors",
+                hasPrevious ? "hover:bg-muted" : "opacity-30 cursor-not-allowed"
+              )}
+            >
+              <ChevronLeft className="h-4 w-4 text-muted-foreground" />
+            </button>
+            <button 
+              onClick={goToNext}
+              disabled={!hasNext}
+              className={cn(
+                "p-2 rounded-full transition-colors",
+                hasNext ? "hover:bg-muted" : "opacity-30 cursor-not-allowed"
+              )}
+            >
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </button>
+            
+            <button className="p-2 hover:bg-muted rounded-full transition-colors">
+              <MoreVertical className="h-5 w-5 text-muted-foreground" />
+            </button>
+          </div>
         </div>
       </header>
+      
+      {/* Swipe indicators */}
+      <div className="fixed inset-y-0 left-0 w-1 pointer-events-none z-40">
+        {hasPrevious && (
+          <div className="absolute top-1/2 -translate-y-1/2 h-16 w-full bg-gradient-to-r from-primary/30 to-transparent rounded-r-full" />
+        )}
+      </div>
+      <div className="fixed inset-y-0 right-0 w-1 pointer-events-none z-40">
+        {hasNext && (
+          <div className="absolute top-1/2 -translate-y-1/2 h-16 w-full bg-gradient-to-l from-primary/30 to-transparent rounded-l-full" />
+        )}
+      </div>
 
       {/* Messages */}
       <main className="flex-1 overflow-y-auto">

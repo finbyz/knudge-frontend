@@ -7,6 +7,7 @@ import { BottomNav } from "@/components/ui/BottomNav";
 import { useOnboardingStore } from "@/stores/onboardingStore";
 import { useAuthStore } from "@/stores/authStore";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { useEffect, useState } from "react";
 import Index from "./pages/Index";
 import Deck from "./pages/Deck";
 import Connections from "./pages/Connections";
@@ -30,8 +31,62 @@ import OnboardingTrial from "./pages/onboarding/OnboardingTrial";
 import OnboardingComplete from "./pages/onboarding/OnboardingComplete";
 import GmailCallback from "./pages/GmailCallback";
 import OutlookCallback from "./pages/OutlookCallback";
+import { DesktopSidebar } from "./components/layout/DesktopSidebar";
+import { cn } from "./lib/utils";
 
 const queryClient = new QueryClient();
+
+function AppLayout({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  const isOnboardingRoute = location.pathname.startsWith('/onboarding');
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    const checkScreenSize = () => {
+      setIsDesktop(window.innerWidth >= 1024);
+    };
+
+    checkScreenSize();
+    window.addEventListener('resize', checkScreenSize);
+    return () => window.removeEventListener('resize', checkScreenSize);
+  }, []);
+
+  if (isOnboardingRoute) {
+    return <>{children}</>;
+  }
+
+  return (
+    <div className="min-h-screen bg-background flex w-full">
+      {/* Desktop Sidebar */}
+      {isDesktop && (
+        <DesktopSidebar
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+        />
+      )}
+
+      {/* Main Content */}
+      <main
+        className={cn(
+          'flex-1 min-h-screen transition-all duration-300 w-full',
+          isDesktop && !sidebarCollapsed && 'lg:ml-64',
+          isDesktop && sidebarCollapsed && 'lg:ml-16'
+        )}
+      >
+        <div className={cn(
+          'mx-auto w-full min-h-screen',
+          isDesktop ? 'max-w-5xl px-4 lg:px-8' : 'max-w-lg'
+        )}>
+          {children}
+        </div>
+      </main>
+
+      {/* Bottom Nav - Mobile only */}
+      {!isDesktop && <BottomNav />}
+    </div>
+  );
+}
 
 function AppRoutes() {
   const location = useLocation();
@@ -50,7 +105,7 @@ function AppRoutes() {
   }
 
   return (
-    <>
+    <AppLayout>
       <Routes>
         {/* Onboarding routes */}
         <Route path="/onboarding" element={<Navigate to="/onboarding/login" replace />} />
@@ -82,8 +137,7 @@ function AppRoutes() {
         </Route>
         <Route path="*" element={<NotFound />} />
       </Routes>
-      {!isOnboardingRoute && <BottomNav />}
-    </>
+    </AppLayout>
   );
 }
 
@@ -93,9 +147,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <div className="max-w-lg mx-auto bg-background min-h-screen relative">
-          <AppRoutes />
-        </div>
+        <AppRoutes />
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
