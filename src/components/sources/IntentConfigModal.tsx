@@ -120,7 +120,12 @@ export function IntentConfigModal({ isOpen, onClose, onSave, source, editingSour
             exit={{ opacity: 0, y: '100%' }}
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
             className="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-card shadow-xl rounded-t-2xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:max-w-lg sm:w-full sm:rounded-2xl"
-            style={{ maxHeight: '85vh' }}
+            style={{ 
+              maxHeight: '85vh',
+              height: 'auto',
+              minHeight: '50vh',
+            }}
+            onClick={(e) => e.stopPropagation()}
           >
             {/* Header - Fixed */}
             <div className="flex-shrink-0 flex items-center justify-between border-b border-border bg-card px-5 py-4 rounded-t-2xl">
@@ -240,19 +245,24 @@ export function IntentConfigModal({ isOpen, onClose, onSave, source, editingSour
               <div className="h-4" />
             </div>
 
-            {/* Footer - Fixed at bottom */}
-            <div className="flex-shrink-0 bg-card border-t border-border p-4 flex gap-3 rounded-b-2xl sm:rounded-b-2xl">
+            {/* Footer - Fixed at bottom with safe area padding */}
+            <div className="flex-shrink-0 bg-card border-t border-border p-4 pb-6 flex gap-3 rounded-b-2xl sm:rounded-b-2xl safe-area-bottom">
               <Button
                 variant="ghost"
                 onClick={onClose}
-                className="flex-1 sm:flex-none"
+                className="flex-1 sm:flex-none h-12 text-muted-foreground hover:text-foreground"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSave}
                 disabled={!selectedIntent || isSaving}
-                className="flex-1 gradient-primary text-primary-foreground border-0"
+                className={cn(
+                  "flex-1 h-12 text-base font-semibold border-0 transition-all",
+                  selectedIntent 
+                    ? "gradient-primary text-primary-foreground shadow-lg" 
+                    : "bg-muted text-muted-foreground"
+                )}
               >
                 {isSaving ? (
                   <>

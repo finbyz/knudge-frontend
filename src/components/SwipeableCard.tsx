@@ -27,24 +27,42 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
   const hasSwipedRef = useRef(false);
   const swipeDirectionRef = useRef<'left' | 'right' | null>(null);
   const cardIdRef = useRef(card.id);
+  // Add a mount counter to force handler recreation
+  const mountCountRef = useRef(0);
 
   const x = useMotionValue(0);
 
   // Critical: Reset ALL state when card.id changes (fixes Brave mobile bug)
   useEffect(() => {
+    // Increment mount counter to force handler recreation
+    mountCountRef.current += 1;
+
     // Force reset when card changes
     if (cardIdRef.current !== card.id) {
       cardIdRef.current = card.id;
     }
+
+    // Reset all swipe state
     hasSwipedRef.current = false;
     swipeDirectionRef.current = null;
     setIsSwiping(false);
     setDraft(card.draft);
-    // Use requestAnimationFrame to ensure Brave mobile processes the reset
+    setIsEditing(false);
+    setShowRegenerateInput(false);
+    setRegenerateInstructions('');
+
+    // Use double requestAnimationFrame for Brave mobile to ensure reset is processed
     requestAnimationFrame(() => {
-      x.set(0);
+      requestAnimationFrame(() => {
+        x.set(0);
+      });
     });
-  }, [card.id, card.draft, x]);
+
+    // Debug log for Brave mobile
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`Card mounted: ${card.id}, isTop: ${isTop}, mount: ${mountCountRef.current}`);
+    }
+  }, [card.id, card.draft, isTop, x]);
 
   const rotate = useTransform(x, [-200, 200], [-12, 12]);
   const opacity = useTransform(x, [-200, -100, 0, 100, 200], [0.5, 1, 1, 1, 0.5]);
@@ -54,34 +72,44 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
 
   const SWIPE_THRESHOLD = 80;
 
-  // Handle swipe completion - only fires ONCE
+  // Handle swipe completion - only fires ONCE per card
   const handleSwipeComplete = useCallback((direction: 'left' | 'right') => {
-    if (hasSwipedRef.current) return; // Prevent double-firing
+    if (hasSwipedRef.current) {
+      console.log('Swipe already processed, ignoring');
+      return;
+    }
     hasSwipedRef.current = true;
     swipeDirectionRef.current = direction;
-    if (direction === 'right') {
-      onSwipeRight(draft);
-    } else {
-      onSwipeLeft();
-    }
+
+    // Use requestAnimationFrame to ensure browser processes the swipe before callback
+    requestAnimationFrame(() => {
+      if (direction === 'right') {
+        onSwipeRight(draft);
+      } else {
+        onSwipeLeft();
+      }
+    });
   }, [onSwipeRight, onSwipeLeft, draft]);
-
-
 
   // Reset card state
   const resetCardState = useCallback(() => {
     setIsSwiping(false);
     swipeDirectionRef.current = null;
-    x.set(0);
+    requestAnimationFrame(() => {
+      x.set(0);
+    });
   }, [x]);
 
-  // Cross-browser swipe handlers using react-swipeable
-  // useMemo with card.id dependency forces handler recreation for Brave mobile
+  // Create handlers that are bound to current card - recreated when card changes
+  // Using mountCountRef ensures Brave mobile gets fresh handlers
   const swipeHandlers = useMemo(() => {
-    // This will be recreated when card.id changes
+    const currentCardId = card.id;
+    const currentMount = mountCountRef.current;
+
     return {
       onSwiping: (eventData: { deltaX: number }) => {
         if (!isTop || hasSwipedRef.current) return;
+
         setIsSwiping(true);
         x.set(eventData.deltaX);
 
@@ -100,18 +128,23 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         const absX = Math.abs(eventData.deltaX);
 
         if (absX > SWIPE_THRESHOLD) {
-          // Swipe threshold crossed - execute action based on direction
           const direction = eventData.deltaX > 0 ? 'right' : 'left';
           handleSwipeComplete(direction);
         } else {
-          // Didn't cross threshold - snap back
           resetCardState();
         }
       },
+      onTouchStartOrOnMouseDown: () => {
+        // Log touch start for debugging Brave mobile
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`Touch start on card: ${currentCardId}, mount: ${currentMount}`);
+        }
+      },
     };
-  }, [card.id, isTop, x, handleSwipeComplete, resetCardState]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card.id, isTop, handleSwipeComplete, resetCardState]);
 
-  // Use useSwipeable with the memoized handlers
+  // Use useSwipeable with fresh handlers for each card
   const swipeableHandlers = useSwipeable({
     ...swipeHandlers,
     trackMouse: true,
@@ -144,6 +177,8 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
   return (
     <motion.div
       {...(isTop ? swipeableHandlers : {})}
+      data-card-id={card.id}
+      data-is-top={isTop}
       className={cn(
         'absolute select-none',
         isTop ? 'cursor-grab active:cursor-grabbing' : 'pointer-events-none'
@@ -157,16 +192,17 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         left: `${2 + stackIndex * 0.5}%`,
         right: `${2 + stackIndex * 0.5}%`,
         height: 'calc(100% - 32px)',
-        // Brave mobile specific: use will-change for GPU acceleration
-        willChange: 'transform',
-        // Allow vertical scroll but capture horizontal gestures
-        touchAction: 'pan-y',
+        // Brave mobile specific CSS properties
+        willChange: isTop ? 'transform' : 'auto',
+        touchAction: isTop ? 'pan-y' : 'none',
         WebkitTouchCallout: 'none',
         WebkitUserSelect: 'none',
         userSelect: 'none',
-        // Use transform3d for better Brave mobile compatibility
-        transform: isSwiping ? undefined : 'translate3d(0, 0, 0)',
-        transition: isSwiping ? 'none' : 'transform 0.3s ease-out',
+        pointerEvents: isTop ? 'auto' : 'none',
+        // Force GPU layer for Brave mobile
+        transform: 'translate3d(0, 0, 0)',
+        backfaceVisibility: 'hidden',
+        WebkitBackfaceVisibility: 'hidden',
       }}
       initial={{
         scale: stackScale,
