@@ -42,7 +42,7 @@ export default function Feed() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-24 pt-20">
+    <div className="h-full bg-background pb-24">
       <TopBar title="Feed" />
 
       {/* Desktop: Manage Sources Button - Top right */}

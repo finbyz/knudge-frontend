@@ -57,7 +57,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-background flex w-full">
+    <div className="flex h-screen w-full overflow-hidden bg-background">
       {/* Desktop Sidebar */}
       {isDesktop && (
         <DesktopSidebar
@@ -67,16 +67,10 @@ function AppLayout({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Main Content */}
-      <main
-        className={cn(
-          'flex-1 min-h-screen transition-all duration-300 w-full',
-          isDesktop && !sidebarCollapsed && 'lg:ml-64',
-          isDesktop && sidebarCollapsed && 'lg:ml-16'
-        )}
-      >
+      <main className="flex-1 flex flex-col h-full overflow-hidden relative transition-all duration-300">
         <div className={cn(
-          'mx-auto w-full min-h-screen',
-          isDesktop ? 'max-w-5xl px-4 lg:px-8' : 'max-w-lg'
+          'w-full h-full overflow-y-auto',
+          isDesktop ? 'max-w-5xl mx-auto px-4 lg:px-8' : 'mx-auto max-w-lg'
         )}>
           {children}
         </div>

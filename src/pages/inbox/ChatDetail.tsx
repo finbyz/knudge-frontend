@@ -228,7 +228,7 @@ export default function ChatDetail() {
       setIsAttachmentMenuOpen(false);
       return;
     }
-    
+
     setFileAccept(item.accept || '');
     setIsAttachmentMenuOpen(false);
     setTimeout(() => {
@@ -247,7 +247,7 @@ export default function ChatDetail() {
     }
 
     const isImage = file.type.startsWith('image/');
-    
+
     if (isImage) {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -324,10 +324,10 @@ export default function ChatDetail() {
   const generateReplyDraft = async (originalMessage: string, instructions?: string) => {
     setIsGeneratingReply(true);
     await new Promise(resolve => setTimeout(resolve, 1500));
-    
+
     let draft = '';
     const lowerMsg = originalMessage.toLowerCase();
-    
+
     if (instructions) {
       // Generate based on instructions
       if (instructions.toLowerCase().includes('casual')) {
@@ -351,7 +351,7 @@ export default function ChatDetail() {
         draft = "Thanks for reaching out! I'm happy to continue this conversation. Let me know how I can help.";
       }
     }
-    
+
     setReplyDraft(draft);
     setIsGeneratingReply(false);
   };
@@ -364,7 +364,7 @@ export default function ChatDetail() {
 
   const handleSendReply = () => {
     if (!replyDraft.trim()) return;
-    
+
     const tempId = Date.now();
     const newMessage: ChatMessage = {
       id: tempId,
@@ -378,7 +378,7 @@ export default function ChatDetail() {
     setReplyingTo(null);
     setReplyDraft('');
     setReplyInstructions('');
-    
+
     // Simulate status updates
     setTimeout(() => {
       setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'sent' } : m));
@@ -387,7 +387,7 @@ export default function ChatDetail() {
     setTimeout(() => {
       setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'delivered' } : m));
     }, 2500);
-    
+
     toast({ description: "Reply sent!" });
   };
 
@@ -407,18 +407,18 @@ export default function ChatDetail() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col" {...navSwipeHandlers}>
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-card border-b border-border">
+    <div className="h-full flex flex-col relative" {...navSwipeHandlers}>
+      {/* Header - Stays sticky within the flex container's scroll context if main overflows, or just static at the top */}
+      <header className="sticky top-0 z-50 bg-card border-b border-border flex-shrink-0">
         <div className="max-w-4xl mx-auto h-16 flex items-center justify-between px-4">
           <div className="flex items-center gap-3">
-            <button 
+            <button
               onClick={() => navigate('/inbox')}
               className="p-2 -ml-2 hover:bg-muted rounded-full transition-colors"
             >
               <ChevronLeft className="h-5 w-5 text-foreground" />
             </button>
-            
+
             <div className="relative">
               <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary/20 to-cyan-400/20 flex items-center justify-center">
                 <span className="text-sm font-semibold text-foreground">{contact.initials}</span>
@@ -430,13 +430,13 @@ export default function ChatDetail() {
                 <PlatformIcon className="h-2 w-2 text-white" />
               </div>
             </div>
-            
+
             <div>
               <h1 className="font-semibold text-foreground">{contact.name}</h1>
               <p className="text-xs text-muted-foreground">Last seen {contact.lastSeen}</p>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-1">
             {/* Message counter */}
             <div className="bg-muted/80 px-2 py-0.5 rounded-full mr-1">
@@ -444,9 +444,9 @@ export default function ChatDetail() {
                 {currentIndex + 1} of {totalMessages}
               </span>
             </div>
-            
+
             {/* Navigation arrows */}
-            <button 
+            <button
               onClick={goToPrevious}
               disabled={!hasPrevious}
               className={cn(
@@ -456,7 +456,7 @@ export default function ChatDetail() {
             >
               <ChevronLeft className="h-4 w-4 text-muted-foreground" />
             </button>
-            <button 
+            <button
               onClick={goToNext}
               disabled={!hasNext}
               className={cn(
@@ -466,14 +466,14 @@ export default function ChatDetail() {
             >
               <ChevronRight className="h-4 w-4 text-muted-foreground" />
             </button>
-            
+
             <button className="p-2 hover:bg-muted rounded-full transition-colors">
               <MoreVertical className="h-5 w-5 text-muted-foreground" />
             </button>
           </div>
         </div>
       </header>
-      
+
       {/* Swipe indicators */}
       <div className="fixed inset-y-0 left-0 w-1 pointer-events-none z-40">
         {hasPrevious && (
@@ -488,94 +488,94 @@ export default function ChatDetail() {
 
       {/* Messages */}
       <main className="flex-1 overflow-y-auto">
-        <div className="max-w-4xl mx-auto p-4 pb-36 space-y-1">
-        <AnimatePresence>
-          {messages.map((message, idx) => {
-            const nextMsg = messages[idx + 1];
-            const isLastInGroup = !nextMsg || nextMsg.type !== message.type;
-            
-            return (
-              <motion.div
-                key={message.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className={cn(
-                  'flex',
-                  message.type === 'outgoing' ? 'justify-end' : 'justify-start',
-                  !isLastInGroup ? 'mb-1' : 'mb-3'
-                )}
-              >
-                <div className="flex flex-col max-w-[70%]">
-                  <div
-                    className={cn(
-                      'px-4 py-2.5 transition-all',
-                      message.type === 'outgoing'
-                        ? 'bg-gradient-to-r from-primary to-cyan-500 text-white rounded-2xl rounded-tr-sm'
-                        : 'bg-muted text-foreground rounded-2xl rounded-tl-sm'
-                    )}
-                  >
-                    {/* Attachment Preview */}
-                    {message.attachment && (
-                      <div className="mb-2">
-                        {message.attachment.type === 'image' && message.attachment.url ? (
-                          <img 
-                            src={message.attachment.url} 
-                            alt={message.attachment.name}
-                            className="rounded-lg max-w-full h-auto"
-                          />
-                        ) : (
-                          <div className={cn(
-                            "flex items-center gap-2 p-2 rounded-lg",
-                            message.type === 'outgoing' ? 'bg-white/20' : 'bg-background'
-                          )}>
-                            <FileText className="h-5 w-5" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate">{message.attachment.name}</p>
-                              <p className="text-xs opacity-70">{message.attachment.size}</p>
+        <div className="max-w-4xl mx-auto p-4 pb-[140px] md:pb-4 space-y-1">
+          <AnimatePresence>
+            {messages.map((message, idx) => {
+              const nextMsg = messages[idx + 1];
+              const isLastInGroup = !nextMsg || nextMsg.type !== message.type;
+
+              return (
+                <motion.div
+                  key={message.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className={cn(
+                    'flex',
+                    message.type === 'outgoing' ? 'justify-end' : 'justify-start',
+                    !isLastInGroup ? 'mb-1' : 'mb-3'
+                  )}
+                >
+                  <div className="flex flex-col max-w-[70%]">
+                    <div
+                      className={cn(
+                        'px-4 py-2.5 transition-all',
+                        message.type === 'outgoing'
+                          ? 'bg-gradient-to-r from-primary to-cyan-500 text-white rounded-2xl rounded-tr-sm'
+                          : 'bg-muted text-foreground rounded-2xl rounded-tl-sm'
+                      )}
+                    >
+                      {/* Attachment Preview */}
+                      {message.attachment && (
+                        <div className="mb-2">
+                          {message.attachment.type === 'image' && message.attachment.url ? (
+                            <img
+                              src={message.attachment.url}
+                              alt={message.attachment.name}
+                              className="rounded-lg max-w-full h-auto"
+                            />
+                          ) : (
+                            <div className={cn(
+                              "flex items-center gap-2 p-2 rounded-lg",
+                              message.type === 'outgoing' ? 'bg-white/20' : 'bg-background'
+                            )}>
+                              <FileText className="h-5 w-5" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate">{message.attachment.name}</p>
+                                <p className="text-xs opacity-70">{message.attachment.size}</p>
+                              </div>
                             </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    
-                    {message.text && (
-                      <p className="text-base leading-relaxed">{message.text}</p>
-                    )}
-                    
-                    {isLastInGroup && (
-                      <div className={cn(
-                        'flex items-center gap-1 mt-1',
-                        message.type === 'outgoing' ? 'justify-end' : 'justify-start'
-                      )}>
-                        <span className={cn(
-                          'text-xs',
-                          message.type === 'outgoing' ? 'text-white/70' : 'text-muted-foreground'
+                          )}
+                        </div>
+                      )}
+
+                      {message.text && (
+                        <p className="text-base leading-relaxed">{message.text}</p>
+                      )}
+
+                      {isLastInGroup && (
+                        <div className={cn(
+                          'flex items-center gap-1 mt-1',
+                          message.type === 'outgoing' ? 'justify-end' : 'justify-start'
                         )}>
-                          {message.timestamp}
-                        </span>
-                        {message.type === 'outgoing' && renderStatus(message.status)}
-                      </div>
+                          <span className={cn(
+                            'text-xs',
+                            message.type === 'outgoing' ? 'text-white/70' : 'text-muted-foreground'
+                          )}>
+                            {message.timestamp}
+                          </span>
+                          {message.type === 'outgoing' && renderStatus(message.status)}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Reply hint for incoming messages - OUTSIDE bubble, clickable */}
+                    {message.type === 'incoming' && isLastInGroup && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleReplyClick(message);
+                        }}
+                        className="text-xs text-primary/70 hover:text-primary mt-1.5 ml-1 text-left font-medium active:scale-95 transition-all"
+                      >
+                        Tap to reply
+                      </button>
                     )}
                   </div>
-                  
-                  {/* Reply hint for incoming messages - OUTSIDE bubble, clickable */}
-                  {message.type === 'incoming' && isLastInGroup && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleReplyClick(message);
-                      }}
-                      className="text-xs text-primary/70 hover:text-primary mt-1.5 ml-1 text-left font-medium active:scale-95 transition-all"
-                    >
-                      Tap to reply
-                    </button>
-                  )}
-                </div>
-              </motion.div>
-            );
-          })}
+                </motion.div>
+              );
+            })}
           </AnimatePresence>
           <div ref={messagesEndRef} />
         </div>
@@ -737,8 +737,11 @@ export default function ChatDetail() {
         className="hidden"
       />
 
-      {/* Input Bar - Fixed above bottom navigation with proper spacing */}
-      <div className="fixed bottom-20 left-0 right-0 z-30 bg-card border-t border-border shadow-lg" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
+      {/* Input Bar - Fixed above bottom nav on mobile (64px), Sticky bottom on desktop */}
+      <div
+        className="fixed bottom-[64px] left-0 right-0 md:relative md:bottom-auto z-50 bg-card border-t border-border shadow-lg mt-auto"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+      >
         <div className="w-full max-w-3xl mx-auto px-4 py-3">
           {/* File Preview */}
           <AnimatePresence>
@@ -774,18 +777,18 @@ export default function ChatDetail() {
 
           <div className="flex items-center gap-3">
             {/* Attachment Button - Fixed 44px */}
-            <button 
+            <button
               onClick={() => setIsAttachmentMenuOpen(!isAttachmentMenuOpen)}
               className={cn(
                 "flex-shrink-0 h-11 w-11 rounded-full flex items-center justify-center transition-all",
-                isAttachmentMenuOpen 
-                  ? "bg-primary text-primary-foreground rotate-45" 
+                isAttachmentMenuOpen
+                  ? "bg-primary text-primary-foreground rotate-45"
                   : "bg-muted hover:bg-muted/80 text-muted-foreground"
               )}
             >
               <Plus className="h-5 w-5 transition-transform" />
             </button>
-            
+
             {/* Text Input - 44px height, proper padding for text visibility */}
             <div className="flex-1 relative min-w-0">
               <input
@@ -802,7 +805,7 @@ export default function ChatDetail() {
                   }
                 }}
               />
-              
+
               {/* AI Sparkle Button - Inside input */}
               <button
                 onClick={handleAiSparkle}
@@ -816,7 +819,7 @@ export default function ChatDetail() {
                   <Sparkles className="h-4 w-4" />
                 )}
               </button>
-              
+
               {showUndo && (
                 <button
                   onClick={handleUndo}
@@ -826,7 +829,7 @@ export default function ChatDetail() {
                 </button>
               )}
             </div>
-            
+
             {/* Send Button - Fixed 44px */}
             <button
               onClick={handleSend}

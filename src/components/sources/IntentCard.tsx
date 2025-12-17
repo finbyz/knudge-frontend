@@ -53,15 +53,15 @@ const intentConfig: Record<IntentType, {
 
 export function IntentCard({ intent, isSelected, onSelect }: IntentCardProps) {
   const config = intentConfig[intent];
-  
+
   return (
     <motion.button
       onClick={onSelect}
       className={cn(
         'w-full p-4 rounded-xl border-2 text-left transition-all relative',
         'hover:shadow-md',
-        isSelected 
-          ? 'border-primary bg-primary/5 shadow-md' 
+        isSelected
+          ? 'border-primary bg-primary/5 shadow-md'
           : `border-border bg-card hover:border-primary/30`
       )}
       whileTap={{ scale: 0.98 }}

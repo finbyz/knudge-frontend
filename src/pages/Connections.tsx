@@ -373,7 +373,7 @@ export default function Connections() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-24 pt-20">
+    <div className="h-full bg-background pb-24">
       <TopBar title="Connections" />
 
       <main className="px-4 py-6 space-y-4">

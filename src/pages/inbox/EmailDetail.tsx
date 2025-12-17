@@ -234,9 +234,9 @@ export default function EmailDetail() {
   };
 
   return (
-    <div className="min-h-screen bg-background flex flex-col" {...swipeHandlers}>
+    <div className="h-full flex flex-col relative" {...swipeHandlers}>
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-card border-b border-border p-4">
+      <header className="sticky top-0 z-40 bg-card border-b border-border p-4 flex-shrink-0">
         <div className="flex items-center justify-between mb-2">
           <button
             onClick={() => navigate('/inbox')}
@@ -321,14 +321,16 @@ export default function EmailDetail() {
         </AnimatePresence>
       </div>
 
-      {/* Email Content - Conversational View */}
-      <ConversationalEmailView
-        threads={email.threads}
-        currentUserEmail="me@company.com"
-      />
+      {/* Email Content - Conversational View - Scrollable */}
+      <div className="flex-1 overflow-y-auto pb-[140px] md:pb-0">
+        <ConversationalEmailView
+          threads={email.threads}
+          currentUserEmail="me@company.com"
+        />
+      </div>
 
-      {/* Action Bar */}
-      <div className="fixed bottom-20 left-0 right-0 z-40 bg-card border-t border-border shadow-sm px-4 py-2">
+      {/* Action Bar - Fixed above bottom nav on mobile, Sticky on Desktop */}
+      <div className="fixed bottom-16 left-0 right-0 md:relative md:bottom-auto z-50 bg-card border-t border-border shadow-sm px-4 py-2 mt-auto">
         <div className="max-w-lg mx-auto flex gap-2">
           <button
             onClick={() => openComposer('reply')}

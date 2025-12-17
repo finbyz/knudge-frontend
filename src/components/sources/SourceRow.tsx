@@ -65,7 +65,7 @@ export function SourceRow({ source, onToggle, onEdit, onDelete }: SourceRowProps
       <motion.div
         {...swipeHandlers}
         className={cn(
-          'relative flex items-center gap-3 p-4 md:px-6 bg-card cursor-pointer transition-colors',
+          'relative flex items-center gap-3 p-4 bg-card border-b border-border cursor-pointer transition-colors',
           'hover:bg-muted/30',
           !source.isActive && 'opacity-60'
         )}
@@ -79,7 +79,7 @@ export function SourceRow({ source, onToggle, onEdit, onDelete }: SourceRowProps
               <img
                 src={source.avatarUrl}
                 alt={source.name}
-                className="w-10 h-10 md:w-12 md:h-12 rounded-full object-cover"
+                className="w-12 h-12 rounded-full object-cover"
               />
               <div className="absolute -bottom-1 -right-1">
                 <PlatformIcon platform={source.platform} size="sm" />
@@ -93,12 +93,12 @@ export function SourceRow({ source, onToggle, onEdit, onDelete }: SourceRowProps
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <h4 className="font-semibold text-sm md:text-base text-foreground truncate">{source.name}</h4>
+            <h4 className="font-semibold text-foreground truncate">{source.name}</h4>
             {source.syncStatus === 'error' && (
               <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0" />
             )}
           </div>
-          <p className="text-xs md:text-sm text-muted-foreground truncate">
+          <p className="text-sm text-muted-foreground truncate">
             {source.metadata.activityFrequency || getPlatformName(source.platform)}
           </p>
         </div>

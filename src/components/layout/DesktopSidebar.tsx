@@ -34,7 +34,7 @@ export function DesktopSidebar({ collapsed, onToggle }: DesktopSidebarProps) {
       initial={false}
       animate={{ width: collapsed ? 64 : 256 }}
       transition={{ duration: 0.2, ease: 'easeInOut' }}
-      className="fixed left-0 top-0 h-screen bg-sidebar border-r border-sidebar-border z-50 flex flex-col"
+      className="h-full bg-sidebar border-r border-sidebar-border z-40 flex flex-col flex-shrink-0"
     >
       {/* Logo Section */}
       <div className="h-16 flex items-center justify-between px-4 border-b border-sidebar-border">
@@ -66,7 +66,7 @@ export function DesktopSidebar({ collapsed, onToggle }: DesktopSidebarProps) {
       <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
           const unreadCount = getUnreadCount(item.unreadKey);
-          const isActive = location.pathname === item.path || 
+          const isActive = location.pathname === item.path ||
             (item.path === '/feed' && location.pathname.startsWith('/feed'));
 
           return (

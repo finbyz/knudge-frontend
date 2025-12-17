@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 // Mock search results generator
 const generateMockResults = (query: string, platform?: Platform): SearchResult[] => {
   if (!query || query.length < 2) return [];
-  
+
   const allResults: SearchResult[] = [
     { id: '1', name: 'Alex Hormozi', platform: 'youtube', bio: 'Entrepreneur & Investor', followers: 2500000, activityFrequency: '4 posts/week' },
     { id: '2', name: 'Alex Hormozi', platform: 'linkedin', bio: 'CEO at Acquisition.com', followers: 450000, activityFrequency: '2 posts/week' },
@@ -67,13 +67,13 @@ const platformFilters: { id: Platform | 'all'; label: string }[] = [
 export default function AddSource() {
   const navigate = useNavigate();
   const { addSource } = useSourcesStore();
-  
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPlatform, setSelectedPlatform] = useState<Platform | 'all'>('all');
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [urlDetectedResult, setUrlDetectedResult] = useState<SearchResult | null>(null);
-  
+
   // Intent modal state
   const [showIntentModal, setShowIntentModal] = useState(false);
   const [selectedSource, setSelectedSource] = useState<SearchResult | null>(null);
@@ -95,7 +95,7 @@ export default function AddSource() {
       // URL detection
       setIsSearching(true);
       const platform = detectPlatformFromUrl(searchQuery);
-      
+
       setTimeout(() => {
         if (platform) {
           setUrlDetectedResult({
@@ -117,10 +117,10 @@ export default function AddSource() {
       const timer = setTimeout(() => {
         setIsSearching(true);
         setUrlDetectedResult(null);
-        
+
         setTimeout(() => {
           const results = generateMockResults(
-            searchQuery, 
+            searchQuery,
             selectedPlatform === 'all' ? undefined : selectedPlatform
           );
           setSearchResults(results);
@@ -169,8 +169,8 @@ export default function AddSource() {
       competitor: 'priority',
       lead: 'priority',
       influencer: 'inspiration',
-      news: selectedSource.platform === 'whatsapp' || selectedSource.platform === 'telegram' 
-        ? 'communities' 
+      news: selectedSource.platform === 'whatsapp' || selectedSource.platform === 'telegram'
+        ? 'communities'
         : 'inspiration',
     };
 
@@ -245,6 +245,7 @@ export default function AddSource() {
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Paste a URL or search for a person/channel..."
             className="h-14 pl-12 pr-12 text-base rounded-xl border-2 focus:border-primary"
+            autoFocus
           />
           {searchQuery && (
             <button
