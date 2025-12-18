@@ -11,6 +11,13 @@ export interface DeckItem {
     [key: string]: any;
   };
   created_at?: string;
+  contact?: {
+    id: string;
+    name: string;
+    phone?: string;
+    email?: string;
+    avatar?: string;
+  };
 }
 
 export const deckApi = {

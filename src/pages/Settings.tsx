@@ -17,7 +17,7 @@ type ChannelType = 'whatsapp' | 'linkedin' | 'email' | 'calls' | 'telegram';
 interface CircleWithUI extends Circle {
   channels: ChannelType[];
   contacts: number; // For display count
-  outreachAgenda: string;
+  outreach_agenda: string;
   contact_ids?: string[]; // IDs of members
 }
 
@@ -45,8 +45,8 @@ export default function Settings() {
   const [editingCircle, setEditingCircle] = useState<CircleWithUI | null>(null);
 
   // Adjusted form state
-  const [circleForm, setCircleForm] = useState<{ name: string; frequency: string; channels: ChannelType[]; outreachAgenda: string; contact_ids: string[] }>({
-    name: '', frequency: 'Weekly', channels: [], outreachAgenda: '', contact_ids: []
+  const [circleForm, setCircleForm] = useState<{ name: string; frequency: string; channels: ChannelType[]; outreach_agenda: string; contact_ids: string[] }>({
+    name: '', frequency: 'Weekly', channels: [], outreach_agenda: '', contact_ids: []
   });
 
   const [contactSearchQuery, setContactSearchQuery] = useState('');
@@ -85,7 +85,7 @@ export default function Settings() {
           channels: ['whatsapp'],
           contacts: members.length,
           contact_ids: members.map(m => m.id),
-          outreachAgenda: ''
+          outreach_agenda: c.outreach_agenda
         };
       }));
       setCircles(enhancedCircles);
@@ -100,7 +100,7 @@ export default function Settings() {
 
   const handleAddCircle = () => {
     setEditingCircle(null);
-    setCircleForm({ name: '', channels: [], frequency: 'Weekly', contacts: 0, outreachAgenda: '', contact_ids: [] });
+    setCircleForm({ name: '', channels: [], frequency: 'Weekly', outreach_agenda: '', contact_ids: [] });
     setContactSearchQuery('');
     setShowCircleForm(true);
   };
@@ -149,7 +149,7 @@ export default function Settings() {
       name: circle.name,
       frequency: circle.frequency,
       channels: circle.channels,
-      outreachAgenda: circle.outreachAgenda,
+      outreach_agenda: circle.outreach_agenda,
       contact_ids: circle.contact_ids || []
     });
     setContactSearchQuery('');
@@ -175,21 +175,22 @@ export default function Settings() {
   );
 
   const handleSaveCircle = async () => {
-    if (!circleForm.name || !circleForm.outreachAgenda || circleForm.channels.length === 0) return;
+    if (!circleForm.name || !circleForm.outreach_agenda || circleForm.channels.length === 0) return;
 
     try {
       if (editingCircle) {
         const updated = await contactsApi.updateCircle(editingCircle.id, {
           name: circleForm.name,
           frequency: circleForm.frequency,
-          contact_ids: circleForm.contact_ids
+          contact_ids: circleForm.contact_ids,
+          outreach_agenda: circleForm.outreach_agenda
         });
         // Merge with local UI state (channels, etc.)
         const merged: CircleWithUI = {
           ...editingCircle,
           ...updated,
           channels: circleForm.channels,
-          outreachAgenda: circleForm.outreachAgenda,
+          outreach_agenda: circleForm.outreach_agenda,
           contact_ids: circleForm.contact_ids,
           contacts: circleForm.contact_ids.length
         };
@@ -202,7 +203,8 @@ export default function Settings() {
         const created = await contactsApi.createCircle({
           name: circleForm.name,
           frequency: circleForm.frequency,
-          contact_ids: circleForm.contact_ids
+          contact_ids: circleForm.contact_ids,
+          outreach_agenda: circleForm.outreach_agenda
         });
         // Enhance with local UI state
         const enhanced: CircleWithUI = {
@@ -210,7 +212,7 @@ export default function Settings() {
           contacts: circleForm.contact_ids.length,
           contact_ids: circleForm.contact_ids,
           channels: circleForm.channels,
-          outreachAgenda: circleForm.outreachAgenda
+          outreach_agenda: circleForm.outreach_agenda
         };
         setCircles((prev) => [...prev, enhanced]);
         toast.success("Circle created");
@@ -649,9 +651,9 @@ export default function Settings() {
                     Outreach Agenda <span className="text-destructive">*</span>
                   </label>
                   <textarea
-                    value={circleForm.outreachAgenda}
+                    value={circleForm.outreach_agenda}
                     onChange={(e) => {
-                      setCircleForm({ ...circleForm, outreachAgenda: e.target.value });
+                      setCircleForm({ ...circleForm, outreach_agenda: e.target.value });
                       // Auto-resize
                       e.target.style.height = 'auto';
                       e.target.style.height = Math.min(e.target.scrollHeight, 400) + 'px';
@@ -663,7 +665,7 @@ export default function Settings() {
                   />
                   <div className="flex justify-between mt-1">
                     <p className="text-xs text-muted-foreground">This will guide AI when generating drafts for contacts in this circle</p>
-                    <span className="text-xs text-muted-foreground">{circleForm.outreachAgenda.length} characters</span>
+                    <span className="text-xs text-muted-foreground">{circleForm.outreach_agenda.length} characters</span>
                   </div>
                 </div>
 
@@ -690,7 +692,7 @@ export default function Settings() {
                   </button>
                   <button
                     onClick={handleSaveCircle}
-                    disabled={!circleForm.name || !circleForm.outreachAgenda || circleForm.channels.length === 0}
+                    disabled={!circleForm.name || !circleForm.outreach_agenda || circleForm.channels.length === 0}
                     className="flex-1 py-3 rounded-xl gradient-primary text-primary-foreground font-medium shadow-glow disabled:opacity-50 disabled:shadow-none hover:opacity-90 transition-all"
                   >
                     {editingCircle ? 'Save Changes' : 'Create Circle'}

@@ -335,13 +335,20 @@ export default function Contacts() {
                   </p>
 
                   <div className="flex items-center gap-2 mt-4">
-                    {selectedContact.bridge_map ? (
-                      Object.keys(selectedContact.bridge_map).map(p => (
-                        <PlatformBadge key={p} platform={p as any} size="md" showLabel />
-                      ))
-                    ) : (
-                      <span className="text-xs text-muted-foreground">No connected platforms</span>
-                    )}
+                    {(() => {
+                      const platforms = [];
+                      if (selectedContact.email) platforms.push('email');
+                      if (selectedContact.phone) platforms.push('whatsapp');
+                      if (selectedContact.linkedin_url) platforms.push('linkedin');
+
+                      return platforms.length > 0 ? (
+                        platforms.map(p => (
+                          <PlatformBadge key={p} platform={p as any} size="md" showLabel />
+                        ))
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No connected platforms</span>
+                      );
+                    })()}
                   </div>
                 </div>
 

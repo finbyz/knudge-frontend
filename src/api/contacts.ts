@@ -1,6 +1,7 @@
 import { ApiClient } from "@/lib/api-client";
 
 export interface Contact {
+  [x: string]: any;
   id: string; // UUID from backend
   name: string;
   email?: string;
@@ -11,16 +12,18 @@ export interface Contact {
   avatar?: string;
   last_contacted_at?: string;
   created_at?: string;
-  bridge_map?: Record<string, string>; // Protocol -> RoomID
+
 }
 
 export interface CreateCircleRequest {
   name: string;
   frequency: string;
   contact_ids?: string[];
+  outreach_agenda?: string;
 }
 
 export interface Circle {
+  [x: string]: any;
   id: string; // UUID from backend
   name: string;
   frequency: string;

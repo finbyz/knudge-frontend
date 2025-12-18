@@ -11,7 +11,11 @@ interface ContactItemProps {
 export function ContactItem({ contact, onClick }: ContactItemProps) {
   // Derive details that might be missing in API response compared to mock
   // Or handle them gracefully.
-  const platforms = contact.bridge_map ? Object.keys(contact.bridge_map) : [];
+  // Derive platforms from available contact info
+  const platforms: string[] = [];
+  if (contact.email) platforms.push('email');
+  if (contact.phone) platforms.push('whatsapp');
+  if (contact.linkedin_url) platforms.push('linkedin');
 
   // Title/Company not in backend currently. Display nothing or placeholder if really needed.
   // For now we just show name.

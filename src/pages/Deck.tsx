@@ -9,15 +9,21 @@ import { TopBar } from '@/components/TopBar';
 import { deckApi, DeckItem } from '@/api/deck';
 import { ActionCard } from '@/types';
 
-// Helper to map API data to UI mock format until we fully unify types
+// Helper to map API data to UI format
 const mapDeckItemToCard = (item: DeckItem): ActionCard => ({
   id: item.id,
-  contact: {
-    id: 'temp-deck-id', // Placeholder ID
-    name: item.ui_title.replace('Send Follow-up to ', '').replace('Message ', '') || 'Unknown',
-    // Optional fields from Contact interface are omitted (undefined)
-    // bridge_map is undefined
-  },
+  contact: item.contact
+    ? {
+      id: item.contact.id,
+      name: item.contact.name,
+      phone: item.contact.phone,
+      email: item.contact.email,
+      avatar: item.contact.avatar,
+    }
+    : {
+      id: item.id,
+      name: item.ui_title.replace('Reconnect with ', '') || 'Unknown Contact',
+    },
   context: item.ui_subtitle,
   draft: item.content_payload.draft_text || '',
   platform: item.platform as any,
