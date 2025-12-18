@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X } from 'lucide-react';
+import { X, MessageSquare } from 'lucide-react';
 import { IntentType, Platform, Source } from '@/stores/sourcesStore';
 import { IntentCard } from './IntentCard';
 import { Button } from '@/components/ui/button';
@@ -48,7 +48,7 @@ export function IntentConfigModal({ isOpen, onClose, onSave, source, editingSour
 
     onSave({
       intent: selectedIntent,
-      options: editingSource?.options || {}, // Simplified revert for now, assuming options were not heavily used in basic version
+      options: editingSource?.options || {}, // Simplified revert for now
     });
   };
 
@@ -57,52 +57,65 @@ export function IntentConfigModal({ isOpen, onClose, onSave, source, editingSour
   return (
     <AnimatePresence>
       {isOpen && (
-        <>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 z-50"
+            transition={{ duration: 0.2 }}
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={onClose}
           />
 
-          {/* Modal */}
+          {/* Modal Content - RESPONSIVE HEIGHT & WIDTH */}
           <motion.div
-            initial={{ opacity: 0, y: '100%' }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: '100%' }}
-            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
-            className="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-card shadow-xl rounded-t-2xl sm:inset-auto sm:left-1/2 sm:top-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2 sm:max-w-lg sm:w-full sm:rounded-2xl"
-            style={{ maxHeight: '85vh' }}
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            transition={{ type: "spring", duration: 0.3, bounce: 0.1 }}
+            className={cn(
+              "relative z-10 w-full flex flex-col",
+              "bg-card rounded-2xl shadow-2xl",
+              // Widths
+              "max-w-full sm:max-w-lg md:max-w-xl lg:max-w-2xl",
+              // Heights - CRITICAL FIX
+              "max-h-[90vh] min-h-[400px]",
+              "overflow-hidden"
+            )}
           >
-            {/* Header - Fixed */}
-            <div className="flex-shrink-0 flex items-center justify-between border-b border-border bg-card px-5 py-4 rounded-t-2xl">
+            {/* Header - Fixed at top */}
+            <div className="flex-shrink-0 flex items-start justify-between p-4 sm:p-6 border-b border-border bg-card">
               <div className="flex items-center gap-3">
-                {platform && <PlatformIcon platform={platform} size="md" />}
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                  <MessageSquare className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
+                </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">
+                  <h3 className="text-xs sm:text-sm text-muted-foreground">
                     {editingSource ? 'Edit AI Strategy for' : 'Configure AI Strategy for'}
-                  </p>
-                  <h3 className="font-semibold text-lg text-foreground">{name}</h3>
+                  </h3>
+                  <div className="flex items-center gap-2">
+                    {platform && <PlatformIcon platform={platform} size="sm" />}
+                    <h2 className="text-base sm:text-xl font-semibold text-foreground truncate max-w-[150px] sm:max-w-xs">{name}</h2>
+                  </div>
                 </div>
               </div>
               <button
                 onClick={onClose}
-                className="h-10 w-10 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors"
+                className="rounded-full p-2 hover:bg-muted transition-colors"
               >
-                <X className="h-5 w-5" />
+                <X className="w-5 h-5 text-muted-foreground" />
               </button>
             </div>
 
-            {/* Body - Scrollable */}
-            <div className="flex-1 overflow-y-auto p-5 bg-muted/30">
-              <p className="text-muted-foreground mb-5">
+            {/* Content - Scrollable */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 sm:space-y-4 bg-muted/5 pb-4">
+              <p className="text-muted-foreground text-sm">
                 How should our AI interact with this source?
               </p>
 
               {/* Intent Cards */}
-              <div className="space-y-3 mb-6">
+              <div className="space-y-3">
                 {intents.map((intent) => (
                   <IntentCard
                     key={intent}
@@ -112,29 +125,40 @@ export function IntentConfigModal({ isOpen, onClose, onSave, source, editingSour
                   />
                 ))}
               </div>
-
-              <div className="h-4" />
             </div>
 
-            {/* Footer - Fixed at bottom */}
-            <div className="flex-shrink-0 bg-card border-t border-border p-4 flex gap-3 rounded-b-2xl sm:rounded-b-2xl">
+            {/* Footer - Fixed at bottom (Sticky) */}
+            <div
+              className={cn(
+                "flex-shrink-0 sticky bottom-0 z-10",
+                "flex items-center justify-end gap-3",
+                "p-4 sm:p-6",
+                "border-t border-border bg-card"
+              )}
+              style={{
+                paddingBottom: 'max(1rem, env(safe-area-inset-bottom))'
+              }}
+            >
               <Button
                 variant="ghost"
                 onClick={onClose}
-                className="flex-1 sm:flex-none"
+                className="px-4 sm:px-6 py-2 sm:py-2.5 text-sm sm:text-base h-auto"
               >
                 Cancel
               </Button>
               <Button
                 onClick={handleSave}
                 disabled={!selectedIntent}
-                className="flex-1 gradient-primary text-primary-foreground border-0"
+                className={cn(
+                  "px-4 sm:px-6 py-2 sm:py-2.5 h-auto text-sm sm:text-base transition-all",
+                  selectedIntent ? "gradient-primary text-primary-foreground" : "opacity-50 cursor-not-allowed"
+                )}
               >
-                {editingSource ? 'Update' : 'Save & Follow'}
+                {editingSource ? 'Update Strategy' : 'Save Strategy'}
               </Button>
             </div>
           </motion.div>
-        </>
+        </div>
       )}
     </AnimatePresence>
   );

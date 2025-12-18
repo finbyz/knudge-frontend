@@ -7,7 +7,10 @@ var __vite_injected_original_dirname = "/home/tvisha/Desktop/ui/knudge-card-swip
 var vite_config_default = defineConfig(({ mode }) => ({
   server: {
     host: "::",
-    port: 8080
+    port: 8080,
+    allowedHosts: [
+      '.ngrok-free.app'  // Add this line
+    ]
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {
