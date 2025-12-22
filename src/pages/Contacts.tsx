@@ -22,7 +22,7 @@ const platformOptions = [
 
 export default function Contacts() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState('All');
+  const [selectedCircleId, setSelectedCircleId] = useState<string | null>(null);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newContact, setNewContact] = useState({
@@ -40,17 +40,28 @@ export default function Contacts() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadData();
+    loadCircles();
   }, []);
 
-  const loadData = async () => {
+  useEffect(() => {
+    loadContacts();
+  }, [selectedCircleId]);
+
+  const loadCircles = async () => {
     try {
-      const [contactsData, circlesData] = await Promise.all([
-        contactsApi.getContacts(),
-        contactsApi.getCircles()
-      ]);
-      setContacts(contactsData);
+      const circlesData = await contactsApi.getCircles();
       setCircles(circlesData);
+    } catch (error) {
+      console.error("Failed to load circles:", error);
+      toast.error("Failed to load circles.");
+    }
+  };
+
+  const loadContacts = async () => {
+    setLoading(true);
+    try {
+      const contactsData = await contactsApi.getContacts(selectedCircleId || undefined);
+      setContacts(contactsData);
     } catch (error) {
       console.error("Failed to load contacts:", error);
       toast.error("Failed to load contacts.");
@@ -59,20 +70,17 @@ export default function Contacts() {
     }
   };
 
-  const filterOptions = ['All', ...circles.map(c => c.name)];
+  const filterOptions = [
+    { id: null, label: 'All' },
+    ...circles.map(c => ({ id: c.id, label: c.name }))
+  ];
 
+  // Only client-side search filtering remains
   const filteredContacts = contacts.filter((contact) => {
-    const matchesSearch = contact.name.toLowerCase().includes(searchQuery.toLowerCase());
-
-    if (activeFilter === 'All') return matchesSearch;
-
-    const activeCircle = circles.find(c => c.name === activeFilter);
-    const matchesCircle = activeCircle ? contact.circle_id === activeCircle.id : false;
-
-    return matchesSearch && matchesCircle;
+    return contact.name.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
-  if (loading) {
+  if (loading && contacts.length === 0 && circles.length === 0) {
     return (
       <div className="h-screen flex items-center justify-center bg-background">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -100,14 +108,14 @@ export default function Contacts() {
         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
           {filterOptions.map((filter) => (
             <button
-              key={filter}
-              onClick={() => setActiveFilter(filter)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${activeFilter === filter
+              key={filter.id || 'all'}
+              onClick={() => setSelectedCircleId(filter.id)}
+              className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${selectedCircleId === filter.id
                 ? 'bg-foreground text-background'
                 : 'bg-card border border-border text-muted-foreground hover:bg-muted'
                 }`}
             >
-              {filter}
+              {filter.label}
             </button>
           ))}
         </div>
@@ -127,7 +135,7 @@ export default function Contacts() {
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-center px-4">
               <p className="text-muted-foreground">No contacts found.</p>
-              {activeFilter !== 'All' && <Button variant="link" onClick={() => setActiveFilter('All')}>Clear filter</Button>}
+                {selectedCircleId !== null && <Button variant="link" onClick={() => setSelectedCircleId(null)}>Clear filter</Button>}
             </div>
           )}
         </div>

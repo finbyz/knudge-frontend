@@ -90,7 +90,10 @@ export const useOnboardingStore = create<OnboardingState>()(
         if (user?.onboarding_step) {
           set({ currentStep: user.onboarding_step });
           // If the user's step indicates they are still onboarding, ensure completed is false
-          if (user.onboarding_step <= 7) {
+          // If step > 7, it means they completed it (step 8 is complete state)
+          if (user.onboarding_step > 7) {
+            set({ completed: true });
+          } else {
             set({ completed: false });
           }
         }

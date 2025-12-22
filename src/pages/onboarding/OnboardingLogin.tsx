@@ -50,9 +50,14 @@ export default function OnboardingLogin() {
           username: response.username,
           synapse_user_id: response.synapse_user_id
       });
-      // Initialize onboarding step to 1
-      useOnboardingStore.getState().setStep(1);
-      navigate('/onboarding/goal');
+
+      // Only reset step for new signups
+      if (mode === 'signup') {
+        useOnboardingStore.getState().setStep(1);
+      }
+
+      // Navigate to root - AppRoutes will redirect to correct step or dashboard
+      navigate('/');
     } catch (error: any) {
       console.error("Auth error:", error);
       toast.error(error.message || `Failed to ${mode === 'login' ? 'login' : 'sign up'}. Please try again.`);
