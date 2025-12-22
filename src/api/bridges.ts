@@ -102,12 +102,16 @@ export const bridgesApi = {
     return ApiClient.post('/erpnext/connect', { api_key, api_secret, base_url });
   },
 
-  getERPNextStatus: async (): Promise<{ is_connected: boolean, base_url?: string }> => {
+  getERPNextStatus: async (): Promise<{ is_connected: boolean, base_url?: string, contact_count?: number }> => {
     return ApiClient.get('/erpnext/status');
   },
 
   getERPNextContacts: async (): Promise<Array<{ name: string, email: string, phone: string | null, company: string | null }>> => {
     return ApiClient.get('/erpnext/contacts');
+  },
+
+  syncERPNext: async (): Promise<{ synced_count: number, updated_count: number, skipped_count: number, total: number }> => {
+    return ApiClient.post('/erpnext/sync', {});
   },
 
   disconnectERPNext: async (): Promise<{ status: string }> => {

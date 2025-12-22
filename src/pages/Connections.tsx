@@ -2,9 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, QrCode, Loader2 } from 'lucide-react';
 import { ConnectionCard } from '@/components/ConnectionCard';
-// Resolved imports
 import { TopBar } from '@/components/TopBar';
-import { mockConnections, Connection } from '@/data/mockData';
 import { toast } from 'sonner'; // Use sonner as per api integrate, or hooks/use-toast if preferred? api integrate used sonner.
 import { bridgesApi } from '@/api/bridges';
 import { useAuthStore } from '@/stores/authStore';
@@ -16,10 +14,11 @@ const platformNames = {
   signal: 'Signal',
   gmail: 'Gmail',
   outlook: 'Outlook',
+  erpnext: 'ERPNext',
 };
 
 interface ConnectionState {
-  platform: 'whatsapp' | 'linkedin' | 'signal' | 'gmail' | 'outlook';
+  platform: 'whatsapp' | 'linkedin' | 'signal' | 'gmail' | 'outlook' | 'erpnext';
   status: 'connected' | 'disconnected' | 'syncing';
   lastSync: string | null;
   contactCount: number;
@@ -31,7 +30,8 @@ export default function Connections() {
     { platform: 'signal', status: 'disconnected', lastSync: null, contactCount: 0 },
     { platform: 'linkedin', status: 'disconnected', lastSync: null, contactCount: 0 },
     { platform: 'gmail', status: 'disconnected', lastSync: null, contactCount: 0 },
-    { platform: 'outlook', status: 'disconnected', lastSync: null, contactCount: 0 }
+    { platform: 'outlook', status: 'disconnected', lastSync: null, contactCount: 0 },
+    { platform: 'erpnext', status: 'disconnected', lastSync: null, contactCount: 0 }
   ]);
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
   const [qrCodeData, setQrCodeData] = useState<string | null>(null);
@@ -48,6 +48,11 @@ export default function Connections() {
   const [linkedinMethod, setLinkedinMethod] = useState<'auto' | 'manual'>('auto');
   const [linkedinEmail, setLinkedinEmail] = useState('');
   const [linkedinPassword, setLinkedinPassword] = useState('');
+
+  // ERPNext state
+  const [erpnextUrl, setErpnextUrl] = useState('');
+  const [erpnextApiKey, setErpnextApiKey] = useState('');
+  const [erpnextApiSecret, setErpnextApiSecret] = useState('');
 
   useEffect(() => {
     fetchStatus();
@@ -84,6 +89,14 @@ export default function Connections() {
           : c
       ));
 
+      // Fetch ERPNext status
+      const erpnextStatus = await bridgesApi.getERPNextStatus();
+      setConnections(prev => prev.map(c =>
+        c.platform === 'erpnext'
+          ? { ...c, status: erpnextStatus.is_connected ? 'connected' : 'disconnected', lastSync: erpnextStatus.is_connected ? 'Active' : null, contactCount: erpnextStatus.contact_count || 0 }
+          : c
+      ));
+
     } catch (error) {
       console.error("Failed to fetch connection status", error);
     }
@@ -92,17 +105,24 @@ export default function Connections() {
   const handleSyncContacts = async (platform: string) => {
     setSyncingPlatform(platform);
     try {
-      const syncResp = await bridgesApi.sync(platform);
+      let syncResp;
+      if (platform === 'erpnext') {
+        // ERPNext has its own sync endpoint that returns different format
+        const data = await bridgesApi.syncERPNext();
+        syncResp = { synced_count: data.synced_count + data.updated_count };
+      } else {
+        syncResp = await bridgesApi.sync(platform);
+      }
       setConnections(prev => prev.map(c =>
         c.platform === platform
           ? { ...c, contactCount: syncResp.synced_count, lastSync: 'Just now' }
           : c
       ));
-      toast.success(`Synced ${syncResp.synced_count} contacts from ${platform}`);
+      toast.success(`Synced ${syncResp.synced_count} contacts from ${platformNames[platform as keyof typeof platformNames]}`);
       await fetchStatus();
     } catch (error) {
       console.error(`Sync failed for ${platform}:`, error);
-      toast.error(`Failed to sync contacts from ${platform}`);
+      toast.error(`Failed to sync contacts from ${platformNames[platform as keyof typeof platformNames]}`);
     } finally {
       setSyncingPlatform(null);
     }
@@ -320,6 +340,10 @@ export default function Connections() {
     setLinkedinPassword('');
     setLinkedinEmail('');
     setLinkedinMethod('auto');
+    // Reset ERPNext fields
+    setErpnextUrl('');
+    setErpnextApiKey('');
+    setErpnextApiSecret('');
   };
 
   const handleScanComplete = async () => {
@@ -336,6 +360,8 @@ export default function Connections() {
         await bridgesApi.disconnectGmail();
       } else if (platform === 'outlook') {
         await bridgesApi.disconnectOutlook();
+      } else if (platform === 'erpnext') {
+        await bridgesApi.disconnectERPNext();
       } else {
         await bridgesApi.logout(platform);
       }
@@ -368,6 +394,31 @@ export default function Connections() {
       window.location.href = url;
     } catch (e: any) {
       toast.error(e.message || "Failed to get Outlook auth URL");
+      setIsLoading(false);
+    }
+  };
+
+  const submitERPNextConnect = async () => {
+    if (!erpnextUrl || !erpnextApiKey || !erpnextApiSecret) return;
+    setIsLoading(true);
+    try {
+      const response = await bridgesApi.connectERPNext(erpnextApiKey, erpnextApiSecret, erpnextUrl);
+      if (response.status === 'success') {
+        toast.success(response.message || "ERPNext connected successfully!");
+        setConnections(prev => prev.map(c =>
+          c.platform === 'erpnext'
+            ? { ...c, status: 'connected', lastSync: 'Just now' }
+            : c
+        ));
+        handleCloseModal();
+        // Auto-sync contacts after connecting
+        handleSyncContacts('erpnext');
+      } else {
+        toast.error("Failed to connect to ERPNext");
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to connect to ERPNext");
+    } finally {
       setIsLoading(false);
     }
   };
@@ -524,7 +575,51 @@ export default function Connections() {
                 </div>
               )}
 
-              {!showPhoneInput && !pairingCode && connectingPlatform !== 'linkedin' && connectingPlatform !== 'gmail' && (
+              {connectingPlatform === 'erpnext' && (
+                <div className="flex flex-col space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Connect your ERPNext instance to sync contacts. You'll need your ERPNext site URL and API credentials.
+                  </p>
+                  <input
+                    type="url"
+                    placeholder="ERPNext URL (e.g., https://your-site.erpnext.com)"
+                    value={erpnextUrl}
+                    onChange={(e) => setErpnextUrl(e.target.value)}
+                    className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                  <input
+                    type="text"
+                    placeholder="API Key"
+                    value={erpnextApiKey}
+                    onChange={(e) => setErpnextApiKey(e.target.value)}
+                    className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                  <input
+                    type="password"
+                    placeholder="API Secret"
+                    value={erpnextApiSecret}
+                    onChange={(e) => setErpnextApiSecret(e.target.value)}
+                    className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                  <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                    <span className="font-semibold">How to get API credentials:</span>
+                    <ol className="list-decimal list-inside ml-1 space-y-1 mt-1">
+                      <li>Go to ERPNext → Settings → My Settings</li>
+                      <li>Scroll to "API Access" section</li>
+                      <li>Generate new API key and secret</li>
+                    </ol>
+                  </div>
+                  <button
+                    onClick={submitERPNextConnect}
+                    disabled={!erpnextUrl || !erpnextApiKey || !erpnextApiSecret || isLoading}
+                    className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Connect ERPNext"}
+                  </button>
+                </div>
+              )}
+
+              {!showPhoneInput && !pairingCode && connectingPlatform !== 'linkedin' && connectingPlatform !== 'gmail' && connectingPlatform !== 'outlook' && connectingPlatform !== 'erpnext' && (
                 <p className="text-sm text-muted-foreground text-center mb-6">Scan this QR code with {platformNames[connectingPlatform as keyof typeof platformNames]} on your phone. The connection will complete automatically.</p>
               )}
 

@@ -2,7 +2,7 @@ import { Contact } from '@/api/contacts';
 
 export interface ActionCard {
   id: string;
-  contact: Contact; 
+  contact: Contact;
   // UI specific fields not in API Contact but used in Deck UI
   // We might populate these with fallback values or partial data
   platform: 'whatsapp' | 'linkedin' | 'signal' | 'email' | 'gmail' | 'outlook';
@@ -10,10 +10,11 @@ export interface ActionCard {
   context: string;
   priority: 'high' | 'medium' | 'low';
   createdAt: string;
+  subject?: string;
 }
 
 export interface Connection {
-  platform: 'whatsapp' | 'linkedin' | 'signal' | 'email' | 'gmail' | 'outlook';
+  platform: 'whatsapp' | 'linkedin' | 'signal' | 'email' | 'gmail' | 'outlook' | 'erpnext';
   status: 'connected' | 'disconnected' | 'syncing';
   lastSync: string | null;
   contactCount?: number;

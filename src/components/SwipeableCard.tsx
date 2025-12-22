@@ -11,7 +11,7 @@ import { Button } from './ui/button';
 
 interface SwipeableCardProps {
   card: ActionCard;
-  onSwipeRight: (draft?: string) => void;
+  onSwipeRight: (data?: { draft: string; subject?: string } | string) => void;
   onSwipeLeft: () => void;
   isTop: boolean;
   stackIndex: number;
@@ -20,6 +20,7 @@ interface SwipeableCardProps {
 export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackIndex }: SwipeableCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(card.draft);
+  const [subject, setSubject] = useState(card.subject || '');
   const [regenerateInstructions, setRegenerateInstructions] = useState('');
   const [showRegenerateInput, setShowRegenerateInput] = useState(false);
   const [isSwiping, setIsSwiping] = useState(false);
@@ -48,6 +49,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
     swipeDirectionRef.current = null;
     setIsSwiping(false);
     setDraft(card.draft);
+    setSubject(card.subject || '');
     setIsEditing(false);
     setShowRegenerateInput(false);
     setRegenerateInstructions('');
@@ -85,7 +87,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
     // Use requestAnimationFrame to ensure browser processes the swipe before callback
     requestAnimationFrame(() => {
       if (direction === 'right') {
-        onSwipeRight(draft);
+        onSwipeRight({ draft, subject });
       } else {
         onSwipeLeft();
       }
@@ -165,6 +167,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
     try {
       const data = await deckApi.regenerate(card.id, regenerateInstructions);
       setDraft(data.draft_text);
+      if (data.subject) setSubject(data.subject);
       setShowRegenerateInput(false);
       setRegenerateInstructions('');
     } catch (error) {
@@ -307,11 +310,48 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
           </div>
 
           {/* Draft text area */}
+          {/* Subject Line for specific platforms */}
+          {['email', 'gmail', 'outlook'].includes(card.platform) && (
+            <div className="mb-3">
+              {isEditing ? (
+                <input
+                  type="text"
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  placeholder="Subject"
+                  className="w-full p-2 rounded-lg bg-primary/5 border border-primary/20 text-foreground font-medium text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                />
+              ) : (
+                <div
+                  onClick={() => setIsEditing(true)}
+                  className="p-2 rounded-lg bg-primary/5 border border-primary/20 hover:border-primary/40 cursor-text transition-colors"
+                >
+                  <p className="text-foreground font-medium text-sm">
+                    <span className="text-muted-foreground font-normal">Subject: </span>
+                    {subject || '(No Subject)'}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Draft text area */}
           {isEditing ? (
             <textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              onBlur={() => setIsEditing(false)}
+              onBlur={() => {
+                // Only exit edit mode if we clicked outside? 
+                // Actually relying on blur for textarea might be annoying if click subject input.
+                // Let's remove onBlur auto-close or make it smarter.
+                // For simplicity, keep it but maybe delay or check active element.
+                // User can click "Send" to finish.
+                // Or we rely on the container click to open edit, and explicit 'Done' button?
+                // Current UX: click text -> edit -> blur -> view.
+                // If I click Subject input, Textarea blurs.
+                // I should wrap the whole editing block in a container that handles edit state?
+                // For now, I'll remove onBlur from textarea so user can switch between inputs.
+              }}
               className="w-full min-h-[100px] sm:min-h-[120px] p-3 sm:p-4 rounded-xl bg-primary/5 border border-primary/20 text-foreground text-sm sm:text-base leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
               autoFocus
             />
@@ -321,6 +361,15 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
               className="min-h-[100px] sm:min-h-[120px] p-3 sm:p-4 rounded-xl bg-primary/5 border border-primary/20 hover:border-primary/40 cursor-text transition-colors"
             >
               <p className="text-foreground text-sm sm:text-base leading-relaxed whitespace-pre-wrap break-words">{draft}</p>
+            </div>
+          )}
+
+          {/* Done Editing Button (Only visible when editing) */}
+          {isEditing && (
+            <div className="mt-2 flex justify-end">
+              <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>
+                Done Editing
+              </Button>
             </div>
           )}
         </div>

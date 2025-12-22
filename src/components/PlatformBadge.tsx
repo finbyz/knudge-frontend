@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 
-type Platform = 'whatsapp' | 'linkedin' | 'signal' | 'email' | 'youtube' | 'rss' | 'outlook' | 'gmail';
+type Platform = 'whatsapp' | 'linkedin' | 'signal' | 'email' | 'youtube' | 'rss' | 'outlook' | 'gmail' | 'erpnext';
 
 interface PlatformBadgeProps {
   platform: Platform;
@@ -73,6 +73,14 @@ const platformConfig: Record<Platform, { label: string; bgClass: string; textCla
     borderClass: 'border-amber-200 dark:border-amber-800/40',
     leftBorder: 'border-l-4 border-l-amber-500',
   },
+  erpnext: {
+    label: 'ERPNext',
+    bgClass: 'bg-orange-500/10',
+    textClass: 'text-orange-600',
+    cardBg: 'bg-orange-50/60 dark:bg-orange-950/30',
+    borderClass: 'border-orange-200 dark:border-orange-800/40',
+    leftBorder: 'border-l-4 border-l-orange-500',
+  },
 };
 
 // SVG icons for better clarity
@@ -124,6 +132,12 @@ const PlatformIcon = ({ platform, className }: { platform: Platform; className?:
       return (
         <svg className={className} viewBox="0 0 24 24" fill="currentColor">
           <path d="M6.18 15.64a2.18 2.18 0 0 1 2.18 2.18C8.36 19 7.38 20 6.18 20C5 20 4 19 4 17.82a2.18 2.18 0 0 1 2.18-2.18M4 4.44A15.56 15.56 0 0 1 19.56 20h-2.83A12.73 12.73 0 0 0 4 7.27V4.44m0 5.66a9.9 9.9 0 0 1 9.9 9.9h-2.83A7.07 7.07 0 0 0 4 12.93V10.1z" />
+        </svg>
+      );
+    case 'erpnext':
+      return (
+        <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
         </svg>
       );
     default:

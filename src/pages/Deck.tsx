@@ -28,7 +28,8 @@ const mapDeckItemToCard = (item: DeckItem): ActionCard => ({
   draft: item.content_payload.draft_text || '',
   platform: item.platform as ActionCard['platform'],
   createdAt: new Date(item.created_at || Date.now()).toLocaleDateString(),
-  priority: 'medium'
+  priority: 'medium',
+  subject: item.content_payload.subject
 });
 
 export default function Deck() {
@@ -53,7 +54,7 @@ export default function Deck() {
     }
   };
 
-  const handleSwipeRight = async (cardId: string, updatedDraft?: string) => {
+  const handleSwipeRight = async (cardId: string, data?: { draft: string; subject?: string } | string) => {
     // Optimistic UI update
     const card = cards.find((c) => c.id === cardId);
     setCards((prev) => prev.filter((c) => c.id !== cardId));
@@ -63,8 +64,16 @@ export default function Deck() {
       setCompletedCount((prev) => prev + 1);
 
       try {
-        // Send EXECUTE action with updated draft if edited
-        await deckApi.swipe(cardId, 'EXECUTE', updatedDraft ? { draft_text: updatedDraft } : undefined);
+        let payload: any = {};
+        if (typeof data === 'string') {
+          if (data) payload.draft_text = data;
+        } else if (data) {
+          if (data.draft) payload.draft_text = data.draft;
+          if (data.subject) payload.subject = data.subject;
+        }
+
+        // Send EXECUTE action with updated payload if edited
+        await deckApi.swipe(cardId, 'EXECUTE', Object.keys(payload).length > 0 ? payload : undefined);
       } catch (error) {
         console.error("Failed to execute card:", error);
         toast.error("Failed to process action. Please try again.");
@@ -162,7 +171,7 @@ export default function Deck() {
                     <SwipeableCard
                       key={uniqueKey}
                       card={card}
-                      onSwipeRight={(draft) => handleSwipeRight(card.id, draft)}
+                      onSwipeRight={(data) => handleSwipeRight(card.id, data)}
                       onSwipeLeft={() => handleSwipeLeft(card.id)}
                       isTop={isTop}
                       stackIndex={stackIndex}

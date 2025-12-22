@@ -18,7 +18,8 @@ const platformNames = {
   signal: 'Signal',
   email: 'Email',
   gmail: 'Gmail',
-  outlook: 'Outlook'
+  outlook: 'Outlook',
+  erpnext: 'ERPNext'
 };
 
 export function ConnectionCard({ connection, onConnect, onDisconnect, onSync, isSyncing = false }: ConnectionCardProps) {
