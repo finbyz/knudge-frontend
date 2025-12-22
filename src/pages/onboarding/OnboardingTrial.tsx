@@ -79,7 +79,17 @@ export default function OnboardingTrial() {
             Back
           </Button>
           <span className="text-sm text-muted-foreground">Step 6 of 7</span>
-          <div className="w-16" />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setStep(7);
+              navigate('/onboarding/complete');
+            }}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            Skip
+          </Button>
         </div>
       </header>
 

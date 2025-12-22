@@ -111,8 +111,8 @@ export default function OnboardingConnections() {
   };
 
   const handleSkip = () => {
-    completeOnboarding();
-    navigate('/');
+    setStep(6);
+    navigate('/onboarding/trial');
   };
 
   const handleBack = () => {

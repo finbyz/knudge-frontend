@@ -5,6 +5,9 @@ interface User {
   id: string;
   username: string;
   synapse_user_id?: string;
+  onboarding_step?: number;
+  first_name?: string;
+  last_name?: string;
 }
 
 interface AuthState {
@@ -14,6 +17,7 @@ interface AuthState {
   
   // Actions
   setAuth: (token: string, user: User) => void;
+  setUser: (user: User) => void;
   logout: () => void;
 }
 
@@ -29,6 +33,8 @@ export const useAuthStore = create<AuthState>()(
         user, 
         isAuthenticated: true 
       }),
+
+      setUser: (user) => set({ user }),
 
       logout: () => set({ 
         accessToken: null, 

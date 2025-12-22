@@ -31,4 +31,10 @@ export const deckApi = {
       content_payload: contentPayload
     });
   },
+
+  regenerate: async (itemId: string, instructions: string) => {
+    return ApiClient.post(`/deck/${itemId}/regenerate`, {
+      instructions
+    });
+  },
 };

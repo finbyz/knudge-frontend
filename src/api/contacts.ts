@@ -12,7 +12,7 @@ export interface Contact {
   avatar?: string;
   last_contacted_at?: string;
   created_at?: string;
-
+  provider?: string;
 }
 
 export interface CreateCircleRequest {
@@ -20,6 +20,7 @@ export interface CreateCircleRequest {
   frequency: string;
   contact_ids?: string[];
   outreach_agenda?: string;
+  channels?: string[];
 }
 
 export interface Circle {
@@ -27,19 +28,21 @@ export interface Circle {
   id: string; // UUID from backend
   name: string;
   frequency: string;
+  channels?: string[];
+  outreach_agenda?: string;
 }
 
 export interface CreateContactRequest {
   name: string;
   email?: string;
   phone?: string;
-  circle_id?: number;
+  circle_id?: string;
   notes?: string;
   linkedin_url?: string;
 }
 
 export const contactsApi = {
-  getContacts: async (circleId?: number): Promise<Contact[]> => {
+  getContacts: async (circleId?: string): Promise<Contact[]> => {
     const query = circleId ? `?circle_id=${circleId}` : '';
     return ApiClient.get(`/contacts/${query}`);
   },
@@ -48,11 +51,11 @@ export const contactsApi = {
     return ApiClient.post("/contacts/", data);
   },
 
-  updateContact: async (id: number, data: Partial<CreateContactRequest>): Promise<Contact> => {
+  updateContact: async (id: string, data: Partial<CreateContactRequest>): Promise<Contact> => {
     return ApiClient.put(`/contacts/${id}`, data);
   },
 
-  deleteContact: async (id: number): Promise<{ message: string }> => {
+  deleteContact: async (id: string): Promise<{ message: string }> => {
     return ApiClient.delete(`/contacts/${id}`);
   },
   // Circles

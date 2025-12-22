@@ -95,5 +95,22 @@ export const bridgesApi = {
 
   disconnectOutlook: async (): Promise<{ status: string }> => {
     return ApiClient.post('/outlook/disconnect', {});
+  },
+
+  // ERPNext Integration
+  connectERPNext: async (api_key: string, api_secret: string, base_url: string): Promise<{ status: string, base_url: string, message: string }> => {
+    return ApiClient.post('/erpnext/connect', { api_key, api_secret, base_url });
+  },
+
+  getERPNextStatus: async (): Promise<{ is_connected: boolean, base_url?: string }> => {
+    return ApiClient.get('/erpnext/status');
+  },
+
+  getERPNextContacts: async (): Promise<Array<{ name: string, email: string, phone: string | null, company: string | null }>> => {
+    return ApiClient.get('/erpnext/contacts');
+  },
+
+  disconnectERPNext: async (): Promise<{ status: string }> => {
+    return ApiClient.post('/erpnext/disconnect', {});
   }
 };

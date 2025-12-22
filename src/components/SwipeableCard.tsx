@@ -3,6 +3,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Check, X, Calendar, RefreshCw } from 'lucide-react';
 import { useSwipeable } from 'react-swipeable';
 import { ActionCard } from '@/types';
+import { deckApi } from '@/api/deck';
 import { Avatar } from './Avatar';
 import { PlatformBadge, getPlatformCardStyles } from './PlatformBadge';
 import { cn } from '@/lib/utils';
@@ -155,15 +156,23 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
     touchEventOptions: { passive: false },
   });
 
-  const handleRegenerate = () => {
-    const variations = [
-      `Hi ${card.contact.name.split(' ')[0]}, just wanted to touch base! ${regenerateInstructions ? `(Based on: ${regenerateInstructions})` : ''} Looking forward to connecting soon.`,
-      `Hey ${card.contact.name.split(' ')[0]}! Hope all is well with you. ${regenerateInstructions ? `Specifically regarding: ${regenerateInstructions}` : ''} Let's catch up when you have a moment.`,
-      `${card.contact.name.split(' ')[0]}, thinking of you! ${regenerateInstructions ? `I wanted to ask about ${regenerateInstructions}.` : ''} Would be great to reconnect.`,
-    ];
-    setDraft(variations[Math.floor(Math.random() * variations.length)]);
-    setShowRegenerateInput(false);
-    setRegenerateInstructions('');
+  const [isRegenerating, setIsRegenerating] = useState(false);
+
+  const handleRegenerate = async () => {
+    if (!regenerateInstructions.trim()) return;
+
+    setIsRegenerating(true);
+    try {
+      const data = await deckApi.regenerate(card.id, regenerateInstructions);
+      setDraft(data.draft_text);
+      setShowRegenerateInput(false);
+      setRegenerateInstructions('');
+    } catch (error) {
+      console.error('Regeneration failed:', error);
+      // Ideally show toast here
+    } finally {
+      setIsRegenerating(false);
+    }
   };
 
   const platformStyles = getPlatformCardStyles(card.platform);

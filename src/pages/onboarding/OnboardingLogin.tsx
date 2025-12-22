@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { authApi } from '@/api/auth';
 import { useAuthStore } from '@/stores/authStore';
+import { useOnboardingStore } from '@/stores/onboardingStore';
 import { toast } from 'sonner';
 
 export default function OnboardingLogin() {
@@ -49,6 +50,8 @@ export default function OnboardingLogin() {
           username: response.username,
           synapse_user_id: response.synapse_user_id
       });
+      // Initialize onboarding step to 1
+      useOnboardingStore.getState().setStep(1);
       navigate('/onboarding/goal');
     } catch (error: any) {
       console.error("Auth error:", error);

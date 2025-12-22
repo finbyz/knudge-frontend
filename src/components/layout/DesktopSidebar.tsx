@@ -2,6 +2,7 @@ import { Home, Layers, Users, Rss, Inbox, Settings, Link2, ChevronLeft, ChevronR
 import { NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useUnreadStore } from '@/stores/unreadStore';
+import { useAuthStore } from '@/stores/authStore';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const navItems = [
@@ -22,6 +23,7 @@ interface DesktopSidebarProps {
 export function DesktopSidebar({ collapsed, onToggle }: DesktopSidebarProps) {
   const location = useLocation();
   const { unreadInbox, unreadFeed } = useUnreadStore();
+  const { user } = useAuthStore();
 
   const getUnreadCount = (key?: 'inbox' | 'feed') => {
     if (key === 'inbox') return unreadInbox;
@@ -143,7 +145,10 @@ export function DesktopSidebar({ collapsed, onToggle }: DesktopSidebarProps) {
           collapsed && 'justify-center'
         )}>
           <div className="h-9 w-9 rounded-full gradient-primary flex items-center justify-center flex-shrink-0">
-            <span className="text-white text-sm font-semibold">JD</span>
+            <span className="text-white text-sm font-semibold">
+              {(user?.first_name?.[0] || user?.username?.[0] || 'U').toUpperCase()}
+              {(user?.last_name?.[0] || user?.username?.[1] || '').toUpperCase()}
+            </span>
           </div>
           <AnimatePresence mode="wait">
             {!collapsed && (
@@ -154,8 +159,10 @@ export function DesktopSidebar({ collapsed, onToggle }: DesktopSidebarProps) {
                 transition={{ duration: 0.15 }}
                 className="flex-1 min-w-0"
               >
-                <p className="text-sm font-medium text-sidebar-foreground truncate">John Doe</p>
-                <p className="text-xs text-muted-foreground truncate">Pro Plan</p>
+                <p className="text-sm font-medium text-sidebar-foreground truncate">
+                  {user?.first_name ? `${user.first_name} ${user.last_name || ''}` : user?.username || 'User'}
+                </p>
+                <p className="text-xs text-muted-foreground truncate">Free Plan</p>
               </motion.div>
             )}
           </AnimatePresence>

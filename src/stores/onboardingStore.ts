@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { authApi } from '@/api/auth';
+import { useAuthStore } from './authStore';
 
 export type GoalType = 'grow_business' | 'build_brand' | 'stay_connected' | null;
 
@@ -38,6 +40,7 @@ interface OnboardingState {
   setTrial: (trial: Partial<OnboardingState['trial']>) => void;
   completeOnboarding: () => void;
   reset: () => void;
+  syncFromUser: (user: any) => void;
 }
 
 const initialState = {
@@ -70,7 +73,28 @@ export const useOnboardingStore = create<OnboardingState>()(
     (set) => ({
       ...initialState,
       
-      setStep: (step) => set({ currentStep: step }),
+      setStep: (step) => {
+        set({ currentStep: step });
+        // Fire and forget update to backend if user is logged in
+        const { user } = useAuthStore.getState();
+        if (user) {
+          authApi.updateMe({ onboarding_step: step })
+            .then(() => console.log('Backend step updated:', step))
+            .catch(err => console.error('Failed to update onboarding step:', err));
+        } else {
+          console.warn("User not found in authStore, skipping backend update for step:", step);
+        }
+      },
+
+      syncFromUser: (user) => {
+        if (user?.onboarding_step) {
+          set({ currentStep: user.onboarding_step });
+          // If the user's step indicates they are still onboarding, ensure completed is false
+          if (user.onboarding_step <= 7) {
+            set({ completed: false });
+          }
+        }
+      },
       
       setGoal: (goal) => set({ goal }),
       
@@ -96,7 +120,13 @@ export const useOnboardingStore = create<OnboardingState>()(
         trial: { ...state.trial, ...trial }
       })),
       
-      completeOnboarding: () => set({ completed: true }),
+      completeOnboarding: () => {
+        set({ completed: true });
+        const { user } = useAuthStore.getState();
+        if (user) {
+          authApi.updateMe({ onboarding_step: 8 }).catch(console.error);
+        }
+      },
       
       reset: () => set(initialState),
     }),

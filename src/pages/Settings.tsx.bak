@@ -10,14 +10,18 @@ import { contactsApi, Circle, Contact } from '@/api/contacts';
 import { useAuthStore } from '@/stores/authStore';
 import { toast } from 'sonner';
 
-type ChannelType = 'whatsapp' | 'linkedin' | 'email' | 'outlook';
+type ChannelType = 'whatsapp' | 'linkedin' | 'email' | 'calls' | 'telegram';
 
 // Helper to determine channels from circle frequency/name (since backend Circle doesn't have channels/outreachAgenda yet)
 // We will use local state or defaults for now until backend supports it fully
 interface CircleWithUI extends Circle {
   channels: ChannelType[];
   contacts: number; // For display count
+<<<<<<< HEAD
   outreach_agenda: string;
+=======
+  outreachAgenda: string;
+>>>>>>> 5896d97 (:wq)
   contact_ids?: string[]; // IDs of members
 }
 
@@ -25,13 +29,14 @@ const channelOptions: { id: ChannelType; label: string; color: string; icon: Rea
   { id: 'whatsapp', label: 'WhatsApp', color: '#25D366', icon: <MessageCircle className="h-4 w-4" /> },
   { id: 'linkedin', label: 'LinkedIn', color: '#0A66C2', icon: <LinkedinIcon className="h-4 w-4" /> },
   { id: 'email', label: 'Email', color: '#6B7280', icon: <Mail className="h-4 w-4" /> },
-  { id: 'outlook', label: 'Outlook', color: '#0078D4', icon: <Mail className="h-4 w-4" /> },
+  { id: 'calls', label: 'Calls', color: '#8B5CF6', icon: <Phone className="h-4 w-4" /> },
+  { id: 'telegram', label: 'Telegram', color: '#26A5E4', icon: <Send className="h-4 w-4" /> },
 ];
 
 const frequencyOptions = ['Daily', 'Weekly', 'Every 2 weeks', 'Monthly', 'Quarterly'];
 
 export default function Settings() {
-  const { logout, setUser } = useAuthStore();
+  const { logout } = useAuthStore();
   const [tone, setTone] = useState('professional');
   const [messageLength, setMessageLength] = useState(1);
   const [birthdayReminders, setBirthdayReminders] = useState(true);
@@ -43,9 +48,15 @@ export default function Settings() {
   const [showCircleForm, setShowCircleForm] = useState(false);
   const [editingCircle, setEditingCircle] = useState<CircleWithUI | null>(null);
 
-  // Adjusted form state
+<<<<<<< HEAD
+  // Form State
   const [circleForm, setCircleForm] = useState<{ name: string; frequency: string; channels: ChannelType[]; outreach_agenda: string; contact_ids: string[] }>({
     name: '', frequency: 'Weekly', channels: [], outreach_agenda: '', contact_ids: []
+=======
+  // Adjusted form state
+  const [circleForm, setCircleForm] = useState<{ name: string; frequency: string; channels: ChannelType[]; outreachAgenda: string; contact_ids: string[] }>({
+    name: '', frequency: 'Weekly', channels: [], outreachAgenda: '', contact_ids: []
+>>>>>>> 5896d97 (:wq)
   });
 
   const [contactSearchQuery, setContactSearchQuery] = useState('');
@@ -72,20 +83,23 @@ export default function Settings() {
         contactsApi.getContacts()
       ]);
       setUserProfile(userData);
-      setUser(userData); // Sync to global store
       setAllContacts(contactsData);
 
       // Enhance circles
       const enhancedCircles: CircleWithUI[] = await Promise.all(circlesData.map(async (c) => {
         // Fetch contacts for this circle to get count and IDs
         // This is N+1 but okay for limited circles
-        const members = await contactsApi.getContacts(c.id);
+        const members = await contactsApi.getContacts(c.id as any); // Type cast until updated
         return {
           ...c,
-          channels: (c.channels || ['whatsapp']) as ChannelType[],
+          channels: ['whatsapp'],
           contacts: members.length,
           contact_ids: members.map(m => m.id),
+<<<<<<< HEAD
           outreach_agenda: c.outreach_agenda
+=======
+          outreachAgenda: ''
+>>>>>>> 5896d97 (:wq)
         };
       }));
       setCircles(enhancedCircles);
@@ -100,29 +114,22 @@ export default function Settings() {
 
   const handleAddCircle = () => {
     setEditingCircle(null);
+<<<<<<< HEAD
     setCircleForm({ name: '', channels: [], frequency: 'Weekly', outreach_agenda: '', contact_ids: [] });
+=======
+    setCircleForm({ name: '', channels: [], frequency: 'Weekly', contacts: 0, outreachAgenda: '', contact_ids: [] });
+>>>>>>> 5896d97 (:wq)
     setContactSearchQuery('');
     setShowCircleForm(true);
   };
 
   const toggleChannel = (channel: ChannelType) => {
-    setCircleForm(prev => {
-      const current = prev.channels;
-      if (current.includes(channel)) {
-        // Prevent deselecting the last one if you want to enforce at least one, 
-        // or allow empty but validation alerts it.
-        // Let's allow empty here, validation in render handles 'Save' button.
-        return {
-          ...prev,
-          channels: current.filter(c => c !== channel)
-        };
-      } else {
-        return {
-          ...prev,
-          channels: [...current, channel]
-        };
-      }
-    });
+    setCircleForm(prev => ({
+      ...prev,
+      channels: prev.channels.includes(channel)
+        ? prev.channels.filter(c => c !== channel)
+        : [...prev.channels, channel]
+    }));
   };
 
   const toggleContact = (contactId: string) => {
@@ -160,7 +167,11 @@ export default function Settings() {
       name: circle.name,
       frequency: circle.frequency,
       channels: circle.channels,
+<<<<<<< HEAD
       outreach_agenda: circle.outreach_agenda,
+=======
+      outreachAgenda: circle.outreachAgenda,
+>>>>>>> 5896d97 (:wq)
       contact_ids: circle.contact_ids || []
     });
     setContactSearchQuery('');
@@ -179,54 +190,41 @@ export default function Settings() {
     setCircleForm(prev => ({ ...prev, contact_ids: [] }));
   };
 
-  const filteredContacts = allContacts.filter(contact => {
-    // 1. Text Search Filter
-    const query = contactSearchQuery.toLowerCase();
-    const matchesSearch = (contact.name && contact.name.toLowerCase().includes(query)) ||
-      (contact.email && contact.email.toLowerCase().includes(query)) ||
-      (contact.phone && contact.phone.toLowerCase().includes(query));
-
-    if (!matchesSearch) return false;
-
-    // 2. Channel Availability Filter
-    // If channels are selected, show contacts that match AT LEAST ONE of the selected channels.
-    const selectedChannels = circleForm.channels;
-
-    if (selectedChannels.length === 0) return true; // Show all if nothing selected (though valid requires 1)
-
-    let matchesChannel = false;
-
-    if (selectedChannels.includes('whatsapp')) {
-      if (contact.phone) matchesChannel = true;
-    }
-    if (!matchesChannel && (selectedChannels.includes('email') || selectedChannels.includes('outlook'))) {
-      if (contact.email) matchesChannel = true;
-    }
-    if (!matchesChannel && selectedChannels.includes('linkedin')) {
-      if (contact.linkedin_url) matchesChannel = true;
-    }
-
-    return matchesChannel;
-  });
+  const filteredContacts = allContacts.filter(contact =>
+    contact.name.toLowerCase().includes(contactSearchQuery.toLowerCase()) ||
+    contact.title.toLowerCase().includes(contactSearchQuery.toLowerCase()) ||
+    (contact.company && contact.company.toLowerCase().includes(contactSearchQuery.toLowerCase()))
+  );
 
   const handleSaveCircle = async () => {
+<<<<<<< HEAD
     if (!circleForm.name || !circleForm.outreach_agenda || circleForm.channels.length === 0) return;
+=======
+    if (!circleForm.name || !circleForm.outreachAgenda || circleForm.channels.length === 0) return;
+>>>>>>> 5896d97 (:wq)
 
     try {
       if (editingCircle) {
         const updated = await contactsApi.updateCircle(editingCircle.id, {
           name: circleForm.name,
           frequency: circleForm.frequency,
+<<<<<<< HEAD
           contact_ids: circleForm.contact_ids,
-          outreach_agenda: circleForm.outreach_agenda,
-          channels: circleForm.channels
+          outreach_agenda: circleForm.outreach_agenda
+=======
+          contact_ids: circleForm.contact_ids
+>>>>>>> 5896d97 (:wq)
         });
         // Merge with local UI state (channels, etc.)
         const merged: CircleWithUI = {
           ...editingCircle,
           ...updated,
           channels: circleForm.channels,
+<<<<<<< HEAD
           outreach_agenda: circleForm.outreach_agenda,
+=======
+          outreachAgenda: circleForm.outreachAgenda,
+>>>>>>> 5896d97 (:wq)
           contact_ids: circleForm.contact_ids,
           contacts: circleForm.contact_ids.length
         };
@@ -239,9 +237,12 @@ export default function Settings() {
         const created = await contactsApi.createCircle({
           name: circleForm.name,
           frequency: circleForm.frequency,
+<<<<<<< HEAD
           contact_ids: circleForm.contact_ids,
-          outreach_agenda: circleForm.outreach_agenda,
-          channels: circleForm.channels
+          outreach_agenda: circleForm.outreach_agenda
+=======
+          contact_ids: circleForm.contact_ids
+>>>>>>> 5896d97 (:wq)
         });
         // Enhance with local UI state
         const enhanced: CircleWithUI = {
@@ -249,7 +250,11 @@ export default function Settings() {
           contacts: circleForm.contact_ids.length,
           contact_ids: circleForm.contact_ids,
           channels: circleForm.channels,
+<<<<<<< HEAD
           outreach_agenda: circleForm.outreach_agenda
+=======
+          outreachAgenda: circleForm.outreachAgenda
+>>>>>>> 5896d97 (:wq)
         };
         setCircles((prev) => [...prev, enhanced]);
         toast.success("Circle created");
@@ -294,7 +299,6 @@ export default function Settings() {
         personal_profile: profileForm.personal_profile
       });
       setUserProfile(updated);
-      setUser(updated); // Sync to global store
       setShowProfileForm(false);
       toast.success("Profile updated");
     } catch (error) {
@@ -658,17 +662,6 @@ export default function Settings() {
                     )}
                   </AnimatePresence>
 
-                  <div className="relative mb-3">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <input
-                      type="text"
-                      value={contactSearchQuery}
-                      onChange={(e) => setContactSearchQuery(e.target.value)}
-                      placeholder="Search contacts..."
-                      className="w-full h-10 pl-9 pr-4 rounded-xl bg-muted/50 border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all placeholder:text-muted-foreground"
-                    />
-                  </div>
-
                   <div className="max-h-48 overflow-y-auto border border-border rounded-xl bg-card divide-y divide-border">
                     {filteredContacts.length === 0 ? (
                       <div className="p-4 text-center text-sm text-muted-foreground">No contacts matching search.</div>
@@ -719,7 +712,10 @@ export default function Settings() {
                 </div>
 
                 {/* Assign Contacts Section - Removed as it's redundant with Members selection above */}
+<<<<<<< HEAD
+=======
 
+>>>>>>> 5896d97 (:wq)
               </div>
 
               {/* Footer Actions */}
@@ -741,7 +737,11 @@ export default function Settings() {
                   </button>
                   <button
                     onClick={handleSaveCircle}
+<<<<<<< HEAD
                     disabled={!circleForm.name || !circleForm.outreach_agenda || circleForm.channels.length === 0}
+=======
+                    disabled={!circleForm.name || !circleForm.outreachAgenda || circleForm.channels.length === 0}
+>>>>>>> 5896d97 (:wq)
                     className="flex-1 py-3 rounded-xl gradient-primary text-primary-foreground font-medium shadow-glow disabled:opacity-50 disabled:shadow-none hover:opacity-90 transition-all"
                   >
                     {editingCircle ? 'Save Changes' : 'Create Circle'}

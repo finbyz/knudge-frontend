@@ -12,10 +12,20 @@ export function ContactItem({ contact, onClick }: ContactItemProps) {
   // Derive details that might be missing in API response compared to mock
   // Or handle them gracefully.
   // Derive platforms from available contact info
+  // Derive platforms from available contact info
   const platforms: string[] = [];
-  if (contact.email) platforms.push('email');
-  if (contact.phone) platforms.push('whatsapp');
-  if (contact.linkedin_url) platforms.push('linkedin');
+
+  // 1. Check explicit providers (e.g. "outlook", "whatsapp")
+  if (contact.provider) {
+    const providers = contact.provider.split(',');
+    platforms.push(...providers);
+  }
+
+  // 2. Fallback to inferred channels IF not already covered
+  // If we have 'outlook', we don't need generic 'email' unless specified
+  if (contact.email && !contact.provider) platforms.push('email');
+  if (contact.phone && !platforms.includes('whatsapp')) platforms.push('whatsapp');
+  if (contact.linkedin_url && !platforms.includes('linkedin')) platforms.push('linkedin');
 
   // Title/Company not in backend currently. Display nothing or placeholder if really needed.
   // For now we just show name.
@@ -25,8 +35,8 @@ export function ContactItem({ contact, onClick }: ContactItemProps) {
       onClick={onClick}
       className="w-full flex items-center gap-3 p-3 rounded-2xl bg-card hover:bg-muted/50 transition-colors text-left border border-transparent hover:border-border"
     >
-      <Avatar initials={contact.avatar || contact.name.substring(0, 2)} size="md" /> 
-      
+      <Avatar initials={contact.avatar || contact.name.substring(0, 2)} size="md" />
+
       <div className="flex-1 min-w-0">
         <h3 className="font-medium text-foreground truncate">{contact.name}</h3>
         <p className="text-sm text-muted-foreground truncate">

@@ -31,6 +31,7 @@ export interface UserResponse {
   linkedin_url?: string;
   personal_profile?: string;
   synapse_user_id?: string;
+  onboarding_step?: number;
 }
 
 export interface UserUpdate {
@@ -39,6 +40,7 @@ export interface UserUpdate {
   phone?: string;
   linkedin_url?: string;
   personal_profile?: string;
+  onboarding_step?: number;
 }
 
 export const authApi = {

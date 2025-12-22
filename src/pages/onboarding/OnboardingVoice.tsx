@@ -44,12 +44,13 @@ export default function OnboardingVoice() {
 
   const handleNext = () => {
     setVoice({ length, tone, emoji });
-    setStep(4);
     
     // Skip knowledge step if not grow_business
     if (goal === 'grow_business') {
+      setStep(4);
       navigate('/onboarding/knowledge');
     } else {
+      setStep(5);
       navigate('/onboarding/connections');
     }
   };

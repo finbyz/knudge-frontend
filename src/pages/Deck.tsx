@@ -26,7 +26,7 @@ const mapDeckItemToCard = (item: DeckItem): ActionCard => ({
     },
   context: item.ui_subtitle,
   draft: item.content_payload.draft_text || '',
-  platform: item.platform as any,
+  platform: item.platform as ActionCard['platform'],
   createdAt: new Date(item.created_at || Date.now()).toLocaleDateString(),
   priority: 'medium'
 });

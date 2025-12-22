@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ChevronLeft, Linkedin, Globe, Loader2, Sparkles } from 'lucide-react';
+import { ChevronLeft, Linkedin, Globe, Loader2, Sparkles, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useOnboardingStore } from '@/stores/onboardingStore';
+import { useAuthStore } from '@/stores/authStore';
+import { authApi } from '@/api/auth';
 import { cn } from '@/lib/utils';
 
 type Phase = 'form' | 'loading' | 'result';
@@ -33,7 +35,10 @@ const summaries = {
 export default function OnboardingProfile() {
   const navigate = useNavigate();
   const { goal, setProfile, setStep } = useOnboardingStore();
+  const { setUser } = useAuthStore();
   const [phase, setPhase] = useState<Phase>('form');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [linkedinUrl, setLinkedinUrl] = useState('');
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [loadingStep, setLoadingStep] = useState(0);
@@ -54,13 +59,33 @@ export default function OnboardingProfile() {
     setPhase('result');
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     const goalKey = goal || 'stay_connected';
+
+    // Save profile to store
     setProfile({
       linkedinUrl,
       websiteUrl,
       summary: summaries[goalKey].summary,
     });
+
+    // Save to backend
+    try {
+      const updatedUser = await authApi.updateMe({
+        first_name: firstName,
+        last_name: lastName,
+        linkedin_url: linkedinUrl,
+        personal_profile: summaries[goalKey].summary,
+        onboarding_step: 3
+      });
+      setUser(updatedUser);
+    } catch (error) {
+      console.error('Failed to update profile:', error);
+      // Continue anyway? Or show error? For onboarding flow smooth UX, maybe log and continue if non-critical.
+      // But name is critical. Let's assume it works or we should block.
+      // For MVP, we'll log and proceed to not block user flow if backend fails.
+    }
+
     setStep(3);
     navigate('/onboarding/voice');
   };
@@ -134,6 +159,28 @@ export default function OnboardingProfile() {
             </p>
 
             <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="First Name"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    className="pl-12 h-14 rounded-xl border-2 border-border focus:border-primary"
+                  />
+                </div>
+                <div className="relative">
+                  <Input
+                    type="text"
+                    placeholder="Last Name"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    className="pl-4 h-14 rounded-xl border-2 border-border focus:border-primary"
+                  />
+                </div>
+              </div>
+
               <div className="relative">
                 <Linkedin className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-[#0A66C2]" />
                 <Input
@@ -162,7 +209,7 @@ export default function OnboardingProfile() {
 
             <Button
               onClick={handleAnalyze}
-              disabled={!linkedinUrl}
+              disabled={!linkedinUrl || !firstName}
               className="w-full h-12 mt-8 rounded-xl font-semibold gradient-primary text-primary-foreground"
             >
               Analyze Me →

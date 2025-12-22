@@ -2,6 +2,7 @@ import { Bell, Settings } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { NotificationPanel } from '@/components/NotificationPanel';
+import { useAuthStore } from '@/stores/authStore';
 
 interface AppHeaderProps {
   showNotifications?: boolean;
@@ -9,6 +10,7 @@ interface AppHeaderProps {
 
 export function AppHeader({ showNotifications = true }: AppHeaderProps) {
   const [showNotificationPanel, setShowNotificationPanel] = useState(false);
+  const { user } = useAuthStore();
 
   return (
     <>
@@ -39,7 +41,10 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
               to="/settings"
               className="relative h-10 w-10 rounded-full bg-gradient-to-r from-primary to-cyan-400 flex items-center justify-center hover:scale-110 transition-transform group"
             >
-              <span className="text-primary-foreground font-semibold text-sm">JD</span>
+              <span className="text-primary-foreground font-semibold text-sm">
+                {(user?.first_name?.[0] || user?.username?.[0] || 'U').toUpperCase()}
+                {(user?.last_name?.[0] || user?.username?.[1] || '').toUpperCase()}
+              </span>
               {/* Settings gear overlay */}
               <div className="absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full bg-background border border-border flex items-center justify-center">
                 <Settings className="h-2.5 w-2.5 text-muted-foreground" />

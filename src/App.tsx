@@ -9,6 +9,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useEffect, useState } from "react";
 import { useAuthStore } from "@/stores/authStore";
+import { authApi } from "@/api/auth";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import Deck from "./pages/Deck";
@@ -39,6 +40,19 @@ import GmailCallback from "./pages/GmailCallback";
 import OutlookCallback from "./pages/OutlookCallback";
 
 const queryClient = new QueryClient();
+
+const getStepPath = (step: number) => {
+  switch (step) {
+    case 1: return '/onboarding/goal';
+    case 2: return '/onboarding/profile';
+    case 3: return '/onboarding/voice';
+    case 4: return '/onboarding/knowledge';
+    case 5: return '/onboarding/connections';
+    case 6: return '/onboarding/trial';
+    case 7: return '/onboarding/complete';
+    default: return '/onboarding/goal';
+  }
+};
 
 function AppLayout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
@@ -88,13 +102,43 @@ function AppLayout({ children }: { children: React.ReactNode }) {
 
 function AppRoutes() {
   const location = useLocation();
-  const { completed } = useOnboardingStore();
-  const { accessToken } = useAuthStore();
+  const { completed, currentStep } = useOnboardingStore();
+  const { accessToken, setUser } = useAuthStore();
   const isOnboardingRoute = location.pathname.startsWith('/onboarding');
 
-  // If not on onboarding route and no token or onboarding not complete, redirect to login
-  if (!isOnboardingRoute && (!accessToken || !completed)) {
-    return <Navigate to="/onboarding/login" replace />;
+  useEffect(() => {
+    if (accessToken) {
+      authApi.getMe().then(user => {
+        setUser(user);
+        // Sync onboarding state from backend user data
+        useOnboardingStore.getState().syncFromUser(user);
+      }).catch(() => {
+        // If getMe fails (e.g. token expired), we might want to logout or ignore
+        // For now, ignore to avoid disruption if it's transient
+      });
+    }
+  }, [accessToken, setUser]);
+
+  // Case 1: Not authenticated - only allow login
+  if (!accessToken) {
+    if (location.pathname !== '/onboarding/login') {
+      return <Navigate to="/onboarding/login" replace />;
+    }
+    return <AppLayout><Routes><Route path="/onboarding/login" element={<OnboardingLogin />} /></Routes></AppLayout>;
+  }
+
+  // Case 2: Authenticated but not completed - redirect to current step if not on onboarding
+  if (!completed) {
+    if (!isOnboardingRoute || location.pathname === '/onboarding/login') {
+      return <Navigate to={getStepPath(currentStep)} replace />;
+    }
+  }
+
+  // Case 3: Authenticated and completed - redirect to main app if on onboarding (except login which might be used for switching acts)
+  // Actually if completed, they shouldn't be on onboarding unless explicitly testing. 
+  // But usually we want to block onboarding access if done.
+  if (completed && isOnboardingRoute) {
+    return <Navigate to="/" replace />;
   }
 
   // If trying to access onboarding but user is fully authenticated and completed, go to main app

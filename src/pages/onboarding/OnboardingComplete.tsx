@@ -7,9 +7,8 @@ import { cn } from '@/lib/utils';
 
 const steps = [
   { id: 1, text: 'Analyzing contacts', icon: '🔍' },
-  { id: 2, text: 'Finding birthdays', icon: '🎂' },
-  { id: 3, text: 'Checking last contacted', icon: '📅' },
-  { id: 4, text: 'Generating AI drafts', icon: '✨' },
+  { id: 2, text: 'Checking last contacted', icon: '📅' },
+  { id: 3, text: 'Generating AI drafts', icon: '✨' },
 ];
 
 export default function OnboardingComplete() {

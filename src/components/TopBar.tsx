@@ -2,6 +2,7 @@ import { Bell } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { NotificationPanel } from '@/components/NotificationPanel';
+import { useAuthStore } from '@/stores/authStore';
 
 interface TopBarProps {
   title: string;
@@ -10,6 +11,7 @@ interface TopBarProps {
 
 export function TopBar({ title, showNotifications = true }: TopBarProps) {
   const [showNotificationPanel, setShowNotificationPanel] = useState(false);
+  const { user } = useAuthStore();
 
   return (
     <>
@@ -37,7 +39,10 @@ export function TopBar({ title, showNotifications = true }: TopBarProps) {
               to="/settings"
               className="h-9 w-9 rounded-full bg-gradient-to-r from-primary to-cyan-400 flex items-center justify-center hover:scale-105 transition-transform shadow-sm"
             >
-              <span className="text-primary-foreground font-semibold text-xs">JD</span>
+              <span className="text-primary-foreground font-semibold text-xs">
+                {(user?.first_name?.[0] || user?.username?.[0] || 'U').toUpperCase()}
+                {(user?.last_name?.[0] || user?.username?.[1] || '').toUpperCase()}
+              </span>
             </Link>
           </div>
         </div>
