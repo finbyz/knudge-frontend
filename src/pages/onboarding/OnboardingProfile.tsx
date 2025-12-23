@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { useAuthStore } from '@/stores/authStore';
 import { authApi } from '@/api/auth';
+import { researchApi, UserProfileResearch } from '@/api/research';
 import { cn } from '@/lib/utils';
 
 type Phase = 'form' | 'loading' | 'result';
@@ -17,7 +18,8 @@ const loadingSteps = [
   { icon: '📊', text: 'Detecting keywords...' },
 ];
 
-const summaries = {
+// Fallback summaries if API fails
+const fallbackSummaries = {
   grow_business: {
     summary: 'You are a Fintech Founder who speaks in a Direct, Professional tone. You care about SaaS and Venture Capital.',
     highlights: ['Fintech Founder', 'Direct, Professional', 'SaaS', 'Venture Capital'],
@@ -43,30 +45,64 @@ export default function OnboardingProfile() {
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [loadingStep, setLoadingStep] = useState(0);
   const [progress, setProgress] = useState(0);
+  const [researchResult, setResearchResult] = useState<UserProfileResearch | null>(null);
 
   const handleAnalyze = async () => {
     setPhase('loading');
     setProgress(0);
     setLoadingStep(0);
 
-    // Simulate loading steps
-    for (let i = 0; i < loadingSteps.length; i++) {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      setLoadingStep(i + 1);
-      setProgress(((i + 1) / loadingSteps.length) * 100);
-    }
+    try {
+      // Start progress animation
+      const progressInterval = setInterval(() => {
+        setProgress((prev) => Math.min(prev + 10, 90));
+      }, 500);
 
-    setPhase('result');
+      // Animate loading steps
+      for (let i = 0; i < loadingSteps.length; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        setLoadingStep(i + 1);
+      }
+
+      // Call actual Perplexity API
+      const result = await researchApi.researchUserProfile(
+        linkedinUrl,
+        `${firstName} ${lastName}`.trim() || undefined
+      );
+
+      clearInterval(progressInterval);
+      setProgress(100);
+      setResearchResult(result);
+      setPhase('result');
+    } catch (error) {
+      console.error('Profile research failed:', error);
+      // Fall back to default summaries
+      setProgress(100);
+      setResearchResult(null);
+      setPhase('result');
+    }
   };
 
   const handleConfirm = async () => {
     const goalKey = goal || 'stay_connected';
 
+    // Build summary from research results or fallback
+    let personalProfile: string;
+    if (researchResult && researchResult.identity) {
+      const parts = [];
+      if (researchResult.identity) parts.push(`You are a ${researchResult.identity}`);
+      if (researchResult.tone) parts.push(`who speaks in a ${researchResult.tone} tone`);
+      if (researchResult.topics?.length) parts.push(`You care about ${researchResult.topics.slice(0, 3).join(', ')}`);
+      personalProfile = parts.join('. ') + '.';
+    } else {
+      personalProfile = fallbackSummaries[goalKey].summary;
+    }
+
     // Save profile to store
     setProfile({
       linkedinUrl,
       websiteUrl,
-      summary: summaries[goalKey].summary,
+      summary: personalProfile,
     });
 
     // Save to backend
@@ -75,15 +111,12 @@ export default function OnboardingProfile() {
         first_name: firstName,
         last_name: lastName,
         linkedin_url: linkedinUrl,
-        personal_profile: summaries[goalKey].summary,
+        personal_profile: personalProfile,
         onboarding_step: 3
       });
       setUser(updatedUser);
     } catch (error) {
       console.error('Failed to update profile:', error);
-      // Continue anyway? Or show error? For onboarding flow smooth UX, maybe log and continue if non-critical.
-      // But name is critical. Let's assume it works or we should block.
-      // For MVP, we'll log and proceed to not block user flow if backend fails.
     }
 
     setStep(3);
@@ -95,7 +128,36 @@ export default function OnboardingProfile() {
   };
 
   const goalKey = goal || 'stay_connected';
-  const summaryData = summaries[goalKey];
+  const fallbackData = fallbackSummaries[goalKey];
+
+  // Build summary data from research or fallback
+  const getSummaryData = () => {
+    if (researchResult && researchResult.identity) {
+      const parts = [];
+      const highlights: string[] = [];
+
+      if (researchResult.identity) {
+        parts.push(`You are a ${researchResult.identity}`);
+        highlights.push(researchResult.identity);
+      }
+      if (researchResult.tone) {
+        parts.push(`who speaks in a ${researchResult.tone} tone`);
+        highlights.push(researchResult.tone);
+      }
+      if (researchResult.topics?.length) {
+        parts.push(`You care about ${researchResult.topics.slice(0, 3).join(', ')}`);
+        researchResult.topics.slice(0, 3).forEach(t => highlights.push(t));
+      }
+
+      return {
+        summary: parts.join('. ') + '.',
+        highlights,
+      };
+    }
+    return fallbackData;
+  };
+
+  const summaryData = getSummaryData();
 
   const renderHighlightedSummary = () => {
     let text = summaryData.summary;

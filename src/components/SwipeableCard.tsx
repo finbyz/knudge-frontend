@@ -24,6 +24,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
   const [regenerateInstructions, setRegenerateInstructions] = useState('');
   const [showRegenerateInput, setShowRegenerateInput] = useState(false);
   const [isSwiping, setIsSwiping] = useState(false);
+  const [exitDirection, setExitDirection] = useState<'left' | 'right' | null>(null);
 
   // Use refs to prevent double-firing and track swipe state
   const hasSwipedRef = useRef(false);
@@ -47,6 +48,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
     // Reset all swipe state
     hasSwipedRef.current = false;
     swipeDirectionRef.current = null;
+    setExitDirection(null);
     setIsSwiping(false);
     setDraft(card.draft);
     setSubject(card.subject || '');
@@ -83,16 +85,17 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
     }
     hasSwipedRef.current = true;
     swipeDirectionRef.current = direction;
+    setExitDirection(direction);
 
-    // Use requestAnimationFrame to ensure browser processes the swipe before callback
-    requestAnimationFrame(() => {
+    // Small delay to ensure state is set before callback triggers removal
+    setTimeout(() => {
       if (direction === 'right') {
         onSwipeRight({ draft, subject });
       } else {
         onSwipeLeft();
       }
-    });
-  }, [onSwipeRight, onSwipeLeft, draft]);
+    }, 50);
+  }, [onSwipeRight, onSwipeLeft, draft, subject]);
 
   // Reset card state
   const resetCardState = useCallback(() => {
@@ -204,17 +207,12 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         left: `${2 + stackIndex * 0.5}%`,
         right: `${2 + stackIndex * 0.5}%`,
         height: 'calc(100% - 32px)',
-        // Brave mobile specific CSS properties
-        willChange: isTop ? 'transform' : 'auto',
-        touchAction: isTop ? 'pan-y' : 'none',
+        willChange: isTop ? 'transform, opacity' : 'auto',
+        touchAction: isTop ? 'none' : 'none',
         WebkitTouchCallout: 'none',
         WebkitUserSelect: 'none',
         userSelect: 'none',
         pointerEvents: isTop ? 'auto' : 'none',
-        // Force GPU layer for Brave mobile
-        transform: 'translate3d(0, 0, 0)',
-        backfaceVisibility: 'hidden',
-        WebkitBackfaceVisibility: 'hidden',
       }}
       initial={{
         scale: stackScale,
@@ -227,9 +225,9 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         opacity: stackOpacity,
       }}
       exit={{
-        x: swipeDirectionRef.current === 'right' ? 400 : -400,
+        x: exitDirection === 'right' ? 400 : exitDirection === 'left' ? -400 : 0,
         opacity: 0,
-        transition: { duration: 0.3, type: 'spring', stiffness: 100 }
+        transition: { duration: 0.25 }
       }}
       transition={{ type: 'spring', stiffness: 350, damping: 30, duration: 0.4 }}
     >
@@ -267,6 +265,8 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         platformStyles.leftBorder
       )}
       >
+        {/* Header - hide content for stacked cards using visibility for smoother animations */}
+        <div style={{ visibility: isTop ? 'visible' : 'hidden' }}>
         {/* Header */}
         <div className="p-3 sm:p-4 border-b border-border/50 bg-card/60 backdrop-blur-sm flex-shrink-0">
           <div className="flex items-start justify-between gap-2">
@@ -455,6 +455,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
               </div>
             </div>
           </div>
+        </div>
         </div>
       </div>
     </motion.div>
