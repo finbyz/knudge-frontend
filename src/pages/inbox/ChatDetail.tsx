@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, MoreVertical, Plus, Sparkles, Send, MessageCircle, Linkedin, Check, CheckCheck, Clock, Camera, FileText, MapPin, User, Mic, X, Loader2, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { useSwipeable } from 'react-swipeable';
+import { useAuthStore } from '@/stores/authStore';
 
 interface ChatMessage {
   id: number;
@@ -91,6 +92,10 @@ const mockInboxChats = ['1', '2', '4', '5'];
 export default function ChatDetail() {
   const navigate = useNavigate();
   const { contactId } = useParams<{ contactId: string }>();
+  const [searchParams] = useSearchParams();
+  const roomId = searchParams.get('room');
+  const contactNameFromParams = searchParams.get('name');
+
   const [messages, setMessages] = useState<ChatMessage[]>(sampleMessages);
   const [inputText, setInputText] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -102,15 +107,65 @@ export default function ChatDetail() {
   const [replyDraft, setReplyDraft] = useState('');
   const [replyInstructions, setReplyInstructions] = useState('');
   const [isGeneratingReply, setIsGeneratingReply] = useState(false);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileAccept, setFileAccept] = useState('');
   const { toast } = useToast();
+  const { accessToken } = useAuthStore();
 
-  const contact = sampleContacts[contactId || '1'] || sampleContacts['1'];
+  // Dynamic contact based on params or sample
+  const [dynamicContact, setDynamicContact] = useState<ContactInfo | null>(null);
+
+  // Use dynamic contact if available, otherwise fall back to sample
+  const contact = dynamicContact || sampleContacts[contactId || '1'] || sampleContacts['1'];
   const platform = platformConfig[contact.platform];
   const PlatformIcon = platform.icon;
+
+  // Fetch WhatsApp messages if roomId is provided
+  useEffect(() => {
+    if (roomId && contactNameFromParams && accessToken) {
+      // Set contact info from params
+      setDynamicContact({
+        id: contactId || 'wa',
+        name: contactNameFromParams,
+        initials: contactNameFromParams[0]?.toUpperCase() || 'W',
+        platform: 'whatsapp',
+        lastSeen: 'WhatsApp'
+      });
+
+      // Fetch messages from API
+      const fetchMessages = async () => {
+        setIsLoadingMessages(true);
+        try {
+          const response = await fetch(
+            `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/bridges/whatsapp/messages/${encodeURIComponent(roomId)}`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+          );
+
+          if (response.ok) {
+            const data = await response.json();
+            const chatMessages: ChatMessage[] = data.map((msg: any, idx: number) => ({
+              id: idx + 1,
+              type: msg.direction === 'OUTGOING' ? 'outgoing' : 'incoming',
+              text: msg.body || '',
+              timestamp: new Date(msg.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+              status: msg.direction === 'OUTGOING' ? 'read' : undefined,
+            }));
+            setMessages(chatMessages);
+          }
+        } catch (error) {
+          console.error('Failed to fetch WhatsApp messages:', error);
+        } finally {
+          setIsLoadingMessages(false);
+        }
+      };
+
+      fetchMessages();
+    }
+  }, [roomId, contactNameFromParams, contactId, accessToken]);
+
 
   // Navigation between messages
   const currentIndex = mockInboxChats.indexOf(contactId || '1');
@@ -182,18 +237,58 @@ export default function ChatDetail() {
   const handleAiSparkle = useCallback(async () => {
     setIsAiLoading(true);
 
-    // Simulate AI thinking
-    await new Promise(resolve => setTimeout(resolve, 1500));
-
     if (!inputText.trim()) {
-      // STATE 1: Empty text - Generate draft
-      const randomDraft = aiDraftResponses[Math.floor(Math.random() * aiDraftResponses.length)];
-      setIsAiLoading(false);
-      typeText(randomDraft, () => {
-        toast({
-          description: "Draft generated based on context",
+      // STATE 1: Empty text - Generate draft using AI with chat history
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+        // Convert messages to the format expected by the API
+        const historyForApi = messages.map(msg => ({
+          type: msg.type,
+          text: msg.text
+        }));
+
+        const response = await fetch(`${apiUrl}/api/v1/bridges/whatsapp/generate-reply`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            contact_name: contact.name,
+            history: historyForApi,
+          }),
         });
-      });
+
+        if (response.ok) {
+          const data = await response.json();
+          setIsAiLoading(false);
+          typeText(data.body || '', () => {
+            toast({
+              description: "Draft generated matching your style",
+            });
+          });
+        } else {
+          // Fallback to random draft if API fails
+          const randomDraft = aiDraftResponses[Math.floor(Math.random() * aiDraftResponses.length)];
+          setIsAiLoading(false);
+          typeText(randomDraft, () => {
+            toast({
+              description: "Draft generated based on context",
+            });
+          });
+        }
+      } catch (error) {
+        console.error('Failed to generate AI draft:', error);
+        // Fallback to random draft
+        const randomDraft = aiDraftResponses[Math.floor(Math.random() * aiDraftResponses.length)];
+        setIsAiLoading(false);
+        typeText(randomDraft, () => {
+          toast({
+            description: "Draft generated based on context",
+          });
+        });
+      }
     } else {
       // STATE 2: Has text - Polish/refine
       setOriginalText(inputText);
@@ -206,7 +301,7 @@ export default function ChatDetail() {
       });
       setTimeout(() => setShowUndo(false), 3000);
     }
-  }, [inputText, toast, typeText]);
+  }, [inputText, toast, typeText, messages, contact.name, accessToken]);
 
   const polishText = (text: string): string => {
     // Simple polish logic - in real app this would be AI
@@ -323,36 +418,52 @@ export default function ChatDetail() {
 
   const generateReplyDraft = async (originalMessage: string, instructions?: string) => {
     setIsGeneratingReply(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
 
-    let draft = '';
-    const lowerMsg = originalMessage.toLowerCase();
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-    if (instructions) {
-      // Generate based on instructions
-      if (instructions.toLowerCase().includes('casual')) {
-        draft = "Hey! Yeah totally, that works for me! 😊";
-      } else if (instructions.toLowerCase().includes('formal') || instructions.toLowerCase().includes('professional')) {
-        draft = "Thank you for your message. I would be delighted to proceed with your suggestion. Please let me know the next steps.";
-      } else if (instructions.toLowerCase().includes('short')) {
-        draft = "Sounds good, let's do it!";
+      // Convert messages to the format expected by the API
+      const historyForApi = messages.map(msg => ({
+        type: msg.type,
+        text: msg.text
+      }));
+
+      const response = await fetch(`${apiUrl}/api/v1/bridges/whatsapp/generate-reply`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          contact_name: contact.name,
+          history: historyForApi,
+          instructions: instructions,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setReplyDraft(data.body || '');
       } else {
-        draft = `Based on your request: "${instructions}" - Here's my suggested reply: That sounds wonderful! I'm looking forward to it.`;
+      // Fallback to basic draft if API fails
+        let draft = '';
+        const lowerMsg = originalMessage.toLowerCase();
+
+        if (lowerMsg.includes('meet') || lowerMsg.includes('lunch') || lowerMsg.includes('celebrate')) {
+          draft = "That sounds perfect! I'd love to. Just let me know the time and place, and I'll be there.";
+        } else if (lowerMsg.includes('?')) {
+          draft = "Great question! I'll look into that and get back to you with more details soon.";
+        } else {
+          draft = "Thanks for reaching out! I'm happy to continue this conversation. Let me know how I can help.";
+        }
+        setReplyDraft(draft);
       }
-    } else {
-      // Auto-generate based on message content
-      if (lowerMsg.includes('meet') || lowerMsg.includes('lunch') || lowerMsg.includes('celebrate')) {
-        draft = "That sounds perfect! I'd love to. Just let me know the time and place, and I'll be there.";
-      } else if (lowerMsg.includes('?')) {
-        draft = "Great question! I'll look into that and get back to you with more details soon.";
-      } else if (lowerMsg.includes('congratulations') || lowerMsg.includes('awesome') || lowerMsg.includes('great')) {
-        draft = "Thank you so much! I really appreciate your kind words. It means a lot!";
-      } else {
-        draft = "Thanks for reaching out! I'm happy to continue this conversation. Let me know how I can help.";
-      }
+    } catch (error) {
+      console.error('Failed to generate reply draft:', error);
+      // Fallback to basic draft
+      setReplyDraft("Thanks for reaching out! I'm happy to continue this conversation.");
     }
 
-    setReplyDraft(draft);
     setIsGeneratingReply(false);
   };
 

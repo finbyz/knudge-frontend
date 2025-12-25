@@ -32,6 +32,11 @@ export interface UserResponse {
   personal_profile?: string;
   synapse_user_id?: string;
   onboarding_step?: number;
+  birthday_reminders?: boolean;
+  social_monitoring?: boolean;
+  push_notifications?: boolean;
+  message_tone?: string;       // 'casual' | 'professional' | 'friendly'
+  message_length?: string;     // 'short' | 'medium' | 'long'
 }
 
 export interface UserUpdate {
@@ -41,6 +46,11 @@ export interface UserUpdate {
   linkedin_url?: string;
   personal_profile?: string;
   onboarding_step?: number;
+  birthday_reminders?: boolean;
+  social_monitoring?: boolean;
+  push_notifications?: boolean;
+  message_tone?: string;       // 'casual' | 'professional' | 'friendly'
+  message_length?: string;     // 'short' | 'medium' | 'long'
 }
 
 export const authApi = {

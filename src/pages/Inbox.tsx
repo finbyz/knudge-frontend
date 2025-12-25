@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useUnreadStore } from '@/stores/unreadStore';
 import { useAuthStore } from '@/stores/authStore';
+import { useInboxStore, type InboxMessage } from '@/stores/inboxStore';
 
 // Helper function to highlight search terms
 const highlightText = (text: string, query: string): React.ReactNode => {
@@ -25,84 +26,6 @@ const highlightText = (text: string, query: string): React.ReactNode => {
     )
   );
 };
-
-interface InboxMessage {
-  id: string;
-  sender: {
-    name: string;
-    avatar?: string;
-    initials: string;
-  };
-  platform: 'whatsapp' | 'linkedin' | 'email' | 'signal' | 'outlook' | 'gmail';
-  subject?: string;
-  preview: string;
-  timestamp: string;
-  unread: boolean;
-  unreadCount?: number;
-}
-
-const initialMessages: InboxMessage[] = [
-  {
-    id: '1',
-    sender: { name: 'Sarah Chen', initials: 'SC' },
-    platform: 'whatsapp',
-    preview: "Hey! Just wanted to follow up on our discussion about the AI integration. When would be a good time to chat?",
-    timestamp: '10:45 AM',
-    unread: true,
-    unreadCount: 3,
-  },
-  {
-    id: '2',
-    sender: { name: 'John Investor', initials: 'JI' },
-    platform: 'linkedin',
-    preview: "Great meeting yesterday! I've reviewed the pitch deck and have some thoughts to share.",
-    timestamp: '9:30 AM',
-    unread: true,
-  },
-  {
-    id: '3',
-    sender: { name: 'Emily Rodriguez', initials: 'ER' },
-    platform: 'email',
-    subject: 'Q4 Product Roadmap',
-    preview: "Hi team, Please find attached the updated roadmap for Q4. Key highlights include...",
-    timestamp: 'Yesterday',
-    unread: false,
-  },
-  {
-    id: '4',
-    sender: { name: 'Michael Chang', initials: 'MC' },
-    platform: 'signal',
-    preview: "The documents are ready for review. Let me know if you need any changes before the meeting.",
-    timestamp: 'Yesterday',
-    unread: true,
-    unreadCount: 2,
-  },
-  {
-    id: '5',
-    sender: { name: 'Lisa Park', initials: 'LP' },
-    platform: 'whatsapp',
-    preview: "Thanks for the intro! Really looking forward to connecting with the team next week.",
-    timestamp: 'Dec 8',
-    unread: false,
-  },
-  {
-    id: '6',
-    sender: { name: 'David Kim', initials: 'DK' },
-    platform: 'email',
-    subject: 'Re: Technical Specifications',
-    preview: "I've made the updates you requested. The new API endpoints are now documented in the wiki.",
-    timestamp: 'Dec 8',
-    unread: false,
-  },
-  {
-    id: '7',
-    sender: { name: 'Anna Martinez', initials: 'AM' },
-    platform: 'linkedin',
-    preview: "Loved your recent post about startup culture! Would love to connect and share insights.",
-    timestamp: 'Dec 7',
-    unread: false,
-  },
-];
 
 const platformConfig = {
   whatsapp: {
@@ -147,7 +70,7 @@ interface SwipeState {
 export default function Inbox() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
-  const [messages, setMessages] = useState<InboxMessage[]>(initialMessages);
+  const { messages, addMessages, setLoading, markFetched, shouldRefetch, isLoading } = useInboxStore();
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [swipeState, setSwipeState] = useState<SwipeState>({
@@ -159,42 +82,104 @@ export default function Inbox() {
   const [removingId, setRemovingId] = useState<string | null>(null);
   const { accessToken } = useAuthStore();
 
-  // Fetch real emails
+  // Fetch real emails and WhatsApp messages
   useEffect(() => {
-    const fetchEmails = async () => {
+    const fetchMessages = async () => {
+      const allMessages: InboxMessage[] = [];
+
+    // Fetch emails
       try {
         const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/emails/?limit=50&direction=INCOMING`, {
           headers: { Authorization: `Bearer ${accessToken}` }
         });
         if (response.ok) {
           const data = await response.json();
-          const realMessages: InboxMessage[] = data.map((email: any) => ({
-            id: email.id,
-            sender: {
-              name: email.from_email.split('<')[0].replace(/"/g, '').trim() || email.from_email, // Simplistic name extraction
-              initials: (email.from_email[0] || '?').toUpperCase()
-            },
-            platform: email.platform && email.platform !== 'email' ? email.platform : 'email',
-            subject: email.subject,
-            preview: email.body_text ? email.body_text.slice(0, 100) : 'No content',
-            timestamp: new Date(email.sent_at).toLocaleDateString(), // Simplistic date
-            unread: email.status === 'RECEIVED', // Assuming RECEIVED means unread/new
-          }));
-
-          setMessages(prev => {
-            // Merge real messages with demo messages, avoiding duplicates by ID
-            const existingIds = new Set(prev.map(m => m.id));
-            const newReal = realMessages.filter(m => !existingIds.has(m.id));
-            return [...newReal, ...prev];
+          const emailMessages: InboxMessage[] = data.map((email: any) => {
+            const emailDate = new Date(email.sent_at);
+            return {
+              id: `email-${email.id}`,
+              sender: {
+                name: email.from_email.split('<')[0].replace(/"/g, '').trim() || email.from_email,
+                initials: (email.from_email[0] || '?').toUpperCase()
+              },
+              platform: email.platform && email.platform !== 'email' ? email.platform : 'email',
+              subject: email.subject,
+              preview: email.body_text ? email.body_text.slice(0, 100) : 'No content',
+              timestamp: emailDate.toLocaleDateString(),
+              sortDate: emailDate,
+              unread: email.status === 'RECEIVED',
+            };
           });
+          allMessages.push(...emailMessages);
         }
       } catch (error) {
         console.error("Failed to fetch emails:", error);
       }
+
+
+      // Fetch WhatsApp messages
+      try {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/bridges/whatsapp/messages?limit=50&direction=INCOMING`, {
+          headers: { Authorization: `Bearer ${accessToken}` }
+        });
+        if (response.ok) {
+          const data = await response.json();
+
+          // Group messages by room_id, keeping only the most recent message per room
+          const roomMap = new Map<string, any>();
+          for (const msg of data) {
+            const existingMsg = roomMap.get(msg.room_id);
+            if (!existingMsg || new Date(msg.timestamp) > new Date(existingMsg.timestamp)) {
+              roomMap.set(msg.room_id, msg);
+            }
+          }
+
+          // Convert grouped messages to inbox format
+          const waMessages: InboxMessage[] = Array.from(roomMap.values()).map((msg: any) => {
+            // Clean contact name - remove "(WA)" suffix if present
+            let contactName = msg.contact_name || 'Unknown';
+            contactName = contactName.replace(/\s*\(WA\)\s*$/i, '').trim();
+            const msgDate = new Date(msg.timestamp);
+
+            return {
+              id: `wa-room-${msg.room_id}`,
+              sender: {
+                name: contactName,
+                initials: (contactName?.[0] || '?').toUpperCase()
+              },
+              platform: 'whatsapp' as const,
+              preview: msg.body || 'No content',
+              timestamp: msgDate.toLocaleDateString(),
+              sortDate: msgDate,
+              roomId: msg.room_id,
+              unread: true,
+            };
+          });
+          allMessages.push(...waMessages);
+        }
+      } catch (error) {
+        console.error("Failed to fetch WhatsApp messages:", error);
+      }
+
+      // Sort all messages by timestamp (most recent first)
+      if (allMessages.length > 0) {
+        // Sort by sortDate, newest first
+        allMessages.sort((a, b) => {
+          const dateA = a.sortDate || new Date(0);
+          const dateB = b.sortDate || new Date(0);
+          return dateB.getTime() - dateA.getTime();
+        });
+
+        addMessages(allMessages);
+        markFetched();
+      }
+      setLoading(false);
     };
 
-    if (accessToken) {
-      fetchEmails();
+    // Only fetch if cache is stale or no messages
+    if (accessToken && (shouldRefetch() || messages.length === 0)) {
+      setLoading(true);
+      fetchMessages();
     }
   }, [accessToken]);
 
@@ -267,30 +252,15 @@ export default function Inbox() {
 
     const SWIPE_THRESHOLD = 100;
 
-    // Swipe left - Archive
+    // Swipe left - Archive (just show toast, actual archive would need API)
     if (swipeState.offsetX < -SWIPE_THRESHOLD) {
-      const msgId = swipeState.messageId;
-      setRemovingId(msgId);
-
-      setTimeout(() => {
-        setMessages(prev => prev.filter(m => m.id !== msgId));
-        setRemovingId(null);
-        toast({
-          description: "Message archived",
-        });
-      }, 200);
+      toast({
+        description: "Message archived",
+      });
     }
-    // Swipe right - Toggle unread
+      // Swipe right - Toggle unread (just show toast)
     else if (swipeState.offsetX > SWIPE_THRESHOLD) {
       const msgId = swipeState.messageId;
-      setMessages(prev => prev.map(m => {
-        if (m.id === msgId) {
-          const newUnread = !m.unread;
-          return { ...m, unread: newUnread, unreadCount: newUnread ? 1 : undefined };
-        }
-        return m;
-      }));
-
       const msg = messages.find(m => m.id === msgId);
       toast({
         description: msg?.unread ? "Message marked as read" : "Message marked as unread",
@@ -330,6 +300,10 @@ export default function Inbox() {
       // Navigate to appropriate detail view based on platform
       if (['email', 'outlook', 'gmail'].includes(message.platform)) {
         navigate(`/inbox/email/${message.id}`);
+      } else if (message.platform === 'whatsapp' && message.roomId) {
+        // For WhatsApp, pass the room_id and contact name as query params
+        const roomParam = encodeURIComponent(message.roomId);
+        navigate(`/inbox/chat/wa?room=${roomParam}&name=${encodeURIComponent(message.sender.name)}`);
       } else {
         navigate(`/inbox/chat/${message.id}`);
       }
@@ -342,9 +316,6 @@ export default function Inbox() {
   }, []);
 
   const markSelectedAsRead = useCallback(() => {
-    setMessages(prev => prev.map(m =>
-      selectedIds.has(m.id) ? { ...m, unread: false, unreadCount: undefined } : m
-    ));
     toast({
       description: `${selectedIds.size} message(s) marked as read`,
     });
@@ -352,7 +323,6 @@ export default function Inbox() {
   }, [selectedIds, toast, exitSelectionMode]);
 
   const archiveSelected = useCallback(() => {
-    setMessages(prev => prev.filter(m => !selectedIds.has(m.id)));
     toast({
       description: `${selectedIds.size} message(s) archived`,
     });

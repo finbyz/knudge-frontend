@@ -73,6 +73,14 @@ export default function Settings() {
       ]);
       setUserProfile(userData);
       setUser(userData); // Sync to global store
+      // Load notification preferences - use ?? to handle undefined/null with default true
+      setBirthdayReminders(userData.birthday_reminders ?? true);
+      setSocialMonitoring(userData.social_monitoring ?? true);
+      setPushNotifications(userData.push_notifications ?? true);
+      // Load message preferences
+      setTone(userData.message_tone ?? 'professional');
+      const lengthToIndex: Record<string, number> = { short: 0, medium: 1, long: 2 };
+      setMessageLength(lengthToIndex[(userData.message_length || 'medium').toLowerCase()] ?? 1);
       setAllContacts(contactsData);
 
       // Enhance circles
@@ -340,6 +348,64 @@ export default function Settings() {
           </div>
         </motion.section>
 
+        {/* Profile Section */}
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="bg-card rounded-2xl p-6 border border-border"
+        >
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold flex items-center gap-3">
+              <User className="h-6 w-6" />
+              Profile
+            </h2>
+            <button
+              onClick={handleEditProfile}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg flex items-center gap-2 hover:opacity-90 transition"
+            >
+              <Edit2 className="h-4 w-4" />
+              Edit
+            </button>
+          </div>
+
+          {/* Profile Display */}
+          {userProfile && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="text-sm text-muted-foreground font-medium">First Name</label>
+                <p className="font-semibold text-foreground mt-1">{userProfile.first_name || '-'}</p>
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground font-medium">Last Name</label>
+                <p className="font-semibold text-foreground mt-1">{userProfile.last_name || '-'}</p>
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground font-medium">Phone</label>
+                <p className="font-semibold text-foreground mt-1">{userProfile.phone || '-'}</p>
+              </div>
+              <div>
+                <label className="text-sm text-muted-foreground font-medium">LinkedIn</label>
+                <p className="font-semibold text-blue-500 cursor-pointer mt-1">
+                  {userProfile.linkedin_url ? (
+                    <a href={userProfile.linkedin_url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                      View Profile →
+                    </a>
+                  ) : (
+                    '-'
+                  )}
+                </p>
+              </div>
+              {userProfile.personal_profile && (
+                <div className="col-span-1 md:col-span-2">
+                  <label className="text-sm text-muted-foreground font-medium">Personal Profile</label>
+                  <p className="font-semibold text-foreground mt-1 text-sm">{userProfile.personal_profile}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </motion.section>
+
         {/* Circles Section */}
         <motion.section
           initial={{ opacity: 0, y: 20 }}
@@ -395,7 +461,16 @@ export default function Settings() {
                 {tones.map((t) => (
                   <button
                     key={t}
-                    onClick={() => setTone(t.toLowerCase())}
+                    onClick={async () => {
+                      const value = t.toLowerCase();
+                      setTone(value);
+                      try {
+                        await authApi.updateMe({ message_tone: value });
+                        toast.success('Message tone set to ' + t);
+                      } catch (error) {
+                        toast.error('Failed to update tone');
+                      }
+                    }}
                     className={cn(
                       'flex-1 py-2.5 rounded-xl text-sm font-medium transition-all',
                       tone === t.toLowerCase()
@@ -416,7 +491,16 @@ export default function Settings() {
                 {lengths.map((l, i) => (
                   <button
                     key={l}
-                    onClick={() => setMessageLength(i)}
+                    onClick={async () => {
+                      setMessageLength(i);
+                      const value = l.toLowerCase();
+                      try {
+                        await authApi.updateMe({ message_length: value });
+                        toast.success('Message length set to ' + l);
+                      } catch (error) {
+                        toast.error('Failed to update length');
+                      }
+                    }}
                     className={cn(
                       'flex-1 py-2.5 rounded-xl text-sm font-medium transition-all',
                       messageLength === i
@@ -437,14 +521,32 @@ export default function Settings() {
                   <Sparkles className="h-5 w-5 text-primary" />
                   <span className="text-sm font-medium text-foreground">Birthday Reminders</span>
                 </div>
-                <Switch checked={birthdayReminders} onCheckedChange={setBirthdayReminders} />
+                <Switch checked={birthdayReminders} onCheckedChange={async (checked) => {
+                  setBirthdayReminders(checked);
+                  try {
+                    await authApi.updateMe({ birthday_reminders: checked });
+                    toast.success('Birthday reminders ' + (checked ? 'enabled' : 'disabled'));
+                  } catch (error) {
+                    setBirthdayReminders(!checked);
+                    toast.error('Failed to update setting');
+                  }
+                }} />
               </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Sparkles className="h-5 w-5 text-primary" />
                   <span className="text-sm font-medium text-foreground">Social Monitoring</span>
                 </div>
-                <Switch checked={socialMonitoring} onCheckedChange={setSocialMonitoring} />
+                <Switch checked={socialMonitoring} onCheckedChange={async (checked) => {
+                  setSocialMonitoring(checked);
+                  try {
+                    await authApi.updateMe({ social_monitoring: checked });
+                    toast.success('Social monitoring ' + (checked ? 'enabled' : 'disabled'));
+                  } catch (error) {
+                    setSocialMonitoring(!checked);
+                    toast.error('Failed to update setting');
+                  }
+                }} />
               </div>
             </div>
           </div>
@@ -463,7 +565,16 @@ export default function Settings() {
                 <Bell className="h-5 w-5 text-primary" />
                 <span className="text-sm font-medium text-foreground">Push Notifications</span>
               </div>
-              <Switch checked={pushNotifications} onCheckedChange={setPushNotifications} />
+              <Switch checked={pushNotifications} onCheckedChange={async (checked) => {
+                setPushNotifications(checked);
+                try {
+                  await authApi.updateMe({ push_notifications: checked });
+                  toast.success('Push notifications ' + (checked ? 'enabled' : 'disabled'));
+                } catch (error) {
+                  setPushNotifications(!checked);
+                  toast.error('Failed to update setting');
+                }
+              }} />
             </div>
           </div>
         </motion.section>
