@@ -17,7 +17,6 @@ export interface TokenResponse {
   token_type: string;
   user_id: string;
   username: string;
-  synapse_user_id?: string;
 }
 
 // Detailed user profile response
@@ -30,7 +29,7 @@ export interface UserResponse {
   phone?: string;
   linkedin_url?: string;
   personal_profile?: string;
-  synapse_user_id?: string;
+  photo_url?: string;          // LinkedIn profile photo from EnrichLayer
   onboarding_step?: number;
   birthday_reminders?: boolean;
   social_monitoring?: boolean;
@@ -38,6 +37,7 @@ export interface UserResponse {
   message_tone?: string;       // 'casual' | 'professional' | 'friendly'
   message_length?: string;     // 'short' | 'medium' | 'long'
 }
+
 
 export interface UserUpdate {
   first_name?: string;

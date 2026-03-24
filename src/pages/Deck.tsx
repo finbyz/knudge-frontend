@@ -104,12 +104,12 @@ export default function Deck() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-20 pt-16">
+    <div className="min-h-screen bg-background pb-20 pt-0">
       <TopBar title="Deck" />
 
       {/* Progress bar - below TopBar */}
       {!isEmpty && (
-        <div className="sticky top-16 z-40 h-1 bg-muted">
+        <div className="sticky top-0 z-40 h-1 bg-muted">
           <motion.div
             className="h-full gradient-primary"
             initial={{ width: 0 }}
@@ -123,7 +123,7 @@ export default function Deck() {
       )}
 
       {/* Card Stack */}
-      <main className="px-4 pt-2 pb-2">
+      <main className="px-4 pt-0 pb-2">
         {isEmpty ? (
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}

@@ -1,193 +1,373 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { ChevronLeft, Linkedin, Globe, Loader2, Sparkles, User } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ChevronLeft, Loader2, CheckCircle2, Circle, AlertCircle, MapPin, Users, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { useOnboardingStore } from '@/stores/onboardingStore';
+import { FixedBottomContainer } from '@/components/FixedBottomContainer';
 import { useAuthStore } from '@/stores/authStore';
+import { useOnboardingStore } from '@/stores/onboardingStore';
+import { researchApi, UserResearchProfile } from '@/api/research';
 import { authApi } from '@/api/auth';
-import { researchApi, UserProfileResearch } from '@/api/research';
-import { cn } from '@/lib/utils';
 
-type Phase = 'form' | 'loading' | 'result';
+// ---- Helpers -----------------------------------------------------------
 
-const loadingSteps = [
-  { icon: '🔍', text: 'Reading your profile...' },
-  { icon: '🧠', text: 'Analyzing tone...' },
-  { icon: '📊', text: 'Detecting keywords...' },
+/** Render [[highlighted]] text as colored spans */
+function renderHighlights(text: string): React.ReactNode {
+  const parts = text.split(/(\[\[.*?\]\])/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('[[') && part.endsWith(']]')) {
+      const word = part.slice(2, -2);
+      return (
+        <span key={i} className="text-primary font-semibold">
+          {word}
+        </span>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
+// ---- Loading steps ----------------------------------------------------
+
+const LOADING_STEPS = [
+  { label: 'Fetching LinkedIn profile…', duration: 3000 },
+  { label: 'Building your Digital Twin…', duration: 5000 },
+  { label: 'Setting up Knowledge Base…', duration: 2000 },
 ];
 
-// Fallback summaries if API fails
-const fallbackSummaries = {
-  grow_business: {
-    summary: 'You are a Fintech Founder who speaks in a Direct, Professional tone. You care about SaaS and Venture Capital.',
-    highlights: ['Fintech Founder', 'Direct, Professional', 'SaaS', 'Venture Capital'],
-  },
-  build_brand: {
-    summary: 'You are a Content Creator who speaks in an Engaging, Authentic tone. You care about Marketing and Personal Branding.',
-    highlights: ['Content Creator', 'Engaging, Authentic', 'Marketing', 'Personal Branding'],
-  },
-  stay_connected: {
-    summary: 'You are a Community Builder who speaks in a Warm, Friendly tone. You care about Relationships and Connection.',
-    highlights: ['Community Builder', 'Warm, Friendly', 'Relationships', 'Connection'],
-  },
-};
+// -----------------------------------------------------------------------
+
+interface FormData {
+  firstName: string;
+  lastName: string;
+  linkedinUrl: string;
+  company: string;
+  jobTitle: string;
+}
 
 export default function OnboardingProfile() {
   const navigate = useNavigate();
-  const { goal, setProfile, setStep } = useOnboardingStore();
-  const { setUser } = useAuthStore();
-  const [phase, setPhase] = useState<Phase>('form');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [linkedinUrl, setLinkedinUrl] = useState('');
-  const [websiteUrl, setWebsiteUrl] = useState('');
-  const [loadingStep, setLoadingStep] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const [researchResult, setResearchResult] = useState<UserProfileResearch | null>(null);
+  const { user, setUser } = useAuthStore();
+  const { goal, setStep } = useOnboardingStore();
 
-  const handleAnalyze = async () => {
-    setPhase('loading');
-    setProgress(0);
+  const [form, setForm] = useState<FormData>({
+    firstName: user?.first_name || '',
+    lastName: user?.last_name || '',
+    linkedinUrl: user?.linkedin_url || '',
+    company: '',
+    jobTitle: '',
+  });
+
+  const [phase, setPhase] = useState<'form' | 'loading' | 'result' | 'error'>('form');
+  const [loadingStep, setLoadingStep] = useState(0);
+  const [completedSteps, setCompletedSteps] = useState<boolean[]>([false, false, false]);
+  const [research, setResearch] = useState<UserResearchProfile | null>(null);
+  const [showFullBio, setShowFullBio] = useState(false);
+  const [error, setError] = useState('');
+
+  // ---- Progress simulation (runs while API is in-flight) -----------
+
+  const runLoadingAnimation = () => {
+    let step = 0;
     setLoadingStep(0);
+    setCompletedSteps([false, false, false]);
+
+    const advance = () => {
+      if (step < LOADING_STEPS.length - 1) {
+        setTimeout(() => {
+          step++;
+          setLoadingStep(step);
+          setCompletedSteps(prev => {
+            const next = [...prev];
+            next[step - 1] = true;
+            return next;
+          });
+          advance();
+        }, LOADING_STEPS[step].duration);
+      }
+    };
+    advance();
+  };
+
+  // ---- Submit -------------------------------------------------------
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!form.linkedinUrl && !form.firstName && !form.lastName) {
+      setError('Please enter your LinkedIn URL or at least your name.');
+      return;
+    }
+
+    setError('');
+    setPhase('loading');
+    runLoadingAnimation();
 
     try {
-      // Start progress animation
-      const progressInterval = setInterval(() => {
-        setProgress((prev) => Math.min(prev + 10, 90));
-      }, 500);
-
-      // Animate loading steps
-      for (let i = 0; i < loadingSteps.length; i++) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        setLoadingStep(i + 1);
-      }
-
-      // Call actual Perplexity API
       const result = await researchApi.researchUserProfile(
-        linkedinUrl,
-        `${firstName} ${lastName}`.trim() || undefined
+        form.linkedinUrl || undefined,
+        undefined,
+        {
+          firstName: form.firstName,
+          lastName: form.lastName,
+          company: form.company,
+          jobTitle: form.jobTitle,
+        }
       );
 
-      clearInterval(progressInterval);
-      setProgress(100);
-      setResearchResult(result);
-      setPhase('result');
-    } catch (error) {
-      console.error('Profile research failed:', error);
-      // Fall back to default summaries
-      setProgress(100);
-      setResearchResult(null);
-      setPhase('result');
+      // Mark all steps complete
+      setCompletedSteps([true, true, true]);
+      setLoadingStep(2);
+
+      // Small delay so user sees the final step tick
+      setTimeout(() => {
+        setResearch(result);
+        setPhase('result');
+
+        // Refresh user in global store (photo_url may have changed)
+        authApi.getMe().then(setUser).catch(() => { });
+      }, 800);
+    } catch (err: unknown) {
+      console.error('[OnboardingProfile] research error:', err);
+      setPhase('error');
+      setError('Research failed. Please check your LinkedIn URL and try again.');
     }
   };
 
-  const handleConfirm = async () => {
-    const goalKey = goal || 'stay_connected';
+  // ---- Skip ---------------------------------------------------------
 
-    // Build summary from research results or fallback
-    let personalProfile: string;
-    if (researchResult && researchResult.identity) {
-      const parts = [];
-      if (researchResult.identity) parts.push(`You are a ${researchResult.identity}`);
-      if (researchResult.tone) parts.push(`who speaks in a ${researchResult.tone} tone`);
-      if (researchResult.topics?.length) parts.push(`You care about ${researchResult.topics.slice(0, 3).join(', ')}`);
-      personalProfile = parts.join('. ') + '.';
-    } else {
-      personalProfile = fallbackSummaries[goalKey].summary;
-    }
-
-    // Save profile to store
-    setProfile({
-      linkedinUrl,
-      websiteUrl,
-      summary: personalProfile,
-    });
-
-    // Save to backend
-    try {
-      const updatedUser = await authApi.updateMe({
-        first_name: firstName,
-        last_name: lastName,
-        linkedin_url: linkedinUrl,
-        personal_profile: personalProfile,
-        onboarding_step: 3
-      });
-      setUser(updatedUser);
-    } catch (error) {
-      console.error('Failed to update profile:', error);
-    }
-
+  const goToNextStep = () => {
     setStep(3);
     navigate('/onboarding/voice');
   };
 
-  const handleEdit = () => {
-    setPhase('form');
-  };
-
-  const goalKey = goal || 'stay_connected';
-  const fallbackData = fallbackSummaries[goalKey];
-
-  // Build summary data from research or fallback
-  const getSummaryData = () => {
-    if (researchResult && researchResult.identity) {
-      const parts = [];
-      const highlights: string[] = [];
-
-      if (researchResult.identity) {
-        parts.push(`You are a ${researchResult.identity}`);
-        highlights.push(researchResult.identity);
+  const handleSkip = async () => {
+    // Save name if provided
+    if (form.firstName || form.lastName) {
+      try {
+        const updated = await authApi.updateMe({
+          first_name: form.firstName,
+          last_name: form.lastName,
+        });
+        setUser(updated);
+      } catch {
+        // non-fatal
       }
-      if (researchResult.tone) {
-        parts.push(`who speaks in a ${researchResult.tone} tone`);
-        highlights.push(researchResult.tone);
-      }
-      if (researchResult.topics?.length) {
-        parts.push(`You care about ${researchResult.topics.slice(0, 3).join(', ')}`);
-        researchResult.topics.slice(0, 3).forEach(t => highlights.push(t));
-      }
-
-      return {
-        summary: parts.join('. ') + '.',
-        highlights,
-      };
     }
-    return fallbackData;
+    goToNextStep();
   };
 
-  const summaryData = getSummaryData();
+  // ---- Render: Loading Phase -----------------------------------------
 
-  const renderHighlightedSummary = () => {
-    let text = summaryData.summary;
-    const parts: (string | JSX.Element)[] = [];
-    let lastIndex = 0;
+  if (phase === 'loading') {
+    return (
+      <div className="min-h-screen bg-muted flex flex-col items-center justify-center px-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center max-w-md"
+        >
+          <Loader2 className="h-12 w-12 text-primary animate-spin mx-auto mb-6" />
+          <h2 className="text-2xl font-bold text-foreground mb-8">Building your Digital Twin…</h2>
+          <div className="space-y-4 text-left">
+            {LOADING_STEPS.map((step, idx) => (
+              <motion.div
+                key={idx}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: idx * 0.3 }}
+                className="flex items-center gap-3"
+              >
+                {completedSteps[idx] ? (
+                  <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0" />
+                ) : idx === loadingStep ? (
+                  <Loader2 className="h-5 w-5 text-primary animate-spin flex-shrink-0" />
+                ) : (
+                  <Circle className="h-5 w-5 text-muted-foreground/40 flex-shrink-0" />
+                )}
+                <span className={`text-sm ${completedSteps[idx] ? 'text-foreground' : idx === loadingStep ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+                  {step.label}
+                </span>
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
-    summaryData.highlights.forEach((highlight, i) => {
-      const index = text.indexOf(highlight, lastIndex);
-      if (index !== -1) {
-        if (index > lastIndex) {
-          parts.push(text.slice(lastIndex, index));
-        }
-        parts.push(
-          <span key={i} className="font-semibold text-primary">
-            {highlight}
-          </span>
-        );
-        lastIndex = index + highlight.length;
-      }
-    });
+  // ---- Render: Result Phase ------------------------------------------
 
-    if (lastIndex < text.length) {
-      parts.push(text.slice(lastIndex));
-    }
+  if (phase === 'result' && research) {
+    return (
+      <div className="min-h-screen bg-muted flex flex-col pb-24">
+        <header className="sticky top-0 z-40 bg-background border-b border-border px-4 py-4">
+          <div className="flex items-center justify-between">
+            <Button variant="ghost" size="sm" onClick={() => setPhase('form')} className="text-muted-foreground">
+              <ChevronLeft className="h-5 w-5 mr-1" />
+              Edit
+            </Button>
+            <span className="text-sm text-muted-foreground">Step 2 of 6</span>
+            <div className="w-16" />
+          </div>
+        </header>
 
-    return parts;
-  };
+        <main className="flex-1 px-4 py-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-2xl mx-auto"
+          >
+            {/* Profile Card */}
+            <div className="bg-card rounded-2xl shadow-lg border border-border overflow-hidden">
+              {/* Header with photo */}
+              <div className="p-6 flex items-center gap-5">
+                {research.photo_url ? (
+                  <img
+                    src={research.photo_url}
+                    alt="Profile"
+                    className="h-16 w-16 rounded-full object-cover ring-2 ring-primary/20 flex-shrink-0"
+                  />
+                ) : (
+                  <div className="h-16 w-16 rounded-full gradient-primary flex items-center justify-center flex-shrink-0">
+                    <span className="text-lg font-bold text-primary-foreground">
+                      {(form.firstName?.[0] || 'U').toUpperCase()}
+                    </span>
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <h2 className="text-xl font-bold text-foreground truncate">
+                    {research.headline || research.identity || `${form.firstName} ${form.lastName}`}
+                  </h2>
+                  <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
+                    {research.location && (
+                      <span className="flex items-center gap-1">
+                        <MapPin className="h-3.5 w-3.5" /> {research.location}
+                      </span>
+                    )}
+                    {research.connections && (
+                      <span className="flex items-center gap-1">
+                        <Users className="h-3.5 w-3.5" /> {research.connections}+ connections
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Summary */}
+              {research.short_summary && (
+                <div className="px-6 pb-5 border-t border-border pt-5">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide">Your Digital Twin</h3>
+                  </div>
+                  <p className="text-[15px] leading-relaxed text-foreground/90">
+                    {renderHighlights(research.short_summary)}
+                  </p>
+
+                  {research.full_bio && (
+                    <>
+                      <AnimatePresence>
+                        {showFullBio && (
+                          <motion.p
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="text-sm text-muted-foreground italic leading-relaxed mt-4"
+                          >
+                            {research.full_bio}
+                          </motion.p>
+                        )}
+                      </AnimatePresence>
+                      <button
+                        onClick={() => setShowFullBio(v => !v)}
+                        className="text-primary text-sm font-medium mt-2 hover:underline"
+                      >
+                        {showFullBio ? 'Show less ↑' : 'Read full bio ↓'}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Talking Points & Topics */}
+              {(research.talking_points?.length > 0 || research.topics?.length > 0) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-0 border-t border-border">
+                  {research.talking_points?.length > 0 && (
+                    <div className="p-5 border-b md:border-b-0 md:border-r border-border">
+                      <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">
+                        💬 Conversation Starters
+                      </h4>
+                      <ul className="space-y-2">
+                        {research.talking_points.slice(0, 3).map((point, i) => (
+                          <li key={i} className="text-sm text-foreground flex gap-2">
+                            <span className="text-primary mt-0.5">•</span>
+                            <span>{point}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {research.topics?.length > 0 && (
+                    <div className="p-5">
+                      <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">
+                        🏷️ Topics
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {research.topics.map((topic, i) => (
+                          <span
+                            key={i}
+                            className="px-2.5 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium"
+                          >
+                            {topic}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        </main>
+
+        <FixedBottomContainer show={true}>
+          <Button
+            onClick={goToNextStep}
+            className="w-full h-12 rounded-xl font-semibold gradient-primary text-primary-foreground"
+          >
+            Looks good — Next →
+          </Button>
+        </FixedBottomContainer>
+      </div>
+    );
+  }
+
+  // ---- Render: Error Phase -------------------------------------------
+
+  if (phase === 'error') {
+    return (
+      <div className="min-h-screen bg-muted flex flex-col items-center justify-center px-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center max-w-md"
+        >
+          <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-foreground mb-2">Something went wrong</h2>
+          <p className="text-muted-foreground mb-6">{error}</p>
+          <Button onClick={() => setPhase('form')} className="gradient-primary text-primary-foreground px-6">
+            Try Again
+          </Button>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // ---- Render: Form Phase --------------------------------------------
 
   return (
-    <div className="min-h-screen bg-muted flex flex-col">
+    <div className="min-h-screen bg-muted flex flex-col pb-24">
       {/* Header */}
       <header className="sticky top-0 z-40 bg-background border-b border-border px-4 py-4">
         <div className="flex items-center justify-between">
@@ -200,167 +380,136 @@ export default function OnboardingProfile() {
             <ChevronLeft className="h-5 w-5 mr-1" />
             Back
           </Button>
-          <span className="text-sm text-muted-foreground">Step 2 of 7</span>
+          <span className="text-sm text-muted-foreground">Step 2 of 6</span>
           <div className="w-16" />
         </div>
       </header>
 
       {/* Content */}
-      <main className="flex-1 px-4 py-8 flex flex-col items-center justify-center">
-        {phase === 'form' && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="w-full max-w-md"
-          >
-            <h1 className="text-3xl font-bold text-foreground mb-2">
-              Let's build your Digital Twin
-            </h1>
-            <p className="text-lg text-muted-foreground mb-8">
-              We'll analyze your profile to match your tone
+      <main className="flex-1 px-4 py-8">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="max-w-2xl mx-auto"
+        >
+          <div className="text-center mb-8">
+            <div className="text-4xl mb-3">🧬</div>
+            <h1 className="text-3xl font-bold text-foreground mb-2">Build Your Digital Twin</h1>
+            <p className="text-lg text-muted-foreground">
+              We'll create a rich profile that helps Knudge write personalised messages on your behalf.
             </p>
+          </div>
 
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    placeholder="First Name"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    className="pl-12 h-14 rounded-xl border-2 border-border focus:border-primary"
-                  />
-                </div>
-                <div className="relative">
-                  <Input
-                    type="text"
-                    placeholder="Last Name"
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    className="pl-4 h-14 rounded-xl border-2 border-border focus:border-primary"
-                  />
-                </div>
-              </div>
-
-              <div className="relative">
-                <Linkedin className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-[#0A66C2]" />
-                <Input
-                  type="url"
-                  placeholder="LinkedIn Profile URL"
-                  value={linkedinUrl}
-                  onChange={(e) => setLinkedinUrl(e.target.value)}
-                  className="pl-12 h-14 rounded-xl border-2 border-border focus:border-primary"
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Name row */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="firstName" className="text-sm font-medium text-foreground mb-1.5 block">
+                  First Name
+                </label>
+                <input
+                  id="firstName"
+                  type="text"
+                  placeholder="Jhon"
+                  value={form.firstName}
+                  onChange={e => setForm(f => ({ ...f, firstName: e.target.value }))}
+                  className="w-full h-11 px-4 bg-card border border-border rounded-xl text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
                 />
               </div>
-
-              <div className="relative">
-                <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                <Input
-                  type="url"
-                  placeholder="Company Website (Optional)"
-                  value={websiteUrl}
-                  onChange={(e) => setWebsiteUrl(e.target.value)}
-                  className="pl-12 h-14 rounded-xl border-2 border-border focus:border-primary"
+              <div>
+                <label htmlFor="lastName" className="text-sm font-medium text-foreground mb-1.5 block">
+                  Last Name
+                </label>
+                <input
+                  id="lastName"
+                  type="text"
+                  placeholder="Deo"
+                  value={form.lastName}
+                  onChange={e => setForm(f => ({ ...f, lastName: e.target.value }))}
+                  className="w-full h-11 px-4 bg-card border border-border rounded-xl text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
                 />
               </div>
-              <p className="text-sm text-muted-foreground">
-                This helps us understand your business
-              </p>
             </div>
 
-            <Button
-              onClick={handleAnalyze}
-              disabled={!linkedinUrl || !firstName}
-              className="w-full h-12 mt-8 rounded-xl font-semibold gradient-primary text-primary-foreground"
-            >
-              Analyze Me →
-            </Button>
-          </motion.div>
-        )}
-
-        {phase === 'loading' && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="w-full max-w-md text-center"
-          >
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-              className="w-16 h-16 mx-auto mb-8 rounded-full gradient-primary flex items-center justify-center"
-            >
-              <Loader2 className="h-8 w-8 text-white" />
-            </motion.div>
-
-            <div className="space-y-4 mb-8">
-              {loadingSteps.map((step, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    'flex items-center justify-center gap-2 text-lg transition-opacity',
-                    i < loadingStep ? 'opacity-100' : 'opacity-40'
-                  )}
-                >
-                  <span>{step.icon}</span>
-                  <span className={i < loadingStep ? 'text-foreground' : 'text-muted-foreground'}>
-                    {step.text}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
-              <motion.div
-                className="h-full gradient-primary"
-                initial={{ width: 0 }}
-                animate={{ width: `${progress}%` }}
-                transition={{ duration: 0.3 }}
+            {/* LinkedIn URL */}
+            <div>
+              <label htmlFor="linkedinUrl" className="text-sm font-medium text-foreground mb-1.5 flex items-center gap-2">
+                LinkedIn URL
+                <span className="px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded-full uppercase tracking-wide">
+                  Best results
+                </span>
+              </label>
+              <input
+                id="linkedinUrl"
+                type="url"
+                placeholder="https://linkedin.com/in/your-profile"
+                value={form.linkedinUrl}
+                onChange={e => setForm(f => ({ ...f, linkedinUrl: e.target.value }))}
+                className="w-full h-11 px-4 bg-card border border-border rounded-xl text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
               />
             </div>
-            <p className="text-sm text-muted-foreground mt-2">
-              Progress: {Math.round(progress)}%
-            </p>
-          </motion.div>
-        )}
 
-        {phase === 'result' && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="w-full max-w-md"
-          >
-            <div className="flex items-center gap-2 mb-4">
-              <Sparkles className="h-6 w-6 text-primary" />
-              <h2 className="text-xl font-semibold text-foreground">
-                Here's what we learned:
-              </h2>
+            {/* Job / Company row */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="jobTitle" className="text-sm font-medium text-foreground mb-1.5 flex items-center gap-2">
+                  Job Title
+                  <span className="text-xs text-muted-foreground font-normal">optional</span>
+                </label>
+                <input
+                  id="jobTitle"
+                  type="text"
+                  placeholder="Software Developer"
+                  value={form.jobTitle}
+                  onChange={e => setForm(f => ({ ...f, jobTitle: e.target.value }))}
+                  className="w-full h-11 px-4 bg-card border border-border rounded-xl text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
+                />
+              </div>
+              <div>
+                <label htmlFor="company" className="text-sm font-medium text-foreground mb-1.5 flex items-center gap-2">
+                  Company
+                  <span className="text-xs text-muted-foreground font-normal">optional</span>
+                </label>
+                <input
+                  id="company"
+                  type="text"
+                  placeholder="FinByz Tech"
+                  value={form.company}
+                  onChange={e => setForm(f => ({ ...f, company: e.target.value }))}
+                  className="w-full h-11 px-4 bg-card border border-border rounded-xl text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition"
+                />
+              </div>
             </div>
 
-            <div className="bg-gradient-to-br from-primary/10 to-secondary/10 border-2 border-primary/20 rounded-2xl p-6 mb-8">
-              <p className="text-lg text-foreground leading-relaxed">
-                {renderHighlightedSummary()}
-              </p>
-            </div>
-
-            <div className="flex gap-3">
-              <Button
-                onClick={handleEdit}
-                variant="outline"
-                className="flex-1 h-12 rounded-xl"
-              >
-                Let me edit ✏️
-              </Button>
-              <Button
-                onClick={handleConfirm}
-                className="flex-1 h-12 rounded-xl gradient-primary text-primary-foreground"
-              >
-                Looks good ✓
-              </Button>
-            </div>
-          </motion.div>
-        )}
+            {/* Error */}
+            {error && (
+              <div className="flex items-center gap-2 text-destructive text-sm">
+                <AlertCircle className="h-4 w-4" />
+                {error}
+              </div>
+            )}
+          </form>
+        </motion.div>
       </main>
+
+      {/* Bottom actions */}
+      <FixedBottomContainer show={true}>
+        <div className="space-y-3">
+          <Button
+            onClick={handleSubmit as any}
+            className="w-full h-12 rounded-xl font-semibold gradient-primary text-primary-foreground"
+          >
+            Analyse My Profile ✨
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={handleSkip}
+            className="w-full text-muted-foreground"
+          >
+            Skip for now
+          </Button>
+        </div>
+      </FixedBottomContainer>
     </div>
   );
 }

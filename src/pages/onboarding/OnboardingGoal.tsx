@@ -58,7 +58,7 @@ export default function OnboardingGoal() {
             <ChevronLeft className="h-5 w-5 mr-1" />
             Back
           </Button>
-          <span className="text-sm text-muted-foreground">Step 1 of 7</span>
+          <span className="text-sm text-muted-foreground">Step 1 of 6</span>
           <Button variant="ghost" size="icon" className="text-muted-foreground">
             <HelpCircle className="h-5 w-5" />
           </Button>

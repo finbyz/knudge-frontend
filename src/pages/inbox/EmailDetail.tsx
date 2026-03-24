@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { ConversationalEmailView } from '@/components/inbox/ConversationalEmailView';
 import { useSwipeable } from 'react-swipeable';
 import { useToast } from '@/hooks/use-toast';
+import { API_BASE_URL } from '@/lib/api-client';
 
 interface EmailAttachment {
   name: string;
@@ -153,13 +154,16 @@ export default function EmailDetail() {
   const { accessToken } = useAuthStore();
 
   useEffect(() => {
-    if (emailId && emailId.length > 10) { // Assume UUID is long
-      fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/emails/${emailId}`, {
+    // Strip "email-" prefix if it exists (added in Inbox.tsx)
+    const realId = emailId?.startsWith('email-') ? emailId.replace('email-', '') : emailId;
+
+    if (realId && realId.length > 30) { // Assume UUID is long
+      fetch(`${API_BASE_URL}/emails/${realId}`, {
         headers: { Authorization: `Bearer ${accessToken}` }
       })
         .then(res => res.json())
         .then(data => {
-          if (data) {
+          if (data && data.id) {
             setFetchedEmail({
               id: data.id,
               subject: data.subject || 'No Subject',
@@ -171,7 +175,7 @@ export default function EmailDetail() {
                   id: 1,
                   sender: data.from_email.split('<')[0].replace(/"/g, '').trim(),
                   email: data.from_email,
-                  timestamp: new Date(data.sent_at).toLocaleString(),
+                  timestamp: new Date(data.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                   body: data.body_text || 'No content',
                   attachments: []
                 }

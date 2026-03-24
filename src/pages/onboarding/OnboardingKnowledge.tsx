@@ -1,18 +1,22 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ChevronLeft, FileText, Globe, Upload, X, Check, Loader2 } from 'lucide-react';
+import { ChevronLeft, FileText, Globe, Upload, X, Check, Loader2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useOnboardingStore } from '@/stores/onboardingStore';
 import { FixedBottomContainer } from '@/components/FixedBottomContainer';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
+import { knowledgeApi, KnowledgeDocument } from '@/api/knowledge';
 
 interface UploadedFile {
   name: string;
   size: string;
   uploading: boolean;
+  error?: string;
+  documentId?: string;
+  status?: string;
 }
 
 export default function OnboardingKnowledge() {
@@ -59,15 +63,38 @@ export default function OnboardingKnowledge() {
 
     setFiles((prev) => [...prev, newFile]);
 
-    // Simulate upload
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    try {
+      // Upload to backend API
+      const response = await knowledgeApi.uploadDocument(file, productName, websiteUrl);
 
-    setFiles((prev) =>
-      prev.map((f) =>
-        f.name === file.name ? { ...f, uploading: false } : f
-      )
-    );
-  }, []);
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.name === file.name
+            ? { ...f, uploading: false, documentId: response.id, status: response.status }
+            : f
+        )
+      );
+
+      toast({
+        title: 'File uploaded',
+        description: 'Your document is being processed.',
+      });
+    } catch (error: any) {
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.name === file.name
+            ? { ...f, uploading: false, error: error.message || 'Upload failed' }
+            : f
+        )
+      );
+
+      toast({
+        title: 'Upload failed',
+        description: error.message || 'Could not upload file.',
+        variant: 'destructive',
+      });
+    }
+  }, [productName, websiteUrl]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
@@ -96,12 +123,12 @@ export default function OnboardingKnowledge() {
       websiteUrl,
     });
     setStep(5);
-    navigate('/onboarding/connections');
+    navigate('/onboarding/trial');
   };
 
   const handleSkip = () => {
     setStep(5);
-    navigate('/onboarding/connections');
+    navigate('/onboarding/trial');
   };
 
   return (
@@ -118,7 +145,7 @@ export default function OnboardingKnowledge() {
             <ChevronLeft className="h-5 w-5 mr-1" />
             Back
           </Button>
-          <span className="text-sm text-muted-foreground">Step 4 of 7</span>
+          <span className="text-sm text-muted-foreground">Step 4 of 6</span>
           <div className="w-16" />
         </div>
       </header>
@@ -191,11 +218,29 @@ export default function OnboardingKnowledge() {
                   </div>
                   {file.uploading ? (
                     <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  ) : file.error ? (
+                    <>
+                      <div className="flex items-center gap-1 text-destructive">
+                        <AlertCircle className="h-4 w-4" />
+                        <span className="text-sm">Failed</span>
+                      </div>
+                      <button
+                        onClick={() => removeFile(file.name)}
+                        className="text-muted-foreground hover:text-destructive"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </>
                   ) : (
                     <>
                       <div className="flex items-center gap-1 text-success">
                         <Check className="h-4 w-4" />
-                        <span className="text-sm">Uploaded</span>
+                            <span className="text-sm">
+                              {file.status === 'PENDING' ? 'Queued...' :
+                                file.status === 'PROCESSING' ? 'Processing...' :
+                                  file.status === 'COMPLETED' ? 'Completed' :
+                                    'Uploaded'}
+                            </span>
                       </div>
                       <button
                         onClick={() => removeFile(file.name)}

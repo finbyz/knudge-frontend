@@ -13,12 +13,14 @@ RUN npm ci
 COPY . .
 
 # Build arguments for environment variables
-ARG VITE_API_URL=https://knudge-api.finbyz.tech
+ARG VITE_API_URL=https://knudge-api-dev.finbyz.com
 ARG VITE_API_BASE_PATH=/api/v1
+ARG VITE_HOMESERVER_URL=https://matrix-dev.finbyz.com
 
 # Create .env file for build
 RUN echo "VITE_API_URL=${VITE_API_URL}" > .env && \
-    echo "VITE_API_BASE_PATH=${VITE_API_BASE_PATH}" >> .env
+    echo "VITE_API_BASE_PATH=${VITE_API_BASE_PATH}" >> .env && \
+    echo "VITE_HOMESERVER_URL=${VITE_HOMESERVER_URL}" >> .env
 
 # Build optimized production bundle
 RUN npm run build

@@ -33,13 +33,6 @@ const connectionOptions: Connection[] = [
     icon: <Chrome className="h-6 w-6" />,
     iconBg: 'bg-white border border-border',
   },
-  {
-    id: 'linkedin',
-    name: 'LinkedIn Network',
-    description: 'Import professional contacts',
-    icon: <Linkedin className="h-6 w-6 text-white" />,
-    iconBg: 'bg-[#0A66C2]',
-  },
 ];
 
 export default function OnboardingConnections() {

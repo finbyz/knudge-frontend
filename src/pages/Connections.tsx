@@ -7,18 +7,19 @@ import { toast } from 'sonner'; // Use sonner as per api integrate, or hooks/use
 import { bridgesApi } from '@/api/bridges';
 import { useAuthStore } from '@/stores/authStore';
 import { QRCodeSVG } from 'qrcode.react';
+import { TelegramLoginModal } from '@/components/TelegramLoginModal';
 
 const platformNames = {
   whatsapp: 'WhatsApp',
-  linkedin: 'LinkedIn',
-  signal: 'Signal',
   gmail: 'Gmail',
   outlook: 'Outlook',
   erpnext: 'ERPNext',
+  telegram: 'Telegram',
+  instagram: 'Instagram',
 };
 
 interface ConnectionState {
-  platform: 'whatsapp' | 'linkedin' | 'signal' | 'gmail' | 'outlook' | 'erpnext';
+  platform: 'whatsapp' | 'email' | 'gmail' | 'outlook' | 'erpnext' | 'telegram' | 'instagram';
   status: 'connected' | 'disconnected' | 'syncing';
   lastSync: string | null;
   contactCount: number;
@@ -27,11 +28,11 @@ interface ConnectionState {
 export default function Connections() {
   const [connections, setConnections] = useState<ConnectionState[]>([
     { platform: 'whatsapp', status: 'disconnected', lastSync: null, contactCount: 0 },
-    { platform: 'signal', status: 'disconnected', lastSync: null, contactCount: 0 },
-    { platform: 'linkedin', status: 'disconnected', lastSync: null, contactCount: 0 },
     { platform: 'gmail', status: 'disconnected', lastSync: null, contactCount: 0 },
     { platform: 'outlook', status: 'disconnected', lastSync: null, contactCount: 0 },
-    { platform: 'erpnext', status: 'disconnected', lastSync: null, contactCount: 0 }
+    { platform: 'erpnext', status: 'disconnected', lastSync: null, contactCount: 0 },
+    { platform: 'telegram', status: 'disconnected', lastSync: null, contactCount: 0 },
+    { platform: 'instagram', status: 'disconnected', lastSync: null, contactCount: 0 }
   ]);
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
   const [qrCodeData, setQrCodeData] = useState<string | null>(null);
@@ -44,15 +45,19 @@ export default function Connections() {
   const [stepId, setStepId] = useState<string | null>(null);
   const [syncingPlatform, setSyncingPlatform] = useState<string | null>(null);
 
-  const [linkedinCurl, setLinkedinCurl] = useState('');
-  const [linkedinMethod, setLinkedinMethod] = useState<'auto' | 'manual'>('auto');
-  const [linkedinEmail, setLinkedinEmail] = useState('');
-  const [linkedinPassword, setLinkedinPassword] = useState('');
-
   // ERPNext state
   const [erpnextUrl, setErpnextUrl] = useState('');
   const [erpnextApiKey, setErpnextApiKey] = useState('');
   const [erpnextApiSecret, setErpnextApiSecret] = useState('');
+
+  const [showTelegramModal, setShowTelegramModal] = useState(false);
+
+  // Instagram state
+  const [instagramType, setInstagramType] = useState<'business' | 'personal' | null>(null);
+  const [igUsername, setIgUsername] = useState('');
+  const [igPassword, setIgPassword] = useState('');
+  const [igVerificationCode, setIgVerificationCode] = useState('');
+  const [requiresIgMfa, setRequiresIgMfa] = useState(false);
 
   useEffect(() => {
     fetchStatus();
@@ -97,6 +102,29 @@ export default function Connections() {
           : c
       ));
 
+      // Fetch Telegram status
+      const telegramStatus = await bridgesApi.getTelegramStatus();
+      setConnections(prev => prev.map(c =>
+        c.platform === 'telegram'
+          ? { ...c, status: telegramStatus.connected ? 'connected' : 'disconnected', lastSync: telegramStatus.connected ? 'Active' : null, contactCount: telegramStatus.contact_count || 0 }
+          : c
+      ));
+
+      // Fetch Instagram status
+      const instagramStatus = await bridgesApi.getInstagramStatus();
+      setConnections(prev => prev.map(c =>
+        c.platform === 'instagram'
+          ? {
+            ...c,
+            status: instagramStatus.is_connected ? 'connected' : 'disconnected',
+            lastSync: instagramStatus.is_connected ? 'Active' : null,
+            contactCount: instagramStatus.contact_count || 0,
+            accountType: instagramStatus.account_type,
+            username: instagramStatus.username
+          }
+          : c
+      ));
+
     } catch (error) {
       console.error("Failed to fetch connection status", error);
     }
@@ -110,6 +138,24 @@ export default function Connections() {
         // ERPNext has its own sync endpoint that returns different format
         const data = await bridgesApi.syncERPNext();
         syncResp = { synced_count: data.synced_count + data.updated_count };
+      } else if (platform === 'telegram') {
+        const syncResp = await bridgesApi.syncTelegram();
+        toast.success(`Synced ${syncResp.contacts_synced} contacts and ${syncResp.messages_synced} messages.`);
+        setConnections(prev => prev.map(c =>
+          c.platform === 'telegram'
+            ? { ...c, contactCount: syncResp.contacts_synced, lastSync: 'Just now' }
+            : c
+        ));
+        return;
+      } else if (platform === 'instagram') {
+        const syncResp = await bridgesApi.syncInstagram();
+        setConnections(prev => prev.map(c =>
+          c.platform === 'instagram'
+            ? { ...c, contactCount: syncResp.synced_count, lastSync: 'Just now' }
+            : c
+        ));
+        toast.success(`Synced ${syncResp.synced_count} Instagram contacts.`);
+        return;
       } else {
         syncResp = await bridgesApi.sync(platform);
       }
@@ -130,7 +176,6 @@ export default function Connections() {
 
   useEffect(() => {
     if (!connectingPlatform || !qrCodeData) return;
-    if (connectingPlatform === 'linkedin') return;
 
     const token = useAuthStore.getState().accessToken;
     if (!token) return;
@@ -193,14 +238,25 @@ export default function Connections() {
   };
 
   const handleConnect = async (platform: string, phone?: string) => {
+    if (platform === 'telegram') {
+      setShowTelegramModal(true);
+      return;
+    }
+
+    if (platform === 'gmail') {
+      handleConnectGmail();
+      return;
+    }
+
+    if (platform === 'outlook') {
+      handleConnectOutlook();
+      return;
+    }
+
     if (connectingPlatform !== platform) {
       setConnectingPlatform(platform);
       setQrCodeData(null);
       setPairingCode(null);
-      setLinkedinCurl('');
-      setLinkedinPassword('');
-      setLinkedinEmail('');
-      setLinkedinMethod('auto');
     }
 
     if (platform === 'whatsapp' || platform === 'signal') {
@@ -229,11 +285,6 @@ export default function Connections() {
           if (newLoginId && newStepId) {
             waitForLoginCompletion(platform, newLoginId, newStepId);
           }
-        } else {
-          if (!qrCodeData && !pairingCode) {
-            toast.error(`Failed to get login code for ${platformNames[platform as keyof typeof platformNames]}`);
-            setConnectingPlatform(null);
-          }
         }
       } catch (error: any) {
         toast.error(error.message || `Failed to initiate ${platform} login`);
@@ -241,92 +292,13 @@ export default function Connections() {
       } finally {
         setIsLoading(false);
       }
-    } else if (platform === 'linkedin') {
-      // UI Wait
-      setIsLoading(false);
-      toast.info(`${platformNames[platform as keyof typeof platformNames]} integration coming soon.`);
-      setConnectingPlatform(null);
+    } else if (platform === 'instagram') {
+      setConnectingPlatform(platform);
+      setInstagramType(null); // Show selection UI
     }
   };
 
-  const submitLinkedinAuto = async () => {
-    if (!linkedinEmail || !linkedinPassword) return;
-    setIsLoading(true);
-    try {
-      const response = await bridgesApi.login('linkedin', undefined, {
-        username: linkedinEmail,
-        password: linkedinPassword
-      });
 
-      if (response.status === 'success') {
-        toast.success("LinkedIn connected successfully!");
-        try {
-          const syncResp = await bridgesApi.sync('linkedin');
-          toast.success(`Synced ${syncResp.synced_count} connections.`);
-          setConnections(prev => prev.map(c =>
-            c.platform === 'linkedin'
-              ? { ...c, status: 'connected', contactCount: syncResp.synced_count, lastSync: 'Just now' }
-              : c
-          ));
-        } catch (e) {
-          setConnections(prev => prev.map(c =>
-            c.platform === 'linkedin'
-              ? { ...c, status: 'connected', lastSync: 'Just now' }
-              : c
-          ));
-        }
-        handleCloseModal();
-      } else if (response.status === 'error') {
-        toast.error(response.message || "Failed to connect. Try Manual method.");
-      } else {
-        toast.error("Automatic login failed (likely Captcha). Switching to Manual.");
-        setLinkedinMethod('manual');
-      }
-    } catch (e: any) {
-      const msg = e.response?.data?.detail || e.message || "Login failed.";
-      toast.error(msg);
-      if (msg.includes("Captcha") || msg.includes("Manual")) {
-        setLinkedinMethod('manual');
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const submitLinkedinCurl = async () => {
-    if (!linkedinCurl) return;
-    setIsLoading(true);
-    try {
-      const response = await bridgesApi.login('linkedin', undefined, { cookie_cmd: linkedinCurl });
-      if (response.status === 'success') {
-        toast.success("LinkedIn connected successfully!");
-        try {
-          const syncResp = await bridgesApi.sync('linkedin');
-          toast.success(`Synced ${syncResp.synced_count} connections.`);
-          setConnections(prev => prev.map(c =>
-            c.platform === 'linkedin'
-              ? { ...c, status: 'connected', contactCount: syncResp.synced_count, lastSync: 'Just now' }
-              : c
-          ));
-        } catch (e) {
-          setConnections(prev => prev.map(c =>
-            c.platform === 'linkedin'
-              ? { ...c, status: 'connected', lastSync: 'Just now' }
-              : c
-          ));
-        }
-        handleCloseModal();
-      } else if (response.status === 'error') {
-        toast.error(response.message || "Failed to connect to LinkedIn");
-      } else {
-        toast.error("Unexpected response from LinkedIn bridge");
-      }
-    } catch (e: any) {
-      toast.error(e.message || "Failed to connect LinkedIn");
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleCloseModal = () => {
     setConnectingPlatform(null);
@@ -336,14 +308,16 @@ export default function Connections() {
     setPhoneNumber('');
     setLoginId(null);
     setStepId(null);
-    setLinkedinCurl('');
-    setLinkedinPassword('');
-    setLinkedinEmail('');
-    setLinkedinMethod('auto');
     // Reset ERPNext fields
     setErpnextUrl('');
     setErpnextApiKey('');
     setErpnextApiSecret('');
+    // Reset Instagram
+    setInstagramType(null);
+    setIgUsername('');
+    setIgPassword('');
+    setIgVerificationCode('');
+    setRequiresIgMfa(false);
   };
 
   const handleScanComplete = async () => {
@@ -362,6 +336,10 @@ export default function Connections() {
         await bridgesApi.disconnectOutlook();
       } else if (platform === 'erpnext') {
         await bridgesApi.disconnectERPNext();
+      } else if (platform === 'telegram') {
+        await bridgesApi.disconnectTelegram();
+      } else if (platform === 'instagram') {
+        await bridgesApi.disconnectInstagram();
       } else {
         await bridgesApi.logout(platform);
       }
@@ -423,6 +401,44 @@ export default function Connections() {
     }
   };
 
+  const handleConnectInstagramBusiness = async () => {
+    setIsLoading(true);
+    try {
+      const { url } = await bridgesApi.getInstagramAuthUrl();
+      window.location.href = url;
+    } catch (e: any) {
+      toast.error(e.message || "Failed to get Instagram auth URL");
+      setIsLoading(false);
+    }
+  };
+
+  const submitInstagramPersonal = async () => {
+    if (!igUsername || !igPassword) return;
+    setIsLoading(true);
+    try {
+      const response = await bridgesApi.connectInstagramPersonal(
+        igUsername,
+        igPassword,
+        requiresIgMfa ? igVerificationCode : undefined
+      );
+
+      if (response.requires_mfa) {
+        setRequiresIgMfa(true);
+        toast.info("Verification code required. Please check your Instagram app or email.");
+      } else if (response.status === 'success') {
+        toast.success("Instagram connected successfully!");
+        fetchStatus();
+        handleCloseModal();
+      } else {
+        toast.error(response.message || "Failed to connect to Instagram");
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to connect to Instagram");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <div className="h-full bg-background pb-24">
       <TopBar title="Connections" />
@@ -447,6 +463,16 @@ export default function Connections() {
         ))}
       </main>
 
+      <TelegramLoginModal
+        open={showTelegramModal}
+        onOpenChange={setShowTelegramModal}
+        onSuccess={() => {
+          fetchStatus();
+          // Automatically sync after success
+          handleSyncContacts('telegram');
+        }}
+      />
+
       <AnimatePresence>
         {connectingPlatform && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-foreground/20 backdrop-blur-sm flex items-center justify-center p-4" onClick={handleCloseModal}>
@@ -460,88 +486,46 @@ export default function Connections() {
                 </button>
               </div>
 
-              {connectingPlatform === 'linkedin' ? (
-                <div className="flex flex-col space-y-4">
-                  <div className="flex rounded-lg bg-muted p-1">
-                    <button onClick={() => setLinkedinMethod('auto')} className={`flex-1 px-3 py-1 text-sm font-medium rounded-md transition-all ${linkedinMethod === 'auto' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:bg-background/50'}`}>
-                      Automatic
-                    </button>
-                    <button onClick={() => setLinkedinMethod('manual')} className={`flex-1 px-3 py-1 text-sm font-medium rounded-md transition-all ${linkedinMethod === 'manual' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:bg-background/50'}`}>
-                      Manual (Reliable)
-                    </button>
-                  </div>
 
-                  {linkedinMethod === 'auto' ? (
-                    <div className="space-y-3">
-                      <p className="text-sm text-muted-foreground">
-                        Enter your LinkedIn credentials. We will attempt to connect automatically.
-                        <br /><span className="text-xs text-yellow-600 dark:text-yellow-400">Note: Connection may fail if LinkedIn requests a Captcha.</span>
-                      </p>
-                      <input type="email" placeholder="Email" value={linkedinEmail} onChange={(e) => setLinkedinEmail(e.target.value)} className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20" />
-                      <input type="password" placeholder="Password" value={linkedinPassword} onChange={(e) => setLinkedinPassword(e.target.value)} className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20" />
-                      <button onClick={submitLinkedinAuto} disabled={!linkedinEmail || !linkedinPassword || isLoading} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-medium disabled:opacity-50 flex items-center justify-center">
-                        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Connect"}
-                      </button>
+              <div className="flex flex-col items-center justify-center mb-6">
+                {isLoading ? (
+                  <div className="flex flex-col items-center space-y-2">
+                    <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Generating code...</span>
+                  </div>
+                ) : pairingCode ? (
+                  <div className="flex flex-col items-center space-y-4">
+                    <div className="bg-muted p-6 rounded-xl text-center">
+                      <p className="text-sm text-muted-foreground mb-2">Enter this code on your phone</p>
+                      <div className="text-3xl font-mono font-bold tracking-wider text-primary">{pairingCode}</div>
                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <p className="text-sm text-muted-foreground">To connect LinkedIn reliably, copy the cURL command from your browser.</p>
-                      <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
-                        <span className="font-semibold">Instructions:</span>
-                        <ol className="list-decimal list-inside ml-1 space-y-1">
-                          <li>Open LinkedIn (Developer Tools &rarr; Network).</li>
-                          <li>Right click any request &rarr; <strong>Copy as cURL</strong>.</li>
-                          <li>Paste it below.</li>
-                        </ol>
-                      </div>
-                      <textarea value={linkedinCurl} onChange={(e) => setLinkedinCurl(e.target.value)} placeholder="curl 'https://www.linkedin.com/...' ..." className="w-full h-24 px-3 py-2 rounded-xl bg-muted/50 border border-border text-foreground text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none" />
-                      <button onClick={submitLinkedinCurl} disabled={!linkedinCurl || isLoading} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-medium disabled:opacity-50 flex items-center justify-center">
-                        {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Connect with cURL"}
-                      </button>
+                    <button onClick={() => { setPairingCode(null); setShowPhoneInput(true); }} className="text-xs text-muted-foreground underline hover:text-primary transition-colors">Try different number</button>
+                  </div>
+                ) : showPhoneInput ? (
+                  <div className="flex flex-col items-center space-y-4 w-full">
+                    <input type="text" placeholder="e.g. +1234567890" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                    <button onClick={() => handleConnect(connectingPlatform!, phoneNumber)} disabled={!phoneNumber || isLoading} className="w-full py-2 rounded-xl bg-primary text-primary-foreground font-medium disabled:opacity-50">
+                      {isLoading ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : "Get Pairing Code"}
+                    </button>
+                    <button onClick={() => setShowPhoneInput(false)} className="text-sm text-primary underline">Use QR Code instead</button>
+                  </div>
+                ) : qrCodeData ? (
+                  <div className="flex flex-col items-center space-y-4">
+                    <div className="bg-white p-4 rounded-xl shadow-inner border-2 border-dashed border-border relative">
+                      <QRCodeSVG value={qrCodeData} size={256} level={"L"} includeMargin={false} className="w-64 h-64" />
                     </div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center mb-6">
-                  {isLoading ? (
-                    <div className="flex flex-col items-center space-y-2">
-                      <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">Generating code...</span>
+                    <div className="flex gap-4">
+                      <button onClick={() => handleConnect(connectingPlatform!)} className="text-xs text-muted-foreground underline hover:text-primary transition-colors">Refresh Code</button>
+                      <button onClick={() => { setShowPhoneInput(true); setQrCodeData(null); }} className="text-xs text-primary underline hover:text-primary/80 transition-colors">Link with Phone Number</button>
                     </div>
-                  ) : pairingCode ? (
-                    <div className="flex flex-col items-center space-y-4">
-                      <div className="bg-muted p-6 rounded-xl text-center">
-                        <p className="text-sm text-muted-foreground mb-2">Enter this code on your phone</p>
-                        <div className="text-3xl font-mono font-bold tracking-wider text-primary">{pairingCode}</div>
-                      </div>
-                      <button onClick={() => { setPairingCode(null); setShowPhoneInput(true); }} className="text-xs text-muted-foreground underline hover:text-primary transition-colors">Try different number</button>
-                    </div>
-                  ) : showPhoneInput ? (
-                    <div className="flex flex-col items-center space-y-4 w-full">
-                      <input type="text" placeholder="e.g. +1234567890" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20" />
-                      <button onClick={() => handleConnect(connectingPlatform!, phoneNumber)} disabled={!phoneNumber || isLoading} className="w-full py-2 rounded-xl bg-primary text-primary-foreground font-medium disabled:opacity-50">
-                        {isLoading ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : "Get Pairing Code"}
-                      </button>
-                      <button onClick={() => setShowPhoneInput(false)} className="text-sm text-primary underline">Use QR Code instead</button>
-                    </div>
-                  ) : qrCodeData ? (
-                    <div className="flex flex-col items-center space-y-4">
-                      <div className="bg-white p-4 rounded-xl shadow-inner border-2 border-dashed border-border relative">
-                        <QRCodeSVG value={qrCodeData} size={256} level={"L"} includeMargin={false} className="w-64 h-64" />
-                      </div>
-                      <div className="flex gap-4">
-                        <button onClick={() => handleConnect(connectingPlatform!)} className="text-xs text-muted-foreground underline hover:text-primary transition-colors">Refresh Code</button>
-                        <button onClick={() => { setShowPhoneInput(true); setQrCodeData(null); }} className="text-xs text-primary underline hover:text-primary/80 transition-colors">Link with Phone Number</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center space-y-2">
-                      <p className="text-destructive">Failed to load login option</p>
-                      <button onClick={() => handleConnect(connectingPlatform!)} className="text-sm text-primary underline">Retry</button>
-                    </div>
-                  )}
-                </div>
-              )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center space-y-2">
+                    <p className="text-destructive">Failed to load login option</p>
+                    <button onClick={() => handleConnect(connectingPlatform!)} className="text-sm text-primary underline">Retry</button>
+                  </div>
+                )}
+              </div>
 
               {connectingPlatform === 'gmail' && (
                 <div className="flex flex-col space-y-4">
@@ -614,12 +598,88 @@ export default function Connections() {
                     disabled={!erpnextUrl || !erpnextApiKey || !erpnextApiSecret || isLoading}
                     className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-medium disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Connect ERPNext"}
+                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : "Connect ERPNext"}
                   </button>
                 </div>
               )}
 
-              {!showPhoneInput && !pairingCode && connectingPlatform !== 'linkedin' && connectingPlatform !== 'gmail' && connectingPlatform !== 'outlook' && connectingPlatform !== 'erpnext' && (
+              {connectingPlatform === 'instagram' && !instagramType && (
+                <div className="flex flex-col space-y-4">
+                  <p className="text-sm text-muted-foreground">Choose your Instagram account type for the best experience.</p>
+                  <button
+                    onClick={() => setInstagramType('business')}
+                    className="w-full p-4 rounded-2xl border border-border hover:border-primary/50 hover:bg-primary/5 transition-all text-left flex flex-col gap-1"
+                  >
+                    <span className="font-semibold text-foreground">Official Business/Creator</span>
+                    <span className="text-xs text-muted-foreground">Highly stable, uses OAuth. Requires a Facebook Page.</span>
+                  </button>
+                  <button
+                    onClick={() => setInstagramType('personal')}
+                    className="w-full p-4 rounded-2xl border border-border hover:border-primary/50 hover:bg-primary/5 transition-all text-left flex flex-col gap-1"
+                  >
+                    <span className="font-semibold text-foreground">Personal Account</span>
+                    <span className="text-xs text-muted-foreground">Full DM support. Uses username/password.</span>
+                  </button>
+                </div>
+              )}
+
+              {connectingPlatform === 'instagram' && instagramType === 'business' && (
+                <div className="flex flex-col space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Connect your Instagram Business or Creator account via Meta.
+                    Requires that your account is linked to a Facebook Page.
+                  </p>
+                  <button onClick={handleConnectInstagramBusiness} disabled={isLoading} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-medium disabled:opacity-50 flex items-center justify-center gap-2">
+                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Connect via Meta"}
+                  </button>
+                  <button onClick={() => setInstagramType(null)} className="text-sm text-primary underline">Back to choices</button>
+                </div>
+              )}
+
+              {connectingPlatform === 'instagram' && instagramType === 'personal' && (
+                <div className="flex flex-col space-y-4">
+                  {!requiresIgMfa ? (
+                    <>
+                      <p className="text-sm text-muted-foreground">Login to your personal Instagram account. Knudge stores your session securely.</p>
+                      <input
+                        type="text"
+                        placeholder="Instagram Username"
+                        value={igUsername}
+                        onChange={(e) => setIgUsername(e.target.value)}
+                        className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground"
+                      />
+                      <input
+                        type="password"
+                        placeholder="Password"
+                        value={igPassword}
+                        onChange={(e) => setIgPassword(e.target.value)}
+                        className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground"
+                      />
+                      <button onClick={submitInstagramPersonal} disabled={isLoading || !igUsername || !igPassword} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-medium disabled:opacity-50">
+                        {isLoading ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : "Connect Personal"}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-muted-foreground">Enter the 6-digit verification code sent to your account.</p>
+                      <input
+                        type="text"
+                        placeholder="Verification Code"
+                        value={igVerificationCode}
+                        onChange={(e) => setIgVerificationCode(e.target.value)}
+                        className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground text-center text-xl tracking-widest font-mono"
+                        maxLength={6}
+                      />
+                      <button onClick={submitInstagramPersonal} disabled={isLoading || !igVerificationCode} className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-medium disabled:opacity-50">
+                        {isLoading ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : "Verify Code"}
+                      </button>
+                    </>
+                  )}
+                  <button onClick={() => { setRequiresIgMfa(false); setInstagramType(null); }} className="text-sm text-primary underline">Back to choices</button>
+                </div>
+              )}
+
+              {!showPhoneInput && !pairingCode && connectingPlatform !== 'gmail' && connectingPlatform !== 'outlook' && connectingPlatform !== 'erpnext' && connectingPlatform !== 'instagram' && (
                 <p className="text-sm text-muted-foreground text-center mb-6">Scan this QR code with {platformNames[connectingPlatform as keyof typeof platformNames]} on your phone. The connection will complete automatically.</p>
               )}
 

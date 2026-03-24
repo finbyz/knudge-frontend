@@ -13,6 +13,7 @@ export interface Contact {
   last_contacted_at?: string;
   created_at?: string;
   provider?: string;
+  instagram_username?: string;
 }
 
 export interface CreateCircleRequest {
@@ -73,5 +74,18 @@ export const contactsApi = {
 
   deleteCircle: async (id: string): Promise<void> => {
     return ApiClient.delete(`/contacts/circles/${id}`);
+  },
+
+  getContactConversations: async (
+    contactId: string,
+    options?: { refresh?: boolean; limit?: number }
+  ): Promise<{ success: boolean; conversations: any[] }> => {
+    const params = new URLSearchParams();
+    if (options?.refresh) params.set("refresh", "true");
+    if (options?.limit) params.set("limit", String(options.limit));
+    const query = params.toString();
+    return ApiClient.get(
+      `/contacts/${contactId}/conversations${query ? `?${query}` : ""}`
+    );
   },
 };

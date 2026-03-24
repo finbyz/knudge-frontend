@@ -8,9 +8,7 @@ import { useOnboardingStore } from "@/stores/onboardingStore";
 import { useAuthStore } from "@/stores/authStore";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useEffect, useState } from "react";
-import { useAuthStore } from "@/stores/authStore";
 import { authApi } from "@/api/auth";
-import { ProtectedRoute } from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
 import Deck from "./pages/Deck";
 import Connections from "./pages/Connections";
@@ -29,15 +27,13 @@ import OnboardingGoal from "./pages/onboarding/OnboardingGoal";
 import OnboardingProfile from "./pages/onboarding/OnboardingProfile";
 import OnboardingVoice from "./pages/onboarding/OnboardingVoice";
 import OnboardingKnowledge from "./pages/onboarding/OnboardingKnowledge";
-import OnboardingConnections from "./pages/onboarding/OnboardingConnections";
+
 import OnboardingTrial from "./pages/onboarding/OnboardingTrial";
 import OnboardingComplete from "./pages/onboarding/OnboardingComplete";
-import GmailCallback from "./pages/GmailCallback";
 import OutlookCallback from "./pages/OutlookCallback";
 import { DesktopSidebar } from "./components/layout/DesktopSidebar";
 import { cn } from "./lib/utils";
 import GmailCallback from "./pages/GmailCallback";
-import OutlookCallback from "./pages/OutlookCallback";
 
 const queryClient = new QueryClient();
 
@@ -47,9 +43,8 @@ const getStepPath = (step: number) => {
     case 2: return '/onboarding/profile';
     case 3: return '/onboarding/voice';
     case 4: return '/onboarding/knowledge';
-    case 5: return '/onboarding/connections';
-    case 6: return '/onboarding/trial';
-    case 7: return '/onboarding/complete';
+    case 5: return '/onboarding/trial';
+    case 6: return '/onboarding/complete';
     default: return '/onboarding/goal';
   }
 };
@@ -156,7 +151,7 @@ function AppRoutes() {
         <Route path="/onboarding/profile" element={<OnboardingProfile />} />
         <Route path="/onboarding/voice" element={<OnboardingVoice />} />
         <Route path="/onboarding/knowledge" element={<OnboardingKnowledge />} />
-        <Route path="/onboarding/connections" element={<OnboardingConnections />} />
+
         <Route path="/onboarding/trial" element={<OnboardingTrial />} />
         <Route path="/onboarding/complete" element={<OnboardingComplete />} />
 

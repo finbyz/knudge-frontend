@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Plus, X, Calendar, Sparkles, MessageSquare, Rss, Camera, User, Loader2 } from 'lucide-react';
+import { Search, Plus, X, Calendar, Sparkles, MessageSquare, Rss, Camera, User, Loader2, RotateCw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ContactItem } from '@/components/ContactItem';
 import { Avatar } from '@/components/Avatar';
@@ -10,6 +10,7 @@ import { TopBar } from '@/components/TopBar';
 // Resolved imports calling real API
 import { contactsApi, Contact, Circle } from '@/api/contacts';
 import { toast } from 'sonner';
+import { formatPhone } from '@/lib/utils';
 
 // Platform options for new contacts
 const platformOptions = [
@@ -18,6 +19,7 @@ const platformOptions = [
   { id: 'email', label: 'Email', color: 'bg-gray-500' },
   { id: 'signal', label: 'Signal', color: 'bg-[#3A76F0]' },
   { id: 'telegram', label: 'Telegram', color: 'bg-[#26A5E4]' },
+  { id: 'instagram', label: 'Instagram', color: 'bg-[#E1306C]' },
 ];
 
 export default function Contacts() {
@@ -39,6 +41,11 @@ export default function Contacts() {
   const [circles, setCircles] = useState<Circle[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Conversation state
+  const [conversations, setConversations] = useState<any[]>([]);
+  const [loadingConversations, setLoadingConversations] = useState(false);
+  const [refreshingConversations, setRefreshingConversations] = useState(false);
+
   useEffect(() => {
     loadCircles();
   }, []);
@@ -46,6 +53,62 @@ export default function Contacts() {
   useEffect(() => {
     loadContacts();
   }, [selectedCircleId]);
+
+  useEffect(() => {
+    if (selectedContact) {
+      loadConversations(selectedContact.id);
+    } else {
+      setConversations([]);
+    }
+  }, [selectedContact]);
+
+  const loadConversations = async (contactId: string, forceRefresh = false) => {
+    if (forceRefresh) {
+      setRefreshingConversations(true);
+    } else {
+      setLoadingConversations(true);
+    }
+    try {
+      const response = await contactsApi.getContactConversations(contactId, {
+        refresh: forceRefresh,
+        limit: 10,
+      });
+      if (response.success) {
+        const normalized = (response.conversations || []).map((msg: any, idx: number) => {
+          const tsRaw = msg.timestamp;
+          const parsed =
+            typeof tsRaw === 'number'
+              ? new Date(tsRaw > 1e11 ? tsRaw : tsRaw * 1000)
+              : new Date(tsRaw);
+          const validDate = !Number.isNaN(parsed.getTime());
+          const text = msg.text || msg.body || '';
+
+          return {
+            ...msg,
+            id: msg.id || `${contactId}-${idx}`,
+            text,
+            sender_name: msg.sender_name || (msg.from_me ? 'You' : 'Contact'),
+            __timeLabel: validDate
+              ? parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : '',
+          };
+        });
+        setConversations(normalized);
+        if (forceRefresh) {
+          const textCount = normalized.filter((m: any) => (m.text || '').trim()).length;
+          toast.success(`Conversations reloaded (${textCount} messages)`);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load conversations:", error);
+      if (forceRefresh) {
+        toast.error('Failed to reload conversations');
+      }
+    } finally {
+      setLoadingConversations(false);
+      setRefreshingConversations(false);
+    }
+  };
 
   const loadCircles = async () => {
     try {
@@ -89,11 +152,11 @@ export default function Contacts() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-24 pt-20">
+    <div className="min-h-screen bg-background pb-24 pt-0">
       <TopBar title="Contacts" />
 
       {/* Filter Bar - from api integrate but styled to fit under TopBar */}
-      <div className="px-4 pb-4 space-y-4">
+      <div className="px-4 pt-0 pb-4 space-y-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
@@ -135,7 +198,7 @@ export default function Contacts() {
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-center px-4">
               <p className="text-muted-foreground">No contacts found.</p>
-                {selectedCircleId !== null && <Button variant="link" onClick={() => setSelectedCircleId(null)}>Clear filter</Button>}
+              {selectedCircleId !== null && <Button variant="link" onClick={() => setSelectedCircleId(null)}>Clear filter</Button>}
             </div>
           )}
         </div>
@@ -269,8 +332,8 @@ export default function Contacts() {
                             }));
                           }}
                           className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${isSelected
-                              ? `${platform.color} text-white`
-                              : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                            ? `${platform.color} text-white`
+                            : 'bg-muted text-muted-foreground hover:bg-muted/80'
                             }`}
                         >
                           {platform.label}
@@ -335,11 +398,16 @@ export default function Contacts() {
 
               <div className="px-6 py-6">
                 <div className="flex flex-col items-center text-center mb-6">
-                  <Avatar initials={selectedContact.avatar || selectedContact.name.substring(0, 2)} size="xl" />
+                  <Avatar
+                    initials={selectedContact.name.substring(0, 2).toUpperCase()}
+                    src={selectedContact.avatar}
+                    size="xl"
+                  />
                   <h2 className="text-xl font-bold text-foreground mt-4">{selectedContact.name}</h2>
                   <p className="text-muted-foreground">
                     {selectedContact.linkedin_url && `via LinkedIn`}
-                    {!selectedContact.linkedin_url && (selectedContact.email || selectedContact.phone)}
+                    {selectedContact.instagram_username && ` @${selectedContact.instagram_username}`}
+                    {!selectedContact.linkedin_url && !selectedContact.instagram_username && (selectedContact.email || formatPhone(selectedContact.phone))}
                   </p>
 
                   <div className="flex items-center gap-2 mt-4">
@@ -348,6 +416,7 @@ export default function Contacts() {
                       if (selectedContact.email) platforms.push('email');
                       if (selectedContact.phone) platforms.push('whatsapp');
                       if (selectedContact.linkedin_url) platforms.push('linkedin');
+                      if (selectedContact.instagram_username) platforms.push('instagram');
 
                       return platforms.length > 0 ? (
                         platforms.map(p => (
@@ -378,16 +447,48 @@ export default function Contacts() {
                 </div>
 
                 <div className="mb-6">
-                  <div className="flex items-center gap-2 mb-3">
-                    <MessageSquare className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-semibold text-foreground">Recent Conversations</span>
-                    <span className="text-xs text-muted-foreground">(Last 10)</span>
-                  </div>
-                  <div className="relative pl-4 border-l-2 border-primary/20 space-y-3 max-h-48 overflow-y-auto">
-                    <div className="p-3 rounded-xl bg-muted/50 text-center">
-                      <MessageSquare className="h-5 w-5 text-muted-foreground mx-auto mb-1" />
-                      <p className="text-xs text-muted-foreground">No conversations yet</p>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-semibold text-foreground">Recent Conversations</span>
+                      <span className="text-xs text-muted-foreground">(Last 10)</span>
                     </div>
+                    <button
+                      type="button"
+                      disabled={loadingConversations || refreshingConversations}
+                      onClick={() => selectedContact && loadConversations(selectedContact.id, true)}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                      aria-label="Reload conversations"
+                    >
+                      <RotateCw className={`h-3.5 w-3.5 ${(loadingConversations || refreshingConversations) ? 'animate-spin' : ''}`} />
+                      Reload
+                    </button>
+                  </div>
+                  <div className="relative pl-4 border-l-2 border-primary/20 space-y-3 max-h-60 overflow-y-auto">
+                    {loadingConversations ? (
+                      <div className="flex justify-center py-4">
+                        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                      </div>
+                    ) : conversations.length > 0 ? (
+                      conversations.map((msg, idx) => (
+                        <div key={idx} className={`p-3 rounded-2xl ${msg.from_me ? 'bg-primary/10 ml-4' : 'bg-muted/50 mr-4'}`}>
+                          <div className="flex justify-between items-start mb-1">
+                            <span className="text-[10px] font-bold text-primary uppercase">
+                              {msg.from_me ? 'You' : msg.sender_name || 'Contact'}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {msg.__timeLabel || '--:--'}
+                            </span>
+                          </div>
+                          <p className="text-sm text-foreground">{msg.text}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-3 rounded-xl bg-muted/50 text-center">
+                        <MessageSquare className="h-5 w-5 text-muted-foreground mx-auto mb-1" />
+                        <p className="text-xs text-muted-foreground">No conversations yet</p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -409,7 +510,20 @@ export default function Contacts() {
                     <Calendar className="h-4 w-4 mr-2" />
                     Schedule
                   </Button>
-                  <Button className="flex-1 gradient-primary text-primary-foreground border-0">
+                  <Button
+                    className="flex-1 gradient-primary text-primary-foreground border-0"
+                    onClick={() => {
+                      if (selectedContact?.phone) {
+                        const phone = selectedContact.phone.replace(/\D/g, '');
+                        const avatarParam = selectedContact.avatar
+                          ? `&avatar=${encodeURIComponent(selectedContact.avatar)}`
+                          : '';
+                        window.location.href = `/inbox/chat/wa?room=${phone}@s.whatsapp.net&name=${encodeURIComponent(selectedContact.name)}&phone=${encodeURIComponent(selectedContact.phone)}${avatarParam}`;
+                      } else {
+                        toast.error('No phone number available');
+                      }
+                    }}
+                  >
                     <MessageSquare className="h-4 w-4 mr-2" />
                     Message
                   </Button>

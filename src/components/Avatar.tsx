@@ -1,9 +1,13 @@
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
+import { Users } from 'lucide-react';
 
 interface AvatarProps {
   initials: string;
+  src?: string;
   size?: 'sm' | 'md' | 'lg' | 'xl';
   isVIP?: boolean;
+  isGroup?: boolean;
 }
 
 const sizeClasses = {
@@ -13,17 +17,35 @@ const sizeClasses = {
   xl: 'h-16 w-16 text-lg',
 };
 
-export function Avatar({ initials, size = 'md', isVIP = false }: AvatarProps) {
+export function Avatar({ initials, src, size = 'md', isVIP = false, isGroup = false }: AvatarProps) {
+  const [imgFailed, setImgFailed] = useState(false);
+
+  // Only show image if src is a real URL (starts with http/https or /)
+  const isValidUrl = src && (src.startsWith('http') || src.startsWith('/'));
+  const showImg = isValidUrl && !imgFailed;
+
   return (
     <div className="relative">
       <div
         className={cn(
-          'rounded-full gradient-primary flex items-center justify-center font-semibold text-primary-foreground',
+          'rounded-full flex items-center justify-center font-semibold text-primary-foreground overflow-hidden',
+          showImg ? 'bg-muted' : 'gradient-primary',
           sizeClasses[size],
           isVIP && 'ring-2 ring-warning ring-offset-2 ring-offset-background'
         )}
       >
-        {initials}
+        {showImg ? (
+          <img
+            src={src}
+            alt={initials}
+            className="h-full w-full object-cover"
+            onError={() => setImgFailed(true)}
+          />
+        ) : isGroup ? (
+          <Users className="h-1/2 w-1/2" />
+        ) : (
+          initials
+        )}
       </div>
       {isVIP && (
         <div className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-warning flex items-center justify-center">

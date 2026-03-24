@@ -7,8 +7,7 @@ export interface PlatformStatus {
 
 export interface BridgeStatus {
   whatsapp: PlatformStatus;
-  signal: PlatformStatus;
-  linkedin: PlatformStatus;
+  telegram: PlatformStatus;
 }
 
 export interface LoginResponse {
@@ -72,8 +71,8 @@ export const bridgesApi = {
     return ApiClient.get('/gmail/status');
   },
 
-  exchangeGmailCode: async (code: string): Promise<any> => {
-    return ApiClient.post('/gmail/callback', { code });
+  exchangeGmailCode: async (code: string, state?: string): Promise<any> => {
+    return ApiClient.post('/gmail/callback', { code, state });
   },
 
   disconnectGmail: async (): Promise<{ status: string }> => {
@@ -116,5 +115,47 @@ export const bridgesApi = {
 
   disconnectERPNext: async (): Promise<{ status: string }> => {
     return ApiClient.post('/erpnext/disconnect', {});
+  },
+
+  // Telegram Integration
+  getTelegramStatus: async (): Promise<{ connected: boolean; user?: any; error?: string; contact_count?: number }> => {
+    return ApiClient.get('/telegram/status');
+  },
+
+  requestTelegramCode: async (phone: string): Promise<{ status: string, phone_code_hash?: string, message?: string }> => {
+    return ApiClient.post('/telegram/login/request-code', { phone });
+  },
+
+  verifyTelegramCode: async (phone: string, code: string, phone_code_hash: string, password?: string): Promise<{ status: string, user?: any }> => {
+    return ApiClient.post('/telegram/login/verify-code', { phone, code, phone_code_hash, password });
+  },
+
+  syncTelegram: async (): Promise<{ status: string, contacts_synced: number, messages_synced: number }> => {
+    return ApiClient.post('/telegram/sync', {});
+  },
+
+  disconnectTelegram: async (): Promise<{ status: string }> => {
+    return ApiClient.post('/telegram/disconnect', {});
+  },
+
+  // Instagram Integration
+  getInstagramStatus: async (): Promise<{ is_connected: boolean, account_type?: 'business' | 'personal', username?: string, contact_count?: number }> => {
+    return ApiClient.get('/instagram/status');
+  },
+
+  connectInstagramPersonal: async (username: string, password: string, verification_code?: string): Promise<{ status: string, message: string, requires_mfa?: boolean }> => {
+    return ApiClient.post('/instagram/connect/personal', { username, password, verification_code });
+  },
+
+  getInstagramAuthUrl: async (): Promise<{ url: string }> => {
+    return ApiClient.get('/instagram/auth_url');
+  },
+
+  disconnectInstagram: async (): Promise<{ status: string }> => {
+    return ApiClient.post('/instagram/disconnect', {});
+  },
+
+  syncInstagram: async (): Promise<{ synced_count: number }> => {
+    return ApiClient.post('/instagram/sync', {});
   }
 };

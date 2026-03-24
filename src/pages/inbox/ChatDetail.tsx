@@ -2,32 +2,45 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, MoreVertical, Plus, Sparkles, Send, MessageCircle, Linkedin, Check, CheckCheck, Clock, Camera, FileText, MapPin, User, Mic, X, Loader2, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from '@/lib/utils';
+import { cn, formatPhone } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { useSwipeable } from 'react-swipeable';
 import { useAuthStore } from '@/stores/authStore';
+import { useInboxStore } from '@/stores/inboxStore';
+import { API_BASE_URL, API_HOST_URL } from '@/lib/api-client';
+import { Avatar } from '@/components/Avatar';
 
 interface ChatMessage {
-  id: number;
+  id: number | string;
   type: 'incoming' | 'outgoing';
   text: string;
   timestamp: string;
   status?: 'pending' | 'sent' | 'delivered' | 'read';
+  media_url?: string;
+  media_mimetype?: string;
+  message_type?: string;
+  sender_name?: string;
+  direction?: string;
+  from_me?: boolean;
+  fromMe?: boolean;
   attachment?: {
     name: string;
     size: string;
     type: 'image' | 'document';
     url?: string;
   };
+  mxc_uri?: string;
 }
 
 interface ContactInfo {
   id: string;
   name: string;
   initials: string;
-  platform: 'whatsapp' | 'linkedin' | 'signal';
+  platform: 'whatsapp' | 'linkedin' | 'signal' | 'telegram';
   lastSeen: string;
+  phone?: string;
+  avatar?: string;
 }
 
 const platformConfig = {
@@ -45,6 +58,11 @@ const platformConfig = {
     icon: MessageCircle,
     bgColor: 'bg-[#3A76F0]',
     label: 'Signal',
+  },
+  telegram: {
+    icon: MessageCircle,
+    bgColor: 'bg-[#229ED9]',
+    label: 'Telegram',
   },
 };
 
@@ -66,11 +84,7 @@ const sampleMessages: ChatMessage[] = [
   { id: 8, type: 'incoming', text: "I know a great place downtown that just opened.", timestamp: '10:46 AM' },
 ];
 
-const aiDraftResponses = [
-  "That sounds perfect! How about noon? I'm flexible with the location.",
-  "Great! I've heard good things about that place. Let's meet around 12:30?",
-  "Looking forward to it! Thursday at noon works for me. Just send me the address!",
-];
+// AI fallbacks removed - we prioritize real AI responses or error messages.
 
 const attachmentMenuItems = [
   { id: 'photo', icon: Camera, label: 'Photo', color: 'text-blue-500', accept: 'image/*' },
@@ -92,28 +106,47 @@ const mockInboxChats = ['1', '2', '4', '5'];
 export default function ChatDetail() {
   const navigate = useNavigate();
   const { contactId } = useParams<{ contactId: string }>();
+  // ✅ Robust Room ID extraction from URL
   const [searchParams] = useSearchParams();
   const roomId = searchParams.get('room');
   const contactNameFromParams = searchParams.get('name');
+  const phoneFromParams = searchParams.get('phone');
+  const avatarFromParams = searchParams.get('avatar');
+  const bridgeId = searchParams.get('bridge_id');
 
-  const [messages, setMessages] = useState<ChatMessage[]>(sampleMessages);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [showUndo, setShowUndo] = useState(false);
   const [originalText, setOriginalText] = useState('');
-  const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<{ file: File; preview?: string; type: 'image' | 'document' } | null>(null);
-  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
-  const [replyDraft, setReplyDraft] = useState('');
-  const [replyInstructions, setReplyInstructions] = useState('');
-  const [isGeneratingReply, setIsGeneratingReply] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
+  const pollingErrorCountRef = useRef(0);
+  const MAX_POLLING_ERRORS = 3;
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileAccept, setFileAccept] = useState('');
   const { toast } = useToast();
-  const { accessToken } = useAuthStore();
+  const { accessToken, user } = useAuthStore();
+  const getMediaUrl = (mxc?: string, fallbackUrl?: string) => {
+    // Fall back to backend media proxy URL with JWT token for auth
+    if (fallbackUrl && accessToken) {
+      return `${fallbackUrl}${fallbackUrl.includes('?') ? '&' : '?'}token=${accessToken}`;
+    }
+    return fallbackUrl || '';
+  };
+  const markAsRead = useInboxStore((state) => state.markAsRead);
+
+  // Mark as read when opened
+  useEffect(() => {
+    if (contactId) {
+      markAsRead(`wa-room-${roomId || contactId}`);
+    } else if (roomId) {
+      markAsRead(`wa-room-${roomId}`);
+    }
+  }, [contactId, roomId, markAsRead]);
 
   // Dynamic contact based on params or sample
   const [dynamicContact, setDynamicContact] = useState<ContactInfo | null>(null);
@@ -123,67 +156,232 @@ export default function ChatDetail() {
   const platform = platformConfig[contact.platform];
   const PlatformIcon = platform.icon;
 
-  // Fetch WhatsApp messages if roomId is provided
+  // Telegram State & Logic
+
+  const fetchWaMessages = useCallback(async () => {
+    if (!roomId || !accessToken) return;
+    const decodedRoomId = decodeURIComponent(roomId);
+    setIsLoadingMessages(true);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/whatsapp/messages/${encodeURIComponent(decodedRoomId)}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        // Handle both old array format and new object format
+        const msgs = Array.isArray(data) ? data : (data.messages || []);
+
+        const chatMessages: ChatMessage[] = msgs.map((msg: any) => {
+          const direction = (msg.direction || '').toUpperCase();
+          const isOutgoing = direction === 'OUTGOING';
+
+          return {
+            id: msg.id,
+            type: isOutgoing ? 'outgoing' : 'incoming',
+            text: msg.text || msg.body || '',
+            timestamp: msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+            status: isOutgoing ? 'delivered' : undefined,
+            message_type: msg.message_type,
+            media_url: msg.media_url ? `${API_HOST_URL}${msg.media_url}` : undefined,
+            media_mimetype: msg.media_mimetype,
+            mxc_uri: msg.mxc_uri,
+            sender_name: msg.sender_name,
+          };
+        });
+        setMessages(chatMessages);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  }, [roomId, accessToken]);
+  // No messages.length — uses ref instead
+
+  const fetchTgMessages = useCallback(async (isLoadMore = false) => {
+    if (!contactId || !contactId.startsWith('telegram-') || !accessToken) return;
+    const tgChatId = contactId.replace('telegram-', '');
+
+    setIsLoadingMessages(true);
+    try {
+      const limit = 20;
+      // const currentOffset = isLoadMore ? msgOffset : 0; // msgOffset is not defined, removing for now
+
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL || 'https://knudge-api-dev.finbyz.com'}/api/v1/telegram/messages/${tgChatId}?limit=${limit}`, // Removed offset
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const chatMessages: ChatMessage[] = data.map((msg: any) => {
+          const direction = (msg.direction || '').toUpperCase();
+          return {
+            id: msg.id,
+            type: direction === 'OUTGOING' ? 'outgoing' : 'incoming',
+            text: msg.text,
+            timestamp: msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+            status: direction === 'OUTGOING' ? 'sent' : undefined
+          };
+        });
+
+        // if (data.length < limit) { // Removed hasMoreMessages state
+        //   setHasMoreMessages(false);
+        // }
+
+        if (isLoadMore) {
+          setMessages(prev => [...chatMessages, ...prev]);
+          // setMsgOffset(prev => prev + limit); // Removed msgOffset state
+        } else {
+          setMessages(chatMessages);
+          // setMsgOffset(limit); // Removed msgOffset state
+          // setHasMoreMessages(data.length === limit); // Removed hasMoreMessages state
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  }, [contactId, accessToken]); // Removed msgOffset from dependencies
+
+  // Polling for new messages every 10 seconds
   useEffect(() => {
-    if (roomId && contactNameFromParams && accessToken) {
-      // Set contact info from params
+    if (!roomId || !accessToken) return;
+
+    const intervalId = setInterval(async () => {
+      // 1. Skip if already loading or tab is hidden
+      if (isLoadingMessages || document.visibilityState !== 'visible') return;
+
+      // 2. Stop if too many errors
+      if (pollingErrorCountRef.current >= MAX_POLLING_ERRORS) {
+        console.warn("Stopping message polling due to repeated errors.");
+        clearInterval(intervalId);
+        return;
+      }
+
+      const decodedRoomId = decodeURIComponent(roomId);
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/whatsapp/messages/${encodeURIComponent(decodedRoomId)}?limit=10&offset=0`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+
+        if (response.ok) {
+          pollingErrorCountRef.current = 0; // Reset on success
+          const json = await response.json();
+          const data = Array.isArray(json) ? json : (json.messages || []);
+
+          setMessages(prev => {
+            const existingIds = new Set(prev.map(m => m.id));
+            const newMsgs: ChatMessage[] = [];
+
+            data.forEach((msg: any) => {
+              const id = msg.id;
+              if (id && !existingIds.has(id)) {
+                const direction = (msg.direction || '').toUpperCase();
+                const isOutgoing = direction === 'OUTGOING' || direction === 'outgoing';
+                newMsgs.push({
+                  id,
+                  type: isOutgoing ? 'outgoing' : 'incoming',
+                  text: msg.text || msg.body || '',
+                  timestamp: msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+                  status: isOutgoing ? 'delivered' : undefined,
+                  message_type: msg.message_type,
+                  media_url: msg.media_url ? `${API_HOST_URL}${msg.media_url}` : undefined,
+                  media_mimetype: msg.media_mimetype,
+                  mxc_uri: msg.mxc_uri,
+                  sender_name: msg.sender_name,
+                });
+              }
+            });
+
+            if (newMsgs.length > 0) {
+              return [...prev, ...newMsgs.reverse()];
+            }
+            return prev;
+          });
+        } else {
+          pollingErrorCountRef.current++;
+        }
+      } catch (e) {
+        pollingErrorCountRef.current++;
+        console.error("Polling error:", e);
+      }
+    }, 10000);
+
+    return () => clearInterval(intervalId);
+  }, [roomId, accessToken, isLoadingMessages]);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const { scrollTop } = e.currentTarget;
+    // Removed hasMoreMessages check as it's no longer used for Telegram
+    if (scrollTop === 0 && !isLoadingMessages) {
+      const scrollHeightBefore = e.currentTarget.scrollHeight;
+      const fetchFunc = contact.platform === 'telegram' ? fetchTgMessages : fetchWaMessages;
+      fetchFunc(true).then(() => {
+        if (e.currentTarget) {
+          e.currentTarget.scrollTop = e.currentTarget.scrollHeight - scrollHeightBefore;
+        }
+      });
+    }
+  };
+
+  // Fetch WhatsApp or Telegram messages
+  useEffect(() => {
+    // ─── WhatsApp Logic (FIXED) ───────────────────────────────────────────────
+    if (roomId && accessToken) {
+      // FIX 1: Don't gate on contactNameFromParams — always set a contact so
+      //         the chat opens even when ?name= is missing from the URL.
+      const safeName = contactNameFromParams?.trim() || 'Unknown';
+
+      // FIX 2: Compute initials safely — never do string[0] on a possibly-empty value.
+      const nameParts = safeName.split(/\s+/).filter(Boolean);
+      const initials =
+        nameParts.length >= 2
+          ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
+          : safeName.slice(0, 2).toUpperCase() || '?';
+
       setDynamicContact({
         id: contactId || 'wa',
-        name: contactNameFromParams,
-        initials: contactNameFromParams[0]?.toUpperCase() || 'W',
+        name: safeName,   // FIX 3: always a real string, never null/undefined
+        initials,
         platform: 'whatsapp',
-        lastSeen: 'WhatsApp'
+        lastSeen: 'WhatsApp',
+        phone: phoneFromParams || undefined,
+        avatar: avatarFromParams || undefined,
       });
 
-      // Fetch messages from API
-      const fetchMessages = async () => {
-        setIsLoadingMessages(true);
-        try {
-          const response = await fetch(
-            `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/bridges/whatsapp/messages/${encodeURIComponent(roomId)}`,
-            { headers: { Authorization: `Bearer ${accessToken}` } }
-          );
-
-          if (response.ok) {
-            const data = await response.json();
-            const chatMessages: ChatMessage[] = data.map((msg: any, idx: number) => ({
-              id: idx + 1,
-              type: msg.direction === 'OUTGOING' ? 'outgoing' : 'incoming',
-              text: msg.body || '',
-              timestamp: new Date(msg.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-              status: msg.direction === 'OUTGOING' ? 'read' : undefined,
-            }));
-            setMessages(chatMessages);
-          }
-        } catch (error) {
-          console.error('Failed to fetch WhatsApp messages:', error);
-        } finally {
-          setIsLoadingMessages(false);
-        }
-      };
-
-      fetchMessages();
+      fetchWaMessages();
     }
-  }, [roomId, contactNameFromParams, contactId, accessToken]);
+    // Telegram Logic — completely unchanged
+    else if (contactId && contactId.startsWith('telegram-') && accessToken) {
+      const tgContactName = contactNameFromParams || 'Telegram User';
 
+      setDynamicContact({
+        id: contactId,
+        name: tgContactName,
+        initials: (tgContactName[0] || 'T').toUpperCase(),
+        platform: "telegram",
+        lastSeen: "Telegram"
+      });
 
-  // Navigation between messages
-  const currentIndex = mockInboxChats.indexOf(contactId || '1');
-  const totalMessages = mockInboxChats.length;
-  const hasPrevious = currentIndex > 0;
-  const hasNext = currentIndex < mockInboxChats.length - 1;
-
-  const goToPrevious = useCallback(() => {
-    if (hasPrevious) {
-      navigate(`/inbox/chat/${mockInboxChats[currentIndex - 1]}`, { replace: true });
+      fetchTgMessages(false);
     }
-  }, [hasPrevious, currentIndex, navigate]);
+  }, [roomId, contactNameFromParams, phoneFromParams, avatarFromParams, contactId, accessToken, toast, fetchTgMessages, fetchWaMessages]);
 
-  const goToNext = useCallback(() => {
-    if (hasNext) {
-      navigate(`/inbox/chat/${mockInboxChats[currentIndex + 1]}`, { replace: true });
-    }
-  }, [hasNext, currentIndex, navigate]);
+
+  // Navigation logic removed as it was based on static mocks
+  const goToPrevious = () => { };
+  const goToNext = () => { };
+  const hasPrevious = false;
+  const hasNext = false;
+  const currentIndex = 0;
+  const totalMessages = messages.length;
 
   // Swipe handlers for navigation
   const navSwipeHandlers = useSwipeable({
@@ -220,11 +418,17 @@ export default function ChatDetail() {
   }, [messages]);
 
   const typeText = useCallback((text: string, callback?: () => void) => {
+    // Aggressive cleaning
+    const cleanText = (text || '').replace(/undefined/gi, '').trim();
+
     let index = 0;
+    let currentBuildingText = '';
     setInputText('');
+
     const interval = setInterval(() => {
-      if (index < text.length) {
-        setInputText(prev => prev + text[index]);
+      if (index < cleanText.length) {
+        currentBuildingText += cleanText[index];
+        setInputText(currentBuildingText);
         index++;
       } else {
         clearInterval(interval);
@@ -234,21 +438,38 @@ export default function ChatDetail() {
     return () => clearInterval(interval);
   }, []);
 
+  // Catch-all safety for any "undefined" leaking into the input
+  useEffect(() => {
+    if (inputText && inputText.toString().toLowerCase().includes('undefined')) {
+      const cleaned = inputText.toString().replace(/undefined/gi, '');
+      if (cleaned !== inputText) {
+        setInputText(cleaned);
+      }
+    }
+  }, [inputText]);
+
+  // Handle auto-resize when inputText changes programmatically (e.g. AI draft)
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px';
+    }
+  }, [inputText]);
+
   const handleAiSparkle = useCallback(async () => {
     setIsAiLoading(true);
 
     if (!inputText.trim()) {
       // STATE 1: Empty text - Generate draft using AI with chat history
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
-        // Convert messages to the format expected by the API
-        const historyForApi = messages.map(msg => ({
+        const apiUrl = import.meta.env.VITE_API_URL || 'https://knudge-api-dev.finbyz.com';
+        // Sanitize history before sending to API to prevent learning "undefined"
+        const historyForApi = messages.slice(-20).map(msg => ({
           type: msg.type,
           text: msg.text
         }));
 
-        const response = await fetch(`${apiUrl}/api/v1/bridges/whatsapp/generate-reply`, {
+        const response = await fetch(`${API_BASE_URL}/bridges/whatsapp/generate-reply`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -257,40 +478,46 @@ export default function ChatDetail() {
           body: JSON.stringify({
             contact_name: contact.name,
             history: historyForApi,
+            room_id: roomId,
           }),
         });
 
         if (response.ok) {
           const data = await response.json();
+
+          let cleanBody = (data.body || '').trim();
+
+          // Aggressive "undefined" removal
+          cleanBody = cleanBody.replace(/undefined/gi, '');
+
+          // Clean extra spaces
+          cleanBody = cleanBody.replace(/\s+/g, ' ').trim();
+
           setIsAiLoading(false);
-          typeText(data.body || '', () => {
+
+          // Use the robust typeText helper
+          typeText(cleanBody, () => {
             toast({
-              description: "Draft generated matching your style",
+              description: "Draft generated",
             });
           });
         } else {
-          // Fallback to random draft if API fails
-          const randomDraft = aiDraftResponses[Math.floor(Math.random() * aiDraftResponses.length)];
-          setIsAiLoading(false);
-          typeText(randomDraft, () => {
-            toast({
-              description: "Draft generated based on context",
-            });
+          toast({
+            variant: "destructive",
+            description: "Failed to generate AI draft",
           });
+          setIsAiLoading(false);
         }
       } catch (error) {
-        console.error('Failed to generate AI draft:', error);
-        // Fallback to random draft
-        const randomDraft = aiDraftResponses[Math.floor(Math.random() * aiDraftResponses.length)];
-        setIsAiLoading(false);
-        typeText(randomDraft, () => {
-          toast({
-            description: "Draft generated based on context",
-          });
+        console.error('AI Sparkle error:', error);
+        toast({
+          variant: "destructive",
+          description: "Network error while generating draft",
         });
+        setIsAiLoading(false);
       }
     } else {
-      // STATE 2: Has text - Polish/refine
+      // STATE 2: Has text - Polish/refine logic
       setOriginalText(inputText);
       const polished = polishText(inputText);
       setInputText(polished);
@@ -317,190 +544,151 @@ export default function ChatDetail() {
     setShowUndo(false);
   };
 
-  const handleAttachmentClick = (item: typeof attachmentMenuItems[0]) => {
-    if (item.comingSoon) {
-      toast({ description: `${item.label} coming soon!` });
-      setIsAttachmentMenuOpen(false);
+
+
+  const handleSend = useCallback(async () => {
+    const messageText = inputText.trim();
+    if (!messageText) {
       return;
     }
-
-    setFileAccept(item.accept || '');
-    setIsAttachmentMenuOpen(false);
-    setTimeout(() => {
-      fileInputRef.current?.click();
-    }, 100);
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Validate file size (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      toast({ description: "File too large. Max 10MB", variant: "destructive" });
-      return;
-    }
-
-    const isImage = file.type.startsWith('image/');
-
-    if (isImage) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setSelectedFile({
-          file,
-          preview: e.target?.result as string,
-          type: 'image'
-        });
-      };
-      reader.readAsDataURL(file);
-    } else {
-      setSelectedFile({
-        file,
-        type: 'document'
-      });
-    }
-
-    // Reset file input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
-  };
-
-  const removeSelectedFile = () => {
-    setSelectedFile(null);
-  };
-
-  const handleSend = useCallback(() => {
-    if (!inputText.trim() && !selectedFile) return;
 
     const tempId = Date.now();
     const newMessage: ChatMessage = {
       id: tempId,
       type: 'outgoing',
-      text: inputText.trim(),
-      timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+      text: messageText,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       status: 'pending',
-      ...(selectedFile && {
-        attachment: {
-          name: selectedFile.file.name,
-          size: formatFileSize(selectedFile.file.size),
-          type: selectedFile.type,
-          url: selectedFile.preview,
-        }
-      })
     };
 
     setMessages(prev => [...prev, newMessage]);
     setInputText('');
-    setSelectedFile(null);
     setShowUndo(false);
 
-    // Simulate status updates
-    setTimeout(() => {
-      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'sent' } : m));
-    }, 1000);
+    const isTelegram = contact.platform === 'telegram';
+    const decodedRoomId = roomId ? decodeURIComponent(roomId) : (isTelegram ? contactId.replace('telegram-', '') : null);
 
-    setTimeout(() => {
-      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'delivered' } : m));
-    }, 2500);
-  }, [inputText, selectedFile]);
-
-  // Reply functionality
-  const handleReplyClick = useCallback((message: ChatMessage) => {
-    if (message.type === 'incoming') {
-      setReplyingTo(message);
-      setReplyDraft('');
-      setReplyInstructions('');
-      // Auto-generate a draft reply
-      generateReplyDraft(message.text);
+    if (!decodedRoomId) {
+      toast({
+        description: "Missing ID",
+        variant: "destructive"
+      });
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setInputText(messageText);
+      return;
     }
-  }, []);
-
-  const generateReplyDraft = async (originalMessage: string, instructions?: string) => {
-    setIsGeneratingReply(true);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const apiUrl = import.meta.env.VITE_API_URL || 'https://knudge-api-dev.finbyz.com';
+      let response: Response;
+      if (isTelegram) {
+        response = await fetch(`${import.meta.env.VITE_API_URL || 'https://knudge-api-dev.finbyz.com'}/api/v1/telegram/send`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            message: messageText,
+            chat_id: decodedRoomId,
+          }),
+        });
+      } else {
+        // WhatsApp
+        response = await fetch(`${API_BASE_URL}/bridges/whatsapp/send`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({
+            message: messageText,
+            room_id: decodedRoomId,
+            bridge_id: bridgeId, // Pass bridge_id if available
+          }),
+        });
+      }
 
-      // Convert messages to the format expected by the API
-      const historyForApi = messages.map(msg => ({
-        type: msg.type,
-        text: msg.text
-      }));
-
-      const response = await fetch(`${apiUrl}/api/v1/bridges/whatsapp/generate-reply`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          contact_name: contact.name,
-          history: historyForApi,
-          instructions: instructions,
-        }),
-      });
+      const result = await response.json();
 
       if (response.ok) {
-        const data = await response.json();
-        setReplyDraft(data.body || '');
-      } else {
-      // Fallback to basic draft if API fails
-        let draft = '';
-        const lowerMsg = originalMessage.toLowerCase();
+        // Update local message with real ID from backend if available
+        const realId = result.event_id || tempId;
 
-        if (lowerMsg.includes('meet') || lowerMsg.includes('lunch') || lowerMsg.includes('celebrate')) {
-          draft = "That sounds perfect! I'd love to. Just let me know the time and place, and I'll be there.";
-        } else if (lowerMsg.includes('?')) {
-          draft = "Great question! I'll look into that and get back to you with more details soon.";
-        } else {
-          draft = "Thanks for reaching out! I'm happy to continue this conversation. Let me know how I can help.";
-        }
-        setReplyDraft(draft);
+        setMessages(prev => prev.map(m =>
+          m.id === tempId ? { ...m, id: realId, status: 'sent' } : m
+        ));
+
+        setTimeout(() => {
+          setMessages(prev => prev.map(m =>
+            m.id === realId ? { ...m, status: 'delivered' } : m
+          ));
+        }, 1500);
+
+        toast({ description: "Message sent!" });
+        setInputText(''); // Clear input again to be sure
+
+        // Refresh messages from backend after send
+        setTimeout(async () => {
+          try {
+            if (isTelegram) {
+              // Refresh Telegram messages
+              await fetchTgMessages(false);
+            } else {
+              // Refresh WhatsApp messages
+              const response = await fetch(
+                `${API_BASE_URL}/whatsapp/messages/${encodeURIComponent(decodedRoomId)}?limit=1000`,
+                { headers: { Authorization: `Bearer ${accessToken}` } }
+              );
+
+              if (response.ok) {
+                const data = await response.json();
+                const rawMessages = Array.isArray(data) ? data : (data.messages || []);
+                const chatMessages: ChatMessage[] = rawMessages.map((msg: any, idx: number) => {
+                  const direction = (msg.direction || '').toUpperCase();
+                  const isOutgoing = direction === 'OUTGOING' || direction === 'outgoing';
+                  const messageType = isOutgoing ? 'outgoing' : 'incoming';
+
+                  return {
+                    id: msg.event_id || msg.id || idx + 1,
+                    type: messageType,
+                    text: msg.text || msg.body || '',
+                    timestamp: new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    status: isOutgoing ? 'delivered' : undefined,
+                    attachment: msg.attachment ? {
+                      name: msg.attachment.name,
+                      size: msg.attachment.size,
+                      type: msg.attachment.type,
+                      url: msg.attachment.url
+                    } : undefined,
+                  };
+                });
+
+                setMessages(chatMessages);
+              }
+            }
+          } catch (error) {
+            // Silent fail
+          }
+        }, 500);
+      } else {
+        setMessages(prev => prev.filter(m => m.id !== tempId));
+        setInputText(messageText);
+        toast({
+          description: result.detail || "Failed to send",
+          variant: "destructive"
+        });
       }
     } catch (error) {
-      console.error('Failed to generate reply draft:', error);
-      // Fallback to basic draft
-      setReplyDraft("Thanks for reaching out! I'm happy to continue this conversation.");
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setInputText(messageText);
+      toast({
+        description: "Network error",
+        variant: "destructive"
+      });
     }
+  }, [inputText, accessToken, roomId, toast, contact.platform, fetchTgMessages]);
 
-    setIsGeneratingReply(false);
-  };
-
-  const handleRegenerateReply = () => {
-    if (replyingTo) {
-      generateReplyDraft(replyingTo.text, replyInstructions);
-    }
-  };
-
-  const handleSendReply = () => {
-    if (!replyDraft.trim()) return;
-
-    const tempId = Date.now();
-    const newMessage: ChatMessage = {
-      id: tempId,
-      type: 'outgoing',
-      text: replyDraft.trim(),
-      timestamp: new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-      status: 'pending',
-    };
-
-    setMessages(prev => [...prev, newMessage]);
-    setReplyingTo(null);
-    setReplyDraft('');
-    setReplyInstructions('');
-
-    // Simulate status updates
-    setTimeout(() => {
-      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'sent' } : m));
-    }, 1000);
-
-    setTimeout(() => {
-      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'delivered' } : m));
-    }, 2500);
-
-    toast({ description: "Reply sent!" });
-  };
 
   const renderStatus = (status?: string) => {
     switch (status) {
@@ -531,9 +719,7 @@ export default function ChatDetail() {
             </button>
 
             <div className="relative">
-              <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary/20 to-cyan-400/20 flex items-center justify-center">
-                <span className="text-sm font-semibold text-foreground">{contact.initials}</span>
-              </div>
+              <Avatar initials={contact.initials} src={contact.avatar} size="md" />
               <div className={cn(
                 'absolute -bottom-0.5 -right-0.5 h-4 w-4 rounded-full flex items-center justify-center border-2 border-card',
                 platform.bgColor
@@ -544,17 +730,25 @@ export default function ChatDetail() {
 
             <div>
               <h1 className="font-semibold text-foreground">{contact.name}</h1>
-              <p className="text-xs text-muted-foreground">Last seen {contact.lastSeen}</p>
+              <p className="text-xs text-muted-foreground">
+                {contact.platform === 'whatsapp' ? (
+                  roomId?.endsWith('@g.us')
+                    ? 'Group Chat'
+                    : (contact.phone ? formatPhone(contact.phone) : formatPhone((roomId || '').split('@')[0] || ''))
+                ) : contact.lastSeen}
+              </p>
             </div>
           </div>
 
           <div className="flex items-center gap-1">
             {/* Message counter */}
-            <div className="bg-muted/80 px-2 py-0.5 rounded-full mr-1">
-              <span className="text-xs font-medium text-muted-foreground">
-                {currentIndex + 1} of {totalMessages}
-              </span>
-            </div>
+            {messages.length > 0 && (
+              <div className="bg-muted/80 px-2 py-0.5 rounded-full mr-1">
+                <span className="text-xs font-medium text-muted-foreground">
+                  {messages.length} messages
+                </span>
+              </div>
+            )}
 
             {/* Navigation arrows */}
             <button
@@ -598,12 +792,25 @@ export default function ChatDetail() {
       </div>
 
       {/* Messages */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto" onScroll={handleScroll}>
         <div className="max-w-4xl mx-auto p-4 pb-[180px] md:pb-4 space-y-1">
+          {/* Initial Loading State */}
+          {isLoadingMessages && messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center py-20 animate-in fade-in duration-500">
+              <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+              <p className="text-sm text-muted-foreground">Loading message history...</p>
+            </div>
+          )}
+
+
           <AnimatePresence>
             {messages.map((message, idx) => {
               const nextMsg = messages[idx + 1];
-              const isLastInGroup = !nextMsg || nextMsg.type !== message.type;
+              const isOutgoing = message.type === 'outgoing' ||
+                message.direction === 'OUTGOING' ||
+                message.from_me === true ||
+                message.fromMe === true;
+              const isLastInGroup = !nextMsg || (nextMsg.type !== (isOutgoing ? 'outgoing' : 'incoming'));
 
               return (
                 <motion.div
@@ -614,7 +821,7 @@ export default function ChatDetail() {
                   transition={{ duration: 0.2 }}
                   className={cn(
                     'flex',
-                    message.type === 'outgoing' ? 'justify-end' : 'justify-start',
+                    isOutgoing ? 'justify-end' : 'justify-start',
                     !isLastInGroup ? 'mb-1' : 'mb-3'
                   )}
                 >
@@ -622,34 +829,116 @@ export default function ChatDetail() {
                     <div
                       className={cn(
                         'px-4 py-2.5 transition-all',
-                        message.type === 'outgoing'
+                        isOutgoing
                           ? 'bg-gradient-to-r from-primary to-cyan-500 text-white rounded-2xl rounded-tr-sm'
                           : 'bg-muted text-foreground rounded-2xl rounded-tl-sm'
                       )}
                     >
-                      {/* Attachment Preview */}
-                      {message.attachment && (
-                        <div className="mb-2">
-                          {message.attachment.type === 'image' && message.attachment.url ? (
-                            <img
-                              src={message.attachment.url}
-                              alt={message.attachment.name}
-                              className="rounded-lg max-w-full h-auto"
-                            />
-                          ) : (
-                            <div className={cn(
-                              "flex items-center gap-2 p-2 rounded-lg",
-                              message.type === 'outgoing' ? 'bg-white/20' : 'bg-background'
-                            )}>
-                              <FileText className="h-5 w-5" />
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium truncate">{message.attachment.name}</p>
-                                <p className="text-xs opacity-70">{message.attachment.size}</p>
-                              </div>
-                            </div>
-                          )}
+                      {/* Sender Name for groups */}
+                      {!isOutgoing && roomId?.endsWith('@g.us') && message.sender_name && (
+                        <div className="text-[11px] font-bold text-primary mb-0.5 px-1 truncate">
+                          {message.sender_name}
                         </div>
                       )}
+
+                      {/* Media / Attachment Preview */}
+                      {(message.media_url || message.attachment) && (() => {
+                        // Backend media (received WhatsApp messages)
+                        if (message.media_url) {
+                          const mime = message.media_mimetype || '';
+                          const isImg = mime.startsWith('image/');
+                          const isVideo = mime.startsWith('video/');
+                          const isAudio = mime.startsWith('audio/');
+
+                          const mediaUrl = getMediaUrl(message.mxc_uri, message.media_url);
+
+                          if (isImg) {
+                            return (
+                              <div className="mb-2 -mx-2 -mt-1 overflow-hidden rounded-t-xl">
+                                <img
+                                  src={mediaUrl}
+                                  alt="Photo"
+                                  loading="lazy"
+                                  className="w-full h-auto object-cover max-h-[400px] cursor-pointer hover:opacity-95 transition-opacity"
+                                  onClick={() => setFullScreenImage(mediaUrl)}
+                                />
+                              </div>
+                            );
+                          } else if (message.message_type === 'sticker') {
+                            return (
+                              <div className="mb-2 flex justify-center">
+                                <img
+                                  src={mediaUrl}
+                                  alt="Sticker"
+                                  className="w-[160px] h-auto object-contain cursor-default"
+                                  style={{ filter: 'drop-shadow(0 0 1px rgba(0,0,0,0.1))' }}
+                                />
+                              </div>
+                            );
+                          } else if (isVideo) {
+                            return (
+                              <div className="mb-2 -mx-2 -mt-1 overflow-hidden rounded-t-xl bg-black">
+                                <video
+                                  src={mediaUrl}
+                                  controls
+                                  className="w-full h-auto max-h-[400px]"
+                                />
+                              </div>
+                            );
+                          } else if (isAudio) {
+                            return (
+                              <div className="mb-2">
+                                <audio src={mediaUrl} controls className="w-full" />
+                              </div>
+                            );
+                          } else {
+                            // Document / other
+                            return (
+                              <div className={cn(
+                                "flex items-center gap-2 p-3 rounded-xl mb-2 cursor-pointer transition-colors",
+                                message.type === 'outgoing' ? 'bg-white/20 hover:bg-white/30' : 'bg-background hover:bg-muted'
+                              )} onClick={() => {
+                                window.open(mediaUrl, '_blank');
+                              }}>
+                                {/* <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center flex-shrink-0">
+                                  <FileText className="h-6 w-6 text-primary" />
+                                </div> */}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium truncate">{message.text || 'Document'}</p>
+                                  <p className="text-[10px] opacity-70 uppercase tracking-tight">Attachment</p>
+                                </div>
+                              </div>
+                            );
+                          }
+                        }
+
+                        // User-sent attachment (outgoing, local file) - This block is now effectively for received attachments only
+                        if (message.attachment) {
+                          if (message.attachment.type === 'image' && message.attachment.url) {
+                            return (
+                              <div className="mb-2 -mx-2 -mt-1 overflow-hidden rounded-t-xl">
+                                <img src={message.attachment.url} alt={message.attachment.name} className="w-full h-auto object-cover max-h-[400px]" />
+                              </div>
+                            );
+                          } else {
+                            return (
+                              <div className={cn(
+                                "flex items-center gap-2 p-3 rounded-xl mb-2 transition-colors",
+                                message.type === 'outgoing' ? 'bg-white/20 hover:bg-white/30' : 'bg-background hover:bg-muted'
+                              )}>
+                                {/* <div className="h-10 w-10 rounded-lg bg-primary/20 flex items-center justify-center flex-shrink-0">
+                                  <FileText className="h-6 w-6 text-primary" />
+                                </div> */}
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium truncate">{message.attachment.name}</p>
+                                  <p className="text-[10px] opacity-70 uppercase tracking-tight">{/* formatFileSize(message.attachment.size) */}</p>
+                                </div>
+                              </div>
+                            );
+                          }
+                        }
+                        return null;
+                      })()}
 
                       {message.text && (
                         <p className="text-base leading-relaxed">{message.text}</p>
@@ -658,11 +947,11 @@ export default function ChatDetail() {
                       {isLastInGroup && (
                         <div className={cn(
                           'flex items-center gap-1 mt-1',
-                          message.type === 'outgoing' ? 'justify-end' : 'justify-start'
+                          isOutgoing ? 'justify-end' : 'justify-start'
                         )}>
                           <span className={cn(
                             'text-xs',
-                            message.type === 'outgoing' ? 'text-white/70' : 'text-muted-foreground'
+                            isOutgoing ? 'text-white/70' : 'text-muted-foreground'
                           )}>
                             {message.timestamp}
                           </span>
@@ -672,17 +961,7 @@ export default function ChatDetail() {
                     </div>
 
                     {/* Reply hint for incoming messages - OUTSIDE bubble, clickable */}
-                    {message.type === 'incoming' && isLastInGroup && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleReplyClick(message);
-                        }}
-                        className="text-xs text-primary/70 hover:text-primary mt-1.5 ml-1 text-left font-medium active:scale-95 transition-all"
-                      >
-                        Tap to reply
-                      </button>
-                    )}
+                    {/* Removed reply button */}
                   </div>
                 </motion.div>
               );
@@ -692,161 +971,38 @@ export default function ChatDetail() {
         </div>
       </main>
 
-      {/* Reply Interface Modal */}
+      {/* Image Viewer Modal */}
       <AnimatePresence>
-        {replyingTo && (
+        {fullScreenImage && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-foreground/20 backdrop-blur-sm flex items-end justify-center"
-            onClick={() => setReplyingTo(null)}
+            className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 md:p-10"
+            onClick={() => setFullScreenImage(null)}
           >
-            <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="bg-card rounded-t-3xl shadow-elevated w-full max-w-lg overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
+            <button
+              className="absolute top-6 right-6 h-12 w-12 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center transition-colors text-white"
+              onClick={() => setFullScreenImage(null)}
             >
-              {/* Header */}
-              <div className="flex items-center justify-between p-4 border-b border-border">
-                <h2 className="font-semibold text-foreground">Replying to {contact.name}</h2>
-                <button
-                  onClick={() => setReplyingTo(null)}
-                  className="h-8 w-8 rounded-full bg-muted flex items-center justify-center"
-                >
-                  <X className="h-4 w-4 text-muted-foreground" />
-                </button>
-              </div>
-
-              <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
-                {/* Original Message Preview */}
-                <div className="bg-muted/50 rounded-xl p-3 border-l-4 border-primary">
-                  <p className="text-xs text-muted-foreground mb-1">Original message:</p>
-                  <p className="text-sm text-foreground">{replyingTo.text}</p>
-                </div>
-
-                {/* AI Draft Reply */}
-                <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block flex items-center gap-2">
-                    <Sparkles className="h-4 w-4 text-primary" />
-                    AI Draft Reply
-                  </label>
-                  <div className="relative">
-                    {isGeneratingReply ? (
-                      <div className="bg-primary/5 rounded-xl p-4 border border-primary/20 flex items-center justify-center gap-2">
-                        <Loader2 className="h-5 w-5 text-primary animate-spin" />
-                        <span className="text-sm text-muted-foreground">Generating reply...</span>
-                      </div>
-                    ) : (
-                      <textarea
-                        value={replyDraft}
-                        onChange={(e) => setReplyDraft(e.target.value)}
-                        className="w-full bg-primary/5 rounded-xl p-4 border border-primary/20 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 min-h-[100px] resize-none"
-                        placeholder="Your reply will appear here..."
-                      />
-                    )}
-                  </div>
-                </div>
-
-                {/* Instructions for AI */}
-                <div>
-                  <label className="text-sm font-medium text-foreground mb-2 block">
-                    Instructions for AI (optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={replyInstructions}
-                    onChange={(e) => setReplyInstructions(e.target.value)}
-                    placeholder="e.g., Make it more casual, keep it short..."
-                    className="w-full bg-muted rounded-xl px-4 py-3 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-                  />
-                </div>
-              </div>
-
-              {/* Actions */}
-              <div className="p-4 border-t border-border flex gap-3">
-                <Button
-                  variant="outline"
-                  onClick={handleRegenerateReply}
-                  disabled={isGeneratingReply}
-                  className="flex-1"
-                >
-                  <RefreshCw className={cn("h-4 w-4 mr-2", isGeneratingReply && "animate-spin")} />
-                  Regenerate
-                </Button>
-                <Button
-                  variant="outline"
-                  onClick={() => setReplyingTo(null)}
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleSendReply}
-                  disabled={!replyDraft.trim() || isGeneratingReply}
-                  className="flex-1 gradient-primary text-primary-foreground border-0"
-                >
-                  <Send className="h-4 w-4 mr-2" />
-                  Send
-                </Button>
-              </div>
-            </motion.div>
+              <X className="h-6 w-6" />
+            </button>
+            <motion.img
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              src={fullScreenImage}
+              alt="Full Screen"
+              className="max-w-full max-h-full object-contain shadow-2xl rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Attachment Menu Backdrop */}
-      <AnimatePresence>
-        {isAttachmentMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="fixed inset-0 z-35 bg-black/20"
-            onClick={() => setIsAttachmentMenuOpen(false)}
-          />
-        )}
-      </AnimatePresence>
-
-      {/* Attachment Menu */}
-      <AnimatePresence>
-        {isAttachmentMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="fixed bottom-[calc(64px+env(safe-area-inset-bottom,0px)+80px)] left-4 z-40 bg-card rounded-xl border border-border shadow-xl py-2 w-56"
-          >
-            {attachmentMenuItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => handleAttachmentClick(item)}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted transition-colors duration-150"
-                >
-                  <Icon className={cn('h-5 w-5', item.color)} />
-                  <span className="text-foreground font-medium">{item.label}</span>
-                </button>
-              );
-            })}
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Hidden File Input */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept={fileAccept}
-        onChange={handleFileSelect}
-        className="hidden"
-      />
+      {/* Removed hidden file input */}
 
       {/* Input Bar - Fixed above bottom nav on mobile (64px), Sticky bottom on desktop */}
       <div
@@ -854,60 +1010,24 @@ export default function ChatDetail() {
       >
         <div className="w-full max-w-3xl mx-auto px-4 py-3">
           {/* File Preview */}
-          <AnimatePresence>
-            {selectedFile && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="mb-2"
-              >
-                <div className="flex items-center gap-3 p-3 bg-muted rounded-xl">
-                  {selectedFile.type === 'image' && selectedFile.preview ? (
-                    <img src={selectedFile.preview} alt="Preview" className="h-12 w-12 rounded-lg object-cover" />
-                  ) : (
-                    <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <FileText className="h-6 w-6 text-primary" />
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{selectedFile.file.name}</p>
-                    <p className="text-xs text-muted-foreground">{formatFileSize(selectedFile.file.size)}</p>
-                  </div>
-                  <button
-                    onClick={removeSelectedFile}
-                    className="h-8 w-8 rounded-full bg-muted-foreground/10 hover:bg-muted-foreground/20 flex items-center justify-center transition-colors"
-                  >
-                    <X className="h-4 w-4 text-muted-foreground" />
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+          {/* Removed file preview */}
 
           <div className="flex items-center gap-3">
             {/* Attachment Button - Fixed 44px */}
-            <button
-              onClick={() => setIsAttachmentMenuOpen(!isAttachmentMenuOpen)}
-              className={cn(
-                "flex-shrink-0 h-11 w-11 rounded-full flex items-center justify-center transition-all",
-                isAttachmentMenuOpen
-                  ? "bg-primary text-primary-foreground rotate-45"
-                  : "bg-muted hover:bg-muted/80 text-muted-foreground"
-              )}
-            >
-              <Plus className="h-5 w-5 transition-transform" />
-            </button>
+            {/* Removed attachment button */}
 
-            {/* Text Input - 44px height, proper padding for text visibility */}
+            {/* Text Input - Auto-expanding textarea */}
             <div className="flex-1 relative min-w-0">
-              <input
-                type="text"
+              <textarea
+                ref={textareaRef}
                 value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
+                onChange={(e) => {
+                  setInputText(e.target.value);
+                }}
                 placeholder="Type a message..."
-                className="w-full h-11 bg-muted rounded-full px-4 pr-12 text-base leading-[44px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                className="w-full min-h-[40px] max-h-[200px] bg-muted rounded-2xl px-4 py-2.5 pr-12 text-base text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none overflow-y-auto transition-[height] duration-100"
                 style={{ fontSize: '16px' }}
+                rows={1}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -940,13 +1060,12 @@ export default function ChatDetail() {
               )}
             </div>
 
-            {/* Send Button - Fixed 44px */}
             <button
               onClick={handleSend}
-              disabled={!inputText.trim() && !selectedFile}
+              disabled={!inputText.trim()}
               className={cn(
                 "flex-shrink-0 h-11 w-11 rounded-full flex items-center justify-center transition-all",
-                (inputText.trim() || selectedFile)
+                (inputText.trim())
                   ? "bg-primary hover:bg-primary/90 text-primary-foreground shadow-md"
                   : "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
               )}
@@ -956,6 +1075,7 @@ export default function ChatDetail() {
           </div>
         </div>
       </div>
+
     </div>
   );
 }

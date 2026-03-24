@@ -11,6 +11,7 @@ export default function GmailCallback() {
 
   useEffect(() => {
     const code = searchParams.get('code');
+    const state = searchParams.get('state');
     const error = searchParams.get('error');
 
     if (processedRef.current) return;
@@ -30,7 +31,7 @@ export default function GmailCallback() {
 
     const exchange = async () => {
       try {
-        await bridgesApi.exchangeGmailCode(code);
+        await bridgesApi.exchangeGmailCode(code, state ?? undefined);
         toast.success("Gmail connected successfully!");
       } catch (e: any) {
         console.error(e);

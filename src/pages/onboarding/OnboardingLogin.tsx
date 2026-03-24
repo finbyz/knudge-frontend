@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 export default function OnboardingLogin() {
   const navigate = useNavigate();
   const setAuth = useAuthStore((state) => state.setAuth);
-  
+
   const [loading, setLoading] = useState<'google' | 'linkedin' | 'email' | null>(null);
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [identifier, setIdentifier] = useState(''); // Email or Username for Login, Email for Signup
@@ -21,34 +21,33 @@ export default function OnboardingLogin() {
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (mode === 'signup') {
-        if (!username || !identifier || !password) {
-            toast.error("Please fill in all fields");
-            return;
-        }
+      if (!username || !identifier || !password) {
+        toast.error("Please fill in all fields");
+        return;
+      }
     } else {
-        if (!identifier || !password) {
-            toast.error("Please enter both username/email and password");
-            return;
-        }
+      if (!identifier || !password) {
+        toast.error("Please enter both username/email and password");
+        return;
+      }
     }
 
     setLoading('email');
     try {
       let response;
       if (mode === 'signup') {
-          response = await authApi.signup({ username, email: identifier, password });
-          toast.success("Account created successfully!");
+        response = await authApi.signup({ username, email: identifier, password });
+        toast.success("Account created successfully!");
       } else {
-          response = await authApi.login({ username: identifier, password });
-          toast.success("Welcome back!");
+        response = await authApi.login({ username: identifier, password });
+        toast.success("Welcome back!");
       }
-      
+
       setAuth(response.access_token, {
-          id: response.user_id,
-          username: response.username,
-          synapse_user_id: response.synapse_user_id
+        id: response.user_id,
+        username: response.username,
       });
 
       // Only reset step for new signups
@@ -60,7 +59,22 @@ export default function OnboardingLogin() {
       navigate('/');
     } catch (error: any) {
       console.error("Auth error:", error);
-      toast.error(error.message || `Failed to ${mode === 'login' ? 'login' : 'sign up'}. Please try again.`);
+      let message = error.message || `Failed to ${mode === 'login' ? 'login' : 'sign up'}. Please try again.`;
+
+      // Try to parse validation error
+      try {
+        if (message.startsWith('[')) {
+          const details = JSON.parse(message);
+          if (Array.isArray(details) && details.length > 0) {
+            // Pydantic format: [{"loc": ["body", "email"], "msg": "value is not a valid email address", "type": "value_error.email"}]
+            message = details[0].msg || details[0].message || JSON.stringify(details[0]);
+          }
+        }
+      } catch (e) {
+        // ignore parse error, use original message
+      }
+
+      toast.error(message);
     } finally {
       setLoading(null);
     }
@@ -82,19 +96,19 @@ export default function OnboardingLogin() {
           <motion.div
             key={i}
             className="absolute w-64 h-64 bg-white/5 rounded-3xl"
-            initial={{ 
-              x: Math.random() * 400 - 200, 
+            initial={{
+              x: Math.random() * 400 - 200,
               y: Math.random() * 400 - 200,
               rotate: Math.random() * 45,
             }}
-            animate={{ 
+            animate={{
               x: [null, Math.random() * 100 - 50],
               y: [null, Math.random() * 100 - 50],
               rotate: [null, Math.random() * 30 - 15],
             }}
-            transition={{ 
-              duration: 8 + i * 2, 
-              repeat: Infinity, 
+            transition={{
+              duration: 8 + i * 2,
+              repeat: Infinity,
               repeatType: 'reverse',
               ease: 'easeInOut',
             }}
@@ -133,71 +147,71 @@ export default function OnboardingLogin() {
 
         {/* Login/Signup Form */}
         <div className="bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/20 mb-6">
-            <div className="flex gap-4 mb-6">
-                <button 
-                  onClick={() => setMode('login')}
-                  className={`flex-1 pb-2 text-sm font-medium transition-colors relative ${mode === 'login' ? 'text-white' : 'text-white/60 hover:text-white/80'}`}
-                >
-                  Sign In
-                  {mode === 'login' && <motion.div layoutId="tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white rounded-full" />}
-                </button>
-                <button 
-                  onClick={() => setMode('signup')}
-                  className={`flex-1 pb-2 text-sm font-medium transition-colors relative ${mode === 'signup' ? 'text-white' : 'text-white/60 hover:text-white/80'}`}
-                >
-                  Sign Up
-                  {mode === 'signup' && <motion.div layoutId="tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white rounded-full" />}
-                </button>
-            </div>
+          <div className="flex gap-4 mb-6">
+            <button
+              onClick={() => setMode('login')}
+              className={`flex-1 pb-2 text-sm font-medium transition-colors relative ${mode === 'login' ? 'text-white' : 'text-white/60 hover:text-white/80'}`}
+            >
+              Sign In
+              {mode === 'login' && <motion.div layoutId="tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white rounded-full" />}
+            </button>
+            <button
+              onClick={() => setMode('signup')}
+              className={`flex-1 pb-2 text-sm font-medium transition-colors relative ${mode === 'signup' ? 'text-white' : 'text-white/60 hover:text-white/80'}`}
+            >
+              Sign Up
+              {mode === 'signup' && <motion.div layoutId="tab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-white rounded-full" />}
+            </button>
+          </div>
 
-            <form onSubmit={handleAuth} className="space-y-4">
-                <div className="space-y-4">
-                    {mode === 'signup' && (
-                        <Input 
-                            type="text" 
-                            placeholder="Username" 
-                            value={username}
-                            onChange={(e) => setUsername(e.target.value)}
-                            className="bg-white/20 border-white/10 text-white placeholder:text-white/60 focus-visible:ring-white/30"
-                        />
-                    )}
-                    <Input 
-                        type="text" 
-                        placeholder={mode === 'login' ? "Email or Username" : "Email"} 
-                        value={identifier}
-                        onChange={(e) => setIdentifier(e.target.value)}
-                        className="bg-white/20 border-white/10 text-white placeholder:text-white/60 focus-visible:ring-white/30"
-                    />
-                    <Input 
-                        type="password" 
-                        placeholder="Password" 
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        className="bg-white/20 border-white/10 text-white placeholder:text-white/60 focus-visible:ring-white/30"
-                    />
-                </div>
-                <Button
-                    type="submit"
-                    disabled={loading !== null}
-                    className="w-full h-12 rounded-xl font-semibold text-base bg-white text-gray-900 hover:bg-gray-100"
-                >
-                    {loading === 'email' ? (
-                      <>
-                        <Loader2 className="h-5 w-5 animate-spin mr-2" />
-                        {mode === 'login' ? 'Logging in...' : 'Creating account...'}
-                      </>
-                    ) : (mode === 'login' ? 'Sign In' : 'Create Account')}
-                </Button>
-            </form>
+          <form onSubmit={handleAuth} className="space-y-4">
+            <div className="space-y-4">
+              {mode === 'signup' && (
+                <Input
+                  type="text"
+                  placeholder="Username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="bg-white/20 border-white/10 text-white placeholder:text-white/60 focus-visible:ring-white/30"
+                />
+              )}
+              <Input
+                type={mode === 'signup' ? 'email' : 'text'}
+                placeholder={mode === 'login' ? "Email or Username" : "Email"}
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                className="bg-white/20 border-white/10 text-white placeholder:text-white/60 focus-visible:ring-white/30"
+              />
+              <Input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="bg-white/20 border-white/10 text-white placeholder:text-white/60 focus-visible:ring-white/30"
+              />
+            </div>
+            <Button
+              type="submit"
+              disabled={loading !== null}
+              className="w-full h-12 rounded-xl font-semibold text-base bg-white text-gray-900 hover:bg-gray-100"
+            >
+              {loading === 'email' ? (
+                <>
+                  <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                  {mode === 'login' ? 'Logging in...' : 'Creating account...'}
+                </>
+              ) : (mode === 'login' ? 'Sign In' : 'Create Account')}
+            </Button>
+          </form>
         </div>
 
         <div className="relative mb-6">
-            <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t border-white/20" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-transparent px-2 text-white/60">Or continue with</span>
-            </div>
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t border-white/20" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-transparent px-2 text-white/60">Or continue with</span>
+          </div>
         </div>
 
         {/* Auth buttons */}
@@ -211,9 +225,9 @@ export default function OnboardingLogin() {
             {loading === 'google' ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-                <Chrome className="h-4 w-4" />
+              <Chrome className="h-4 w-4" />
             )}
-             Google
+            Google
           </Button>
 
           <Button
@@ -225,9 +239,9 @@ export default function OnboardingLogin() {
             {loading === 'linkedin' ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-                <Linkedin className="h-4 w-4" />
+              <Linkedin className="h-4 w-4" />
             )}
-             LinkedIn
+            LinkedIn
           </Button>
         </div>
 

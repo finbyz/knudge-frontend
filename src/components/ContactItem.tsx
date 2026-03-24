@@ -2,6 +2,7 @@ import { ChevronRight } from 'lucide-react';
 import { Contact } from '@/api/contacts';
 import { Avatar } from './Avatar';
 import { PlatformBadge } from './PlatformBadge';
+import { formatPhone } from '@/lib/utils';
 
 interface ContactItemProps {
   contact: Contact;
@@ -35,13 +36,18 @@ export function ContactItem({ contact, onClick }: ContactItemProps) {
       onClick={onClick}
       className="w-full flex items-center gap-3 p-3 rounded-2xl bg-card hover:bg-muted/50 transition-colors text-left border border-transparent hover:border-border"
     >
-      <Avatar initials={contact.avatar || contact.name.substring(0, 2)} size="md" />
+      <Avatar
+        initials={contact.name.substring(0, 2).toUpperCase()}
+        src={contact.avatar}
+        size="md"
+        isGroup={contact.notes === 'WhatsApp Group'}
+      />
 
       <div className="flex-1 min-w-0">
         <h3 className="font-medium text-foreground truncate">{contact.name}</h3>
         <p className="text-sm text-muted-foreground truncate">
           {/* Fallback or specific logic if we add title later */}
-          {contact.email || contact.phone || 'No contact info'}
+          {contact.email || formatPhone(contact.phone) || 'No contact info'}
         </p>
       </div>
 

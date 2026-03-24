@@ -90,8 +90,8 @@ export const useOnboardingStore = create<OnboardingState>()(
         if (user?.onboarding_step) {
           set({ currentStep: user.onboarding_step });
           // If the user's step indicates they are still onboarding, ensure completed is false
-          // If step > 7, it means they completed it (step 8 is complete state)
-          if (user.onboarding_step > 7) {
+          // If step > 6, it means they completed it (step 7 is complete state)
+          if (user.onboarding_step > 6) {
             set({ completed: true });
           } else {
             set({ completed: false });
@@ -127,7 +127,7 @@ export const useOnboardingStore = create<OnboardingState>()(
         set({ completed: true });
         const { user } = useAuthStore.getState();
         if (user) {
-          authApi.updateMe({ onboarding_step: 8 }).catch(console.error);
+          authApi.updateMe({ onboarding_step: 7 }).catch(console.error);
         }
       },
       

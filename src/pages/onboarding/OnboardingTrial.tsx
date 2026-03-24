@@ -48,7 +48,7 @@ export default function OnboardingTrial() {
     await new Promise((resolve) => setTimeout(resolve, 2000));
     
     setTrial({ subscribed: true });
-    setStep(7);
+    setStep(6);
     navigate('/onboarding/complete');
   };
 
@@ -57,7 +57,7 @@ export default function OnboardingTrial() {
     await new Promise((resolve) => setTimeout(resolve, 2000));
     
     setTrial({ subscribed: true, inviteCode });
-    setStep(7);
+    setStep(6);
     navigate('/onboarding/complete');
   };
 
@@ -72,18 +72,18 @@ export default function OnboardingTrial() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => navigate('/onboarding/connections')}
+            onClick={() => navigate('/onboarding/knowledge')}
             className="text-muted-foreground"
           >
             <ChevronLeft className="h-5 w-5 mr-1" />
             Back
           </Button>
-          <span className="text-sm text-muted-foreground">Step 6 of 7</span>
+          <span className="text-sm text-muted-foreground">Step 5 of 6</span>
           <Button
             variant="ghost"
             size="sm"
             onClick={() => {
-              setStep(7);
+              setStep(6);
               navigate('/onboarding/complete');
             }}
             className="text-muted-foreground hover:text-foreground"

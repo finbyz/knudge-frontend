@@ -14,12 +14,12 @@ interface ConnectionCardProps {
 
 const platformNames = {
   whatsapp: 'WhatsApp',
-  linkedin: 'LinkedIn',
-  signal: 'Signal',
   email: 'Email',
   gmail: 'Gmail',
   outlook: 'Outlook',
-  erpnext: 'ERPNext'
+  erpnext: 'ERPNext',
+  telegram: 'Telegram',
+  instagram: 'Instagram'
 };
 
 export function ConnectionCard({ connection, onConnect, onDisconnect, onSync, isSyncing = false }: ConnectionCardProps) {

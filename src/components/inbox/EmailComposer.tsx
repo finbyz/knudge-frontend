@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
+import { API_BASE_URL } from '@/lib/api-client';
 
 interface EmailComposerProps {
   isOpen: boolean;
@@ -73,7 +74,7 @@ function RecipientChipInput({
   const addRecipient = (email: string) => {
     const trimmedEmail = email.trim();
     if (!trimmedEmail) return;
-    
+
     // Check if already exists
     if (recipients.some(r => r.email.toLowerCase() === trimmedEmail.toLowerCase())) {
       setInputValue('');
@@ -105,7 +106,7 @@ function RecipientChipInput({
   };
 
   return (
-    <div 
+    <div
       className="flex-1 flex flex-wrap items-center gap-1.5 min-h-[36px] cursor-text"
       onClick={() => inputRef.current?.focus()}
     >
@@ -155,7 +156,13 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
   const [ccRecipients, setCcRecipients] = useState<RecipientChip[]>([]);
   const [bccRecipients, setBccRecipients] = useState<RecipientChip[]>([]);
   const [subject, setSubject] = useState('');
+  const [replyText, setReplyText] = useState('');
+  const [quotedHistory, setQuotedHistory] = useState('');
   const [body, setBody] = useState('');
+  // Combined body for display in textarea
+  const fullBody = replyText + quotedHistory;
+  // CRITICAL FIX: Separate reply text from quoted history
+
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -166,13 +173,25 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
   const { toast } = useToast();
   const { accessToken } = useAuthStore();
 
-  // Initialize fields based on mode
+  // Track if we've initialized for this email to prevent re-running
+  const hasInitializedRef = useRef(false);
+  const currentEmailIdRef = useRef<string | null>(null);
+
+  // Initialize fields based on mode - only run ONCE per email
   useEffect(() => {
-    if (isOpen && originalEmail) {
+    // Create a stable ID for the email
+    const emailId = originalEmail ? `${originalEmail.from}-${originalEmail.subject}-${originalEmail.timestamp}` : null;
+
+    // Only initialize if this is a NEW email or first open
+    if (isOpen && originalEmail && (!hasInitializedRef.current || currentEmailIdRef.current !== emailId)) {
+      hasInitializedRef.current = true;
+      currentEmailIdRef.current = emailId;
+
       if (mode === 'reply') {
         setToRecipients([{ email: originalEmail.from, isValid: true }]);
         setSubject(`Re: ${originalEmail.subject.replace(/^Re: /, '')}`);
-        setBody(`\n\n\n---\nOn ${originalEmail.timestamp}, ${originalEmail.sender} <${originalEmail.from}> wrote:\n\n${originalEmail.body.split('\n').map(line => `> ${line}`).join('\n')}`);
+        setReplyText('');
+        setQuotedHistory(`\n\n\n---\nOn ${originalEmail.timestamp}, ${originalEmail.sender} <${originalEmail.from}> wrote:\n\n${originalEmail.body.split('\n').map(line => `> ${line}`).join('\n')}`);
       } else if (mode === 'replyAll') {
         const allTo = [originalEmail.from, ...originalEmail.to.filter(e => e !== 'me@company.com')];
         setToRecipients(allTo.map(email => ({ email, isValid: true })));
@@ -188,6 +207,12 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
         setBody(`\n\n\n---\nForwarded message from ${originalEmail.sender} <${originalEmail.from}>:\n\n${originalEmail.body}`);
       }
     }
+
+    // Reset when closed
+    if (!isOpen) {
+      hasInitializedRef.current = false;
+      currentEmailIdRef.current = null;
+    }
   }, [isOpen, mode, originalEmail]);
 
   // Reset when closed
@@ -197,7 +222,8 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
       setCcRecipients([]);
       setBccRecipients([]);
       setSubject('');
-      setBody('');
+      setReplyText('');
+      setQuotedHistory('');
       setShowCc(false);
       setShowBcc(false);
       setShowUndo(false);
@@ -208,7 +234,7 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
     let index = 0;
     const currentBody = prepend ? '' : body.split('\n\n\n---')[1] || '';
     const suffix = currentBody ? `\n\n\n---${currentBody}` : '';
-    
+
     setBody('');
     const interval = setInterval(() => {
       if (index < text.length) {
@@ -227,42 +253,93 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
     return () => clearInterval(interval);
   }, [body, toast]);
 
-  const handleAiSparkle = useCallback(async () => {
-    setIsAiLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
+  const stripHtml = (html: string) => {
+    return html
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&[a-zA-Z0-9#]+;/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
 
-    const composedPart = body.split('\n\n\n---')[0].trim();
-    
-    if (!composedPart) {
-      const draftKey = mode === 'forward' ? 'forward' : 'reply';
-      const draft = aiDraftEmails[draftKey].replace('{name}', originalEmail?.sender.split(' ')[0] || 'there');
-      setIsAiLoading(false);
-      typeText(draft, true);
-    } else {
-      setOriginalBody(body);
-      const polished = polishEmail(composedPart);
-      const quotedPart = body.split('\n\n\n---')[1] || '';
-      setBody(polished + (quotedPart ? `\n\n\n---${quotedPart}` : ''));
-      setIsAiLoading(false);
-      setShowUndo(true);
-      toast({
-        description: "Email polished",
+  const handleAiSparkle = useCallback(async () => {
+    if (isAiLoading) return;
+
+    setIsAiLoading(true);
+
+    try {
+      const originalBody = originalEmail?.body || '';
+      const cleanedBody = stripHtml(originalBody).substring(0, 1000);
+
+      const payload = {
+        contact_name: originalEmail?.sender || 'there',
+        history: cleanedBody,
+        subject: originalEmail?.subject || '',
+        platform: 'email',
+        from_email: originalEmail?.from || ''
+      };
+
+      const response = await fetch(`${API_BASE_URL}/emails/generate-reply`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(payload),
       });
-      setTimeout(() => setShowUndo(false), 3000);
+
+      if (!response.ok) {
+        throw new Error(`Failed to generate reply`);
+      }
+
+      const data = await response.json();
+
+      if (data.body) {
+        setReplyText(data.body.trim());
+        toast({
+          description: "✨ AI Reply generated",
+        });
+      }
+
+      if (data.subject && !subject) {
+        setSubject(data.subject);
+      }
+
+    } catch (error: any) {
+      console.error('AI Sparkle error:', error);
+      toast({
+        variant: "destructive",
+        description: "Failed to generate AI reply",
+      });
+    } finally {
+      setIsAiLoading(false);
     }
-  }, [body, mode, originalEmail, toast, typeText]);
+  }, [originalEmail, accessToken, isAiLoading, subject, toast]);
+
+
+
+
+  useEffect(() => {
+    return () => {
+      // Cleanup any pending operations when component unmounts
+      setIsAiLoading(false);
+    };
+  }, []);
 
   const polishEmail = (text: string): string => {
     let polished = text.charAt(0).toUpperCase() + text.slice(1);
-    
+
     if (!polished.toLowerCase().startsWith('hi') && !polished.toLowerCase().startsWith('hello') && !polished.toLowerCase().startsWith('dear')) {
       polished = `Hi ${originalEmail?.sender.split(' ')[0] || 'there'},\n\n${polished}`;
     }
-    
+
     if (!polished.toLowerCase().includes('best') && !polished.toLowerCase().includes('regards') && !polished.toLowerCase().includes('thanks')) {
       polished = `${polished}\n\nBest regards`;
     }
-    
+
     return polished;
   };
 
@@ -324,16 +401,15 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
       // I'll skip fetching for this turn and just use 'me@company.com' placeholder or try to use what I have.
       // Actually, looking at `GmailService.sync_inbox`, I saved `to_email` as MY email.
       // So `originalEmail.to[0]` should be my email.
-
-      const payload = {
+      const emailContent = replyText.trim(); const payload = {
         to_email: toEmail,
         subject: subject,
-        content: body,
-        from_email: fromEmail || 'unknown' // Backend will fail if unknown.
-        // Ideally I should let user select "From" address if multiple.
+        content: emailContent, // Only the reply
+        from_email: originalEmail?.to?.[0] || 'me'
       };
 
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/v1/emails/send`, {
+
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'https://knudge-api-dev.finbyz.com'}/api/v1/emails/send`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -348,19 +424,19 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
       }
 
       toast({
-        description: "Email sent ✓",
+        description: "✅ Email sent successfully",
       });
+
+      onClose();
     } catch (error) {
-      console.error("Send failed", error);
+      console.error("❌ Send failed:", error);
       toast({
         variant: "destructive",
-        description: "Failed to send email. Check connection.",
+        description: "Failed to send email. Please try again.",
       });
+    } finally {
+      setIsSending(false);
     }
-
-    
-    setIsSending(false);
-    onClose();
   };
 
   const handleClose = () => {
@@ -515,13 +591,27 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
           <div className="flex-1 overflow-y-auto relative">
             <textarea
               ref={textareaRef}
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder="Compose your email..."
-              className="w-full min-h-[200px] md:min-h-[300px] h-full p-4 md:p-6 pr-16 md:pr-20 text-base text-foreground bg-card resize-none focus:outline-none"
-              autoFocus
+              value={fullBody}
+              onChange={(e) => {
+                const newFullText = e.target.value;
+
+                // Split by the quoted history marker
+                const quotedMarker = '\n\n\n---';
+                const splitIndex = newFullText.indexOf(quotedMarker);
+
+                if (splitIndex !== -1) {
+                  // User edited the reply part only
+                  const newReplyText = newFullText.substring(0, splitIndex);
+                  setReplyText(newReplyText);
+                } else {
+                  // No quoted history, just set the reply
+                  setReplyText(newFullText);
+                }
+              }}
+              className="w-full h-full min-h-[300px] p-4 bg-background text-foreground resize-none focus:outline-none text-sm leading-relaxed"
+              placeholder="Write your reply here... Click ✨ to generate with AI"
             />
-            
+
             {/* Floating AI Sparkle Button */}
             <button
               onClick={handleAiSparkle}
@@ -536,7 +626,7 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
                 "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100",
                 "z-10"
               )}
-              title={body.split('\n\n\n---')[0].trim() === '' ? 'AI Draft Email' : 'AI Polish Text'}
+              title={replyText.trim() === '' ? 'AI Draft Email' : 'AI Polish Text'}
             >
               {isAiLoading ? (
                 <span className="w-5 h-5 md:w-6 md:h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -544,7 +634,7 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
                 <Sparkles className="w-6 h-6 md:w-7 md:h-7" />
               )}
             </button>
-            
+
             {/* Undo Button */}
             {showUndo && (
               <button
@@ -587,7 +677,7 @@ export default function EmailComposer({ isOpen, onClose, mode, originalEmail }: 
                   <Paperclip className="h-4 w-4 text-muted-foreground" />
                 </button>
               </div>
-              
+
               <button
                 onClick={handleSend}
                 disabled={isSending || !toRecipients.length || !subject.trim()}

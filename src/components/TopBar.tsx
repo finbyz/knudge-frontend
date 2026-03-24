@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { NotificationPanel } from '@/components/NotificationPanel';
 import { useAuthStore } from '@/stores/authStore';
+import { Avatar } from '@/components/Avatar';
 
 interface TopBarProps {
   title: string;
@@ -35,14 +36,12 @@ export function TopBar({ title, showNotifications = true }: TopBarProps) {
             )}
 
             {/* User Profile Icon */}
-            <Link
-              to="/settings"
-              className="h-9 w-9 rounded-full bg-gradient-to-r from-primary to-cyan-400 flex items-center justify-center hover:scale-105 transition-transform shadow-sm"
-            >
-              <span className="text-primary-foreground font-semibold text-xs">
-                {(user?.first_name?.[0] || user?.username?.[0] || 'U').toUpperCase()}
-                {(user?.last_name?.[0] || user?.username?.[1] || '').toUpperCase()}
-              </span>
+            <Link to="/settings" className="hover:scale-105 transition-transform">
+              <Avatar
+                src={user?.photo_url}
+                initials={`${user?.first_name?.[0] || user?.username?.[0] || 'U'}${user?.last_name?.[0] || ''}`.toUpperCase()}
+                size="md"
+              />
             </Link>
           </div>
         </div>
