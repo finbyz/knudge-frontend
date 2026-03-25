@@ -125,6 +125,7 @@ export default function ChatDetail() {
   const MAX_POLLING_ERRORS = 3;
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileAccept, setFileAccept] = useState('');
@@ -138,6 +139,30 @@ export default function ChatDetail() {
     return fallbackUrl || '';
   };
   const markAsRead = useInboxStore((state) => state.markAsRead);
+  const formatMessageTime = useCallback((rawTimestamp: any): string => {
+    if (!rawTimestamp) return '';
+    let date: Date;
+    if (typeof rawTimestamp === 'number') {
+      const ms = rawTimestamp > 1e11 ? rawTimestamp : rawTimestamp * 1000;
+      date = new Date(ms);
+    } else if (typeof rawTimestamp === 'string') {
+      const ts = /\d{4}-\d{2}-\d{2}T/.test(rawTimestamp) && !/[zZ]|[+-]\d{2}:\d{2}$/.test(rawTimestamp)
+        ? `${rawTimestamp}Z`
+        : rawTimestamp;
+      date = new Date(ts);
+    } else {
+      date = new Date(rawTimestamp);
+    }
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(date);
+  }, []);
+
+  const normalizeMediaUrl = useCallback((url?: string) => {
+    if (!url) return undefined;
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    if (url.startsWith('/')) return `${API_HOST_URL}${url}`;
+    return `${API_HOST_URL}/${url}`;
+  }, []);
 
   // Mark as read when opened
   useEffect(() => {
@@ -184,13 +209,21 @@ export default function ChatDetail() {
             id: msg.id,
             type: isOutgoing ? 'outgoing' : 'incoming',
             text: msg.text || msg.body || '',
-            timestamp: msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+            timestamp: formatMessageTime(msg.timestamp),
             status: isOutgoing ? 'delivered' : undefined,
             message_type: msg.message_type,
             media_url: msg.media_url ? `${API_HOST_URL}${msg.media_url}` : undefined,
             media_mimetype: msg.media_mimetype,
             mxc_uri: msg.mxc_uri,
             sender_name: msg.sender_name,
+            attachment: msg.attachment
+              ? {
+                name: msg.attachment.name || 'Attachment',
+                size: msg.attachment.size || '',
+                type: msg.attachment.type || 'document',
+                url: normalizeMediaUrl(msg.attachment.url),
+              }
+              : undefined,
           };
         });
         setMessages(chatMessages);
@@ -200,7 +233,7 @@ export default function ChatDetail() {
     } finally {
       setIsLoadingMessages(false);
     }
-  }, [roomId, accessToken]);
+  }, [roomId, accessToken, formatMessageTime, normalizeMediaUrl]);
   // No messages.length — uses ref instead
 
   const fetchTgMessages = useCallback(async (isLoadMore = false) => {
@@ -289,13 +322,21 @@ export default function ChatDetail() {
                   id,
                   type: isOutgoing ? 'outgoing' : 'incoming',
                   text: msg.text || msg.body || '',
-                  timestamp: msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+                  timestamp: formatMessageTime(msg.timestamp),
                   status: isOutgoing ? 'delivered' : undefined,
                   message_type: msg.message_type,
                   media_url: msg.media_url ? `${API_HOST_URL}${msg.media_url}` : undefined,
                   media_mimetype: msg.media_mimetype,
                   mxc_uri: msg.mxc_uri,
                   sender_name: msg.sender_name,
+                  attachment: msg.attachment
+                    ? {
+                      name: msg.attachment.name || 'Attachment',
+                      size: msg.attachment.size || '',
+                      type: msg.attachment.type || 'document',
+                      url: normalizeMediaUrl(msg.attachment.url),
+                    }
+                    : undefined,
                 });
               }
             });
@@ -315,7 +356,7 @@ export default function ChatDetail() {
     }, 10000);
 
     return () => clearInterval(intervalId);
-  }, [roomId, accessToken, isLoadingMessages]);
+  }, [roomId, accessToken, isLoadingMessages, formatMessageTime, normalizeMediaUrl]);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop } = e.currentTarget;
@@ -404,17 +445,21 @@ export default function ChatDetail() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [goToPrevious, goToNext]);
 
-  // Mark as read on mount
-  useEffect(() => {
-    toast({ description: 'Message marked as read' });
-  }, [contactId]);
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
   useEffect(() => {
-    scrollToBottom();
+    const container = messagesContainerRef.current;
+    if (!container) {
+      scrollToBottom('auto');
+      return;
+    }
+    const distanceFromBottom =
+      container.scrollHeight - (container.scrollTop + container.clientHeight);
+    if (distanceFromBottom < 120) {
+      scrollToBottom('smooth');
+    }
   }, [messages]);
 
   const typeText = useCallback((text: string, callback?: () => void) => {
@@ -653,13 +698,13 @@ export default function ChatDetail() {
                     id: msg.event_id || msg.id || idx + 1,
                     type: messageType,
                     text: msg.text || msg.body || '',
-                    timestamp: new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    timestamp: formatMessageTime(msg.timestamp),
                     status: isOutgoing ? 'delivered' : undefined,
                     attachment: msg.attachment ? {
                       name: msg.attachment.name,
                       size: msg.attachment.size,
                       type: msg.attachment.type,
-                      url: msg.attachment.url
+                      url: normalizeMediaUrl(msg.attachment.url)
                     } : undefined,
                   };
                 });
@@ -687,7 +732,7 @@ export default function ChatDetail() {
         variant: "destructive"
       });
     }
-  }, [inputText, accessToken, roomId, toast, contact.platform, fetchTgMessages]);
+  }, [inputText, accessToken, roomId, toast, contact.platform, fetchTgMessages, formatMessageTime, normalizeMediaUrl]);
 
 
   const renderStatus = (status?: string) => {
@@ -792,7 +837,13 @@ export default function ChatDetail() {
       </div>
 
       {/* Messages */}
-      <main className="flex-1 overflow-y-auto" onScroll={handleScroll}>
+      <main
+        className="flex-1 overflow-y-auto"
+        onScroll={handleScroll}
+        ref={(el) => {
+          messagesContainerRef.current = el;
+        }}
+      >
         <div className="max-w-4xl mx-auto p-4 pb-[180px] md:pb-4 space-y-1">
           {/* Initial Loading State */}
           {isLoadingMessages && messages.length === 0 && (
@@ -918,6 +969,18 @@ export default function ChatDetail() {
                             return (
                               <div className="mb-2 -mx-2 -mt-1 overflow-hidden rounded-t-xl">
                                 <img src={message.attachment.url} alt={message.attachment.name} className="w-full h-auto object-cover max-h-[400px]" />
+                              </div>
+                            );
+                          } else if (message.attachment.type === 'video' && message.attachment.url) {
+                            return (
+                              <div className="mb-2 -mx-2 -mt-1 overflow-hidden rounded-t-xl bg-black">
+                                <video src={message.attachment.url} controls className="w-full h-auto max-h-[400px]" />
+                              </div>
+                            );
+                          } else if (message.attachment.type === 'audio' && message.attachment.url) {
+                            return (
+                              <div className="mb-2">
+                                <audio src={message.attachment.url} controls className="w-full" />
                               </div>
                             );
                           } else {
