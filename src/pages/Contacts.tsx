@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Plus, X, Calendar, Sparkles, MessageSquare, Rss, Camera, User, Loader2, RotateCw } from 'lucide-react';
+import { Search, Plus, X, Calendar, Sparkles, MessageSquare, Rss, Camera, User, Loader2, RotateCw, Mail, Building2, Send } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ContactItem } from '@/components/ContactItem';
 import { Avatar } from '@/components/Avatar';
@@ -15,16 +15,16 @@ import { formatPhone } from '@/lib/utils';
 // Platform options for new contacts
 const platformOptions = [
   { id: 'whatsapp', label: 'WhatsApp', color: 'bg-[#25D366]' },
-  { id: 'linkedin', label: 'LinkedIn', color: 'bg-[#0A66C2]' },
-  { id: 'email', label: 'Email', color: 'bg-gray-500' },
-  { id: 'signal', label: 'Signal', color: 'bg-[#3A76F0]' },
+  { id: 'gmail', label: 'Gmail', color: 'bg-[#EA4335]' },
+  { id: 'outlook', label: 'Outlook', color: 'bg-[#0078D4]' },
   { id: 'telegram', label: 'Telegram', color: 'bg-[#26A5E4]' },
-  { id: 'instagram', label: 'Instagram', color: 'bg-[#E1306C]' },
+  { id: 'erpnext', label: 'ERPNext', color: 'bg-[#0078D4]' },
 ];
 
 export default function Contacts() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCircleId, setSelectedCircleId] = useState<string | null>(null);
+  const [selectedPlatform, setSelectedPlatform] = useState<string>('all');
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newContact, setNewContact] = useState({
@@ -45,6 +45,9 @@ export default function Contacts() {
   const [conversations, setConversations] = useState<any[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(false);
   const [refreshingConversations, setRefreshingConversations] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleNote, setScheduleNote] = useState('');
 
   useEffect(() => {
     loadCircles();
@@ -134,13 +137,50 @@ export default function Contacts() {
   };
 
   const filterOptions = [
-    { id: null, label: 'All' },
+    { id: null, label: 'All Circles' },
     ...circles.map(c => ({ id: c.id, label: c.name }))
   ];
 
-  // Only client-side search filtering remains
+  // Helper for platform icons in filters
+  const getPlatformIcon = (id: string) => {
+    switch(id) {
+      case 'whatsapp': return <MessageSquare className="h-3 w-3" />;
+      case 'gmail': return <Mail className="h-3 w-3" />;
+      case 'outlook': return <Mail className="h-3 w-3" />;
+      case 'telegram': return <Send className="h-3 w-3" />;
+      case 'erpnext': return <Building2 className="h-3 w-3" />;
+      default: return null;
+    }
+  };
+
+  const platformFilters = [
+    { id: 'all', label: 'All' },
+    { id: 'whatsapp', label: 'WhatsApp' },
+    { id: 'gmail', label: 'Gmail' },
+    { id: 'outlook', label: 'Outlook' },
+    { id: 'telegram', label: 'Telegram' },
+    { id: 'erpnext', label: 'ERPNext' },
+  ];
+
+  // Client-side filtering for search and platform
   const filteredContacts = contacts.filter((contact) => {
-    return contact.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = contact.name.toLowerCase().includes(searchQuery.toLowerCase());
+    if (!matchesSearch) return false;
+
+    if (selectedPlatform !== 'all') {
+      if (selectedPlatform === 'whatsapp') {
+        if (!contact.phone && contact.provider !== 'whatsapp') return false;
+      } else if (selectedPlatform === 'gmail') {
+        if (contact.provider !== 'gmail') return false;
+      } else if (selectedPlatform === 'outlook') {
+        if (contact.provider !== 'outlook') return false;
+      } else if (selectedPlatform === 'telegram') {
+        if (contact.provider !== 'telegram') return false;
+      } else if (selectedPlatform === 'erpnext') {
+        if (contact.provider !== 'erpnext') return false;
+      }
+    }
+    return true;
   });
 
   if (loading && contacts.length === 0 && circles.length === 0) {
@@ -156,31 +196,53 @@ export default function Contacts() {
       <TopBar title="Contacts" />
 
       {/* Filter Bar - from api integrate but styled to fit under TopBar */}
-      <div className="px-4 pt-0 pb-4 space-y-4">
+      <div className="px-4 pt-0 pb-2 space-y-3">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <input
             type="text"
             placeholder="Search contacts..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-10 pl-10 pr-4 rounded-xl bg-card border border-border focus:outline-none focus:ring-2 focus:ring-primary/20"
+            className="w-full h-9 pl-9 pr-4 rounded-lg bg-card border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
           />
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-          {filterOptions.map((filter) => (
-            <button
-              key={filter.id || 'all'}
-              onClick={() => setSelectedCircleId(filter.id)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${selectedCircleId === filter.id
-                ? 'bg-foreground text-background'
-                : 'bg-card border border-border text-muted-foreground hover:bg-muted'
-                }`}
-            >
-              {filter.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-bold text-muted-foreground/50 uppercase tracking-widest shrink-0">Circles</span>
+          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
+            {filterOptions.map((filter) => (
+              <button
+                key={filter.id || 'all'}
+                onClick={() => setSelectedCircleId(filter.id)}
+                className={`px-3 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all ${selectedCircleId === filter.id
+                  ? 'bg-primary text-primary-foreground shadow-sm'
+                  : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                  }`}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-bold text-muted-foreground/50 uppercase tracking-widest shrink-0">Connect</span>
+          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
+            {platformFilters.map((filter) => (
+              <button
+                key={filter.id}
+                onClick={() => setSelectedPlatform(filter.id)}
+                className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-all border ${selectedPlatform === filter.id
+                  ? 'bg-foreground text-background border-foreground shadow-sm'
+                  : 'bg-transparent border-border text-muted-foreground hover:border-muted-foreground/50'
+                  }`}
+              >
+                {getPlatformIcon(filter.id)}
+                {filter.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -348,20 +410,31 @@ export default function Contacts() {
                 <Button
                   variant="outline"
                   className="flex-1"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => setShowScheduleModal(true)}
                 >
-                  Cancel
+                  <Calendar className="h-4 w-4 mr-2" />
+                  Schedule
                 </Button>
                 <Button
                   className="flex-1 gradient-primary text-primary-foreground border-0"
-                  onClick={() => {
+                  onClick={async () => {
                     if (!newContact.name.trim()) {
                       toast.error("Please enter a name");
                       return;
                     }
-                    toast.success(`${newContact.name} added to contacts!`);
-                    setNewContact({ name: '', phone: '', email: '', title: '', company: '', platforms: [] });
-                    setShowCreateModal(false);
+                    try {
+                      await contactsApi.createContact({
+                        name: newContact.name,
+                        phone: newContact.phone || undefined,
+                        email: newContact.email || undefined,
+                      });
+                      toast.success(`${newContact.name} added to contacts!`);
+                      setNewContact({ name: '', phone: '', email: '', title: '', company: '', platforms: [] });
+                      setShowCreateModal(false);
+                      loadContacts();
+                    } catch (error) {
+                      toast.error("Failed to create contact");
+                    }
                   }}
                 >
                   Create Contact
@@ -506,7 +579,7 @@ export default function Contacts() {
                 </div>
 
                 <div className="flex gap-3">
-                  <Button variant="outline" className="flex-1">
+                  <Button variant="outline" className="flex-1" onClick={() => setShowScheduleModal(true)}>
                     <Calendar className="h-4 w-4 mr-2" />
                     Schedule
                   </Button>
@@ -533,6 +606,55 @@ export default function Contacts() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Schedule Modal */}
+      {showScheduleModal && (
+        <div className="fixed inset-0 z-[60] bg-foreground/20 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-card rounded-2xl p-5 w-full max-w-sm space-y-4 shadow-elevated">
+            <h3 className="font-semibold text-foreground">Schedule Follow-up</h3>
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">Date & Time</label>
+              <input
+                type="datetime-local"
+                value={scheduleDate}
+                onChange={(e) => setScheduleDate(e.target.value)}
+                className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground"
+              />
+            </div>
+            <div>
+              <label className="text-sm text-muted-foreground mb-1 block">Note (optional)</label>
+              <input
+                type="text"
+                placeholder="Reminder note..."
+                value={scheduleNote}
+                onChange={(e) => setScheduleNote(e.target.value)}
+                className="w-full h-11 px-4 rounded-xl bg-muted/50 border border-border text-foreground"
+              />
+            </div>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => setShowScheduleModal(false)}>
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 gradient-primary text-primary-foreground border-0"
+                onClick={() => {
+                  if (!scheduleDate) {
+                    toast.error("Please select a date");
+                    return;
+                  }
+                  toast.success(`Follow-up scheduled for ${new Date(scheduleDate).toLocaleString()}`);
+                  setShowScheduleModal(false);
+                  setScheduleDate('');
+                  setScheduleNote('');
+                }}
+              >
+                Schedule
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

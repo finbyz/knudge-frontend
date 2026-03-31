@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, MessageCircle, Linkedin, Mail, X, Check, Archive, MailOpen, Loader2, Instagram } from 'lucide-react';
+import { Search, MessageCircle, MessageSquare, Linkedin, Mail, X, Check, Archive, MailOpen, Loader2, Instagram, Building2, Send } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TopBar } from '@/components/TopBar';
 import { Avatar } from '@/components/Avatar';
@@ -9,8 +9,10 @@ import { useToast } from '@/hooks/use-toast';
 import { useUnreadStore } from '@/stores/unreadStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useInboxStore, type InboxMessage } from '@/stores/inboxStore';
-import { API_BASE_URL } from '@/lib/api-client';
+import { API_BASE_URL, API_HOST_URL } from '@/lib/api-client';
 import { formatPhone } from '@/lib/utils';
+import { telegramWS } from '@/lib/telegramWebSocket';
+import { whatsappWS } from '@/lib/whatsappWebSocket';
 
 const decodeHTMLEntities = (text: string): string => {
   if (!text) return '';
@@ -107,10 +109,11 @@ const platformConfig: Record<string, any> = {
   linkedin: { icon: Linkedin, bgColor: 'bg-[#0A66C2]', label: 'LinkedIn' },
   email: { icon: Mail, bgColor: 'bg-destructive', label: 'Email' },
   outlook: { icon: Mail, bgColor: 'bg-[#0078D4]', label: 'Outlook' },
-  signal: { icon: MessageCircle, bgColor: 'bg-[#3A76F0]', label: 'Signal' },
+  signal: { icon: MessageSquare, bgColor: 'bg-[#3A76F0]', label: 'Signal' },
   gmail: { icon: Mail, bgColor: 'bg-[#EA4335]', label: 'Gmail' },
-  telegram: { icon: MessageCircle, bgColor: 'bg-[#229ED9]', label: 'Telegram' },
+  telegram: { icon: Send, bgColor: 'bg-[#229ED9]', label: 'Telegram' },
   instagram: { icon: Instagram, bgColor: 'bg-[#E1306C]', label: 'Instagram' },
+  erpnext: { icon: Building2, bgColor: 'bg-[#0078D4]', label: 'ERPNext' },
 };
 
 const DEFAULT_PLATFORM = { icon: Mail, bgColor: 'bg-muted-foreground', label: 'Message' };
@@ -139,6 +142,7 @@ export default function Inbox() {
   const { accessToken } = useAuthStore();
   const { toast } = useToast();
   const { clearUnreadInbox } = useUnreadStore();
+  const [selectedPlatform, setSelectedPlatform] = useState<string>('all');
 
   const [tgOffset, setTgOffset] = useState(0);
   const [hasMoreTg, setHasMoreTg] = useState(true);
@@ -147,310 +151,150 @@ export default function Inbox() {
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // ============================================================================
-  // FIXED: Comprehensive WhatsApp Chat Fetching
+  // Unified Inbox Data Fetching
   // ============================================================================
-  const fetchWhatsAppMessages = useCallback(async () => {
-    if (!accessToken) return [];
+  const fetchAllData = useCallback(async () => {
+    if (!accessToken) return;
+
+    console.log('[Inbox] Fetching unified inbox data...');
+    setLoading(true);
 
     try {
-      console.log('[Inbox] Fetching WhatsApp chats...');
-
       const response = await fetch(
-        `${API_BASE_URL}/whatsapp/chats/`,
+        `${API_BASE_URL}/inbox/`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
 
       if (!response.ok) {
-        console.error('[Inbox] WhatsApp fetch failed:', response.status);
-        return [];
+        throw new Error(`Inbox fetch failed: ${response.status}`);
       }
-
-      const json = await response.json();
-      const chats = (json.chats || []).filter((chat: any) => {
-        const jid = String(chat.chat_id || chat.id || '').toLowerCase();
-        const name = String(chat.display_name || chat.name || '').toLowerCase();
-        // Hide WhatsApp status pseudo-chat from inbox list.
-        if (jid.includes('status@broadcast')) return false;
-        if (name === 'status') return false;
-        return true;
-      });
-      console.log('[Inbox] Raw WhatsApp chats:', chats);
-
-      // Convert to InboxMessage format
-      const waMessages: InboxMessage[] = chats.map((chat: any) => {
-        const msgDate = chat.last_message_time ? new Date(chat.last_message_time) : null;
-        const validDate = msgDate && !isNaN(msgDate.getTime());
-
-        // ✅ Fallback logic for preview: Use media emoji if text is empty
-        let preview = chat.last_message_preview || '';
-        const MEDIA_EMOJI: Record<string, string> = {
-          "image": "📷 Photo",
-          "audio": "🎤 Voice message",
-          "video": "🎥 Video",
-          "document": "📄 Document",
-          "sticker": "😊 Sticker",
-          "location": "📍 Location",
-          "vcard": "👤 Contact",
-          "contact": "👤 Contact",
-        };
-
-        if (!preview && chat.last_message_type) {
-          preview = MEDIA_EMOJI[chat.last_message_type] || `📎 ${chat.last_message_type}`;
-        }
-
-        return {
-          id: `wa-chat-${chat.id}`,
-          sender: {
-            name: chat.display_name || chat.name || chat.phone || 'WhatsApp User',
-            avatar: chat.profile_picture_url || undefined,
-            initials: (chat.display_name?.[0] || chat.name?.[0] || chat.phone?.[0] || 'W').toUpperCase(),
-            phone: chat.phone || undefined,
-          },
-          platform: 'whatsapp' as const,
-          preview: preview || 'No messages yet',
-          timestamp: validDate ? formatGmailDate(msgDate!) : '',
-          sortDate: validDate ? msgDate! : new Date(0),
-          roomId: chat.chat_id || chat.id, // Canonical JID from backend
-          unread: (chat.unread_count || 0) > 0,
-          unreadCount: chat.unread_count || 0
-        };
-      });
-
-      console.log('[Inbox] Processed WhatsApp chats:', waMessages.length);
-      return waMessages;
-
-    } catch (error) {
-      console.error('[Inbox] WhatsApp fetch error:', error);
-      return [];
-    }
-  }, [accessToken]);
-
-  // ============================================================================
-  // FIXED: Telegram Message Fetching
-  // ============================================================================
-  const fetchTelegramMessages = useCallback(async (offset: number) => {
-    if (!accessToken) return [];
-
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/telegram/messages?limit=20&offset=${offset}`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
-
-      if (!response.ok) return [];
-
-      const json = await response.json();
-      const data = json.messages || [];
-      const tgMessages: InboxMessage[] = data.map((msg: any) => {
-        const msgDate = new Date(msg.timestamp * 1000);
-        return {
-          id: `telegram-${msg.chat_id}`,
-          sender: {
-            name: msg.contact_name || 'Telegram User',
-            initials: (msg.contact_name?.[0] || 'T').toUpperCase()
-          },
-          platform: 'telegram',
-          preview: msg.text || '',
-          timestamp: formatGmailDate(msgDate),
-          sortDate: msgDate,
-          roomId: msg.chat_id,
-          unread: msg.direction === 'incoming',
-        };
-      });
-
-      if (tgMessages.length < 20) {
-        setHasMoreTg(false);
-      }
-      return tgMessages;
-    } catch (error) {
-      console.error('[Inbox] Telegram fetch error:', error);
-      return [];
-    }
-  }, [accessToken]);
-
-  // ============================================================================
-  // FIXED: Email Fetching
-  // ============================================================================
-  const fetchEmails = useCallback(async () => {
-    if (!accessToken) return [];
-
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/emails/?limit=50&direction=INCOMING`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
-
-      if (!response.ok) return [];
-
-      const data = await response.json();
-      console.log('[Inbox] Raw Email data:', data.slice(0, 5));
-      const emailMessages: InboxMessage[] = data.map((email: any) => {
-        const emailDate = email.sent_at ? new Date(email.sent_at) : new Date(0);
-        const platform = (email.platform || 'email').toLowerCase();
-        return {
-          id: `email-${email.id}`,
-          sender: {
-            name: email.from_email.split('<')[0].replace(/"/g, '').trim() || email.from_email,
-            initials: (email.from_email[0] || '?').toUpperCase()
-          },
-          platform: platform as any,
-          subject: email.subject || '(No Subject)',
-          preview: email.body_text || '',
-          timestamp: formatGmailDate(emailDate, true),
-          sortDate: emailDate,
-          unread: email.status === 'RECEIVED',
-        };
-      });
-
-      console.log('[Inbox] Processed Emails:', emailMessages.length);
-      return emailMessages;
-    } catch (error) {
-      console.error('[Inbox] Email fetch error:', error);
-      return [];
-    }
-  }, [accessToken]);
-
-  // ============================================================================
-  // Instagram DM Fetching
-  // ============================================================================
-  const fetchInstagramMessages = useCallback(async () => {
-    if (!accessToken) return [];
-
-    try {
-      console.log('[Inbox] Fetching Instagram chats...');
-      const response = await fetch(
-        `${API_BASE_URL}/instagram/chats/`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
-
-      if (!response.ok) return [];
 
       const json = await response.json();
       const chats = json.chats || [];
+      console.log('[Inbox] Unified chats received:', chats.length);
 
-      return chats.map((chat: any) => {
-        const msgDate = chat.last_message_time ? new Date(chat.last_message_time) : null;
+      // Convert to InboxMessage format
+      const inboxMessages: InboxMessage[] = chats.map((chat: any) => {
+        const msgDate = chat.timestamp ? new Date(chat.timestamp) : null;
         const validDate = msgDate && !isNaN(msgDate.getTime());
 
         return {
-          id: `ig-chat-${chat.id}`,
+          id: chat.id,
           sender: {
-            name: chat.display_name || chat.username || 'Instagram User',
-            avatar: chat.profile_pic_url || undefined,
-            initials: (chat.display_name?.[0] || chat.username?.[0] || 'I').toUpperCase()
+            name: chat.display_name,
+            avatar: chat.avatar || undefined,
+            initials: (chat.display_name?.[0] || chat.platform?.[0] || '?').toUpperCase(),
+            phone: chat.phone || undefined,
           },
-          platform: 'instagram' as const,
-          preview: chat.last_message_preview || 'No messages yet',
-          timestamp: validDate ? formatGmailDate(msgDate!) : '',
+          platform: chat.platform,
+          subject: chat.subject || undefined,
+          preview: chat.preview,
+          timestamp: validDate ? formatGmailDate(msgDate!, chat.platform !== 'whatsapp') : '',
           sortDate: validDate ? msgDate! : new Date(0),
-          roomId: chat.id,
+          roomId: chat.room_id,
+          normalizedPhone: chat.normalized_phone || undefined,
+          identityKey: chat.identity_key || undefined,
+          isGroup: chat.is_group || false,
           unread: (chat.unread_count || 0) > 0,
           unreadCount: chat.unread_count || 0
         };
       });
+
+      setMessages(inboxMessages);
+      markFetched();
+      setTgOffset(20); // Reset for potential infinite scroll on TG if still used
     } catch (error) {
-      console.error('[Inbox] Instagram fetch error:', error);
-      return [];
+      console.error('[Inbox] Unified fetch error:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load messages. Please refresh.',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
     }
-  }, [accessToken]);
+  }, [accessToken, setLoading, setMessages, markFetched, toast]);
 
-  // ============================================================================
-  // FIXED: Initial Data Loading with Auto-Refresh
-  // ============================================================================
   useEffect(() => {
-    const fetchAllData = async () => {
-      if (!accessToken) return;
-
-      console.log('[Inbox] Starting comprehensive data fetch...');
-      setLoading(true);
-
-      try {
-        const [emails, whatsappMsgs, telegramMsgs, instagramMsgs] = await Promise.all([
-          fetchEmails(),
-          fetchWhatsAppMessages(),
-          fetchTelegramMessages(0),
-          fetchInstagramMessages()
-        ]);
-
-        console.log('[Inbox] Fetched:', {
-          emails: emails.length,
-          whatsapp: whatsappMsgs.length,
-          telegram: telegramMsgs.length,
-          instagram: instagramMsgs.length
-        });
-
-        const allMessages = [...emails, ...whatsappMsgs, ...telegramMsgs, ...instagramMsgs];
-
-        if (allMessages.length > 0) {
-          allMessages.sort((a, b) => {
-            const dateA = a.sortDate ? new Date(a.sortDate).getTime() : 0;
-            const dateB = b.sortDate ? new Date(b.sortDate).getTime() : 0;
-            return dateB - dateA;
-          });
-
-          setMessages(allMessages);
-          markFetched();
-        }
-
-        setTgOffset(20);
-      } catch (error) {
-        console.error('[Inbox] Fetch error:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to load messages. Please refresh.',
-          variant: 'destructive'
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
     if (shouldRefetch() || messages.length === 0) {
       fetchAllData();
     }
-  }, [accessToken, shouldRefetch, messages.length]);
+  }, [shouldRefetch, messages.length, fetchAllData]);
 
   // ============================================================================
-  // FIXED: Auto-refresh every 30 seconds for new WhatsApp messages
+  // Instagram Auto-refresh (fallback until IG WebSocket is ready)
   // ============================================================================
   useEffect(() => {
     if (!accessToken) return;
 
     const intervalId = setInterval(async () => {
-      console.log('[Inbox] Auto-refreshing WhatsApp messages...');
-      const freshWhatsAppMsgs = await fetchWhatsAppMessages();
-
-      if (freshWhatsAppMsgs.length > 0) {
-        // Update only WhatsApp messages, keep others
-        const nonWhatsAppMsgs = messages.filter(m => m.platform !== 'whatsapp');
-        const allMsgs = [...nonWhatsAppMsgs, ...freshWhatsAppMsgs];
-
-        allMsgs.sort((a, b) => {
-          const dateA = a.sortDate ? new Date(a.sortDate).getTime() : 0;
-          const dateB = b.sortDate ? new Date(b.sortDate).getTime() : 0;
-          return dateB - dateA;
-        });
-
-        setMessages(allMsgs);
-      }
-
-      console.log('[Inbox] Auto-refreshing Instagram messages...');
-      const freshInstagramMsgs = await fetchInstagramMessages();
-      if (freshInstagramMsgs.length > 0) {
-        setMessages(prev => {
-          const others = prev.filter(m => m.platform !== 'instagram');
-          const combined = [...others, ...freshInstagramMsgs];
-          return combined.sort((a, b) => {
-            const dateA = a.sortDate ? new Date(a.sortDate).getTime() : 0;
-            const dateB = b.sortDate ? new Date(b.sortDate).getTime() : 0;
-            return dateB - dateA;
-          });
-        });
-      }
-    }, 30000); // Refresh every 30 seconds
+      console.log('[Inbox] Auto-refreshing inbox...');
+      fetchAllData();
+    }, 60000); // Increased to 1 min to be gentler
 
     return () => clearInterval(intervalId);
-  }, [accessToken, fetchWhatsAppMessages, messages, addMessages]);
+  }, [accessToken, fetchAllData]);
+
+  // ============================================================================
+  // WhatsApp Real-time Updates via WebSocket
+  // ============================================================================
+  useEffect(() => {
+    if (!accessToken) return;
+
+    whatsappWS.connect(accessToken);
+
+    const unsubscribe = whatsappWS.onMessage((msg) => {
+      console.log('[Inbox] Received real-time WhatsApp message:', msg);
+
+      updateOrAddMessage(
+        'whatsapp',
+        msg.room_id,
+        msg.sender_name || 'WhatsApp User',
+        msg.text,
+        new Date(msg.timestamp),
+        msg.avatar,
+        msg.normalized_phone,
+        msg.identity_key
+      );
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [accessToken, updateOrAddMessage]);
+
+  // ============================================================================
+  // Telegram Real-time Updates via WebSocket
+  // ============================================================================
+  useEffect(() => {
+    if (!accessToken) return;
+
+    // 1. Connect
+    telegramWS.connect(accessToken);
+
+    // 2. Subscribe
+    const unsubscribe = telegramWS.onMessage((msg) => {
+      console.log('[Inbox] Received real-time Telegram message:', msg);
+
+      // Update global store
+      updateOrAddMessage(
+        'telegram',
+        msg.chat_id,
+        msg.contact_name,
+        msg.text,
+        new Date(msg.timestamp)
+      );
+    });
+
+    return () => {
+      unsubscribe();
+      // We don't necessarily want to disconnect here if the user just navigates away
+      // but stayed in the app. However, since this is a page-level effect:
+      // if we want it global, it should be in App.tsx. 
+      // For now, let's keep it here but maybe don't disconnect if we want background updates.
+      // But for correctness of "this page", unsubscribe is enough for UI.
+    };
+  }, [accessToken, updateOrAddMessage]);
 
   // Telegram infinite scroll observer
   useEffect(() => {
@@ -458,11 +302,7 @@ export default function Inbox() {
       async (entries) => {
         if (entries[0].isIntersecting && hasMoreTg && !isFetchingTg) {
           setIsFetchingTg(true);
-          const moreTg = await fetchTelegramMessages(tgOffset);
-          if (moreTg.length > 0) {
-            addMessages(moreTg);
-            setTgOffset(prev => prev + 20);
-          }
+          // Fallback infinite scroll for TG if needed, but for now we rely on unified fetch
           setIsFetchingTg(false);
         }
       },
@@ -474,7 +314,7 @@ export default function Inbox() {
     }
 
     return () => observer.disconnect();
-  }, [hasMoreTg, isFetchingTg, tgOffset, fetchTelegramMessages, addMessages]);
+  }, [hasMoreTg, isFetchingTg, tgOffset]);
 
   useEffect(() => {
     setLocalMessages(messages);
@@ -486,13 +326,28 @@ export default function Inbox() {
 
   const filteredMessages = localMessages.filter((msg) => {
     const query = searchQuery.toLowerCase();
-    if (!query) return true;
-
-    return (
+    const matchesSearch = !query || 
       msg.sender.name.toLowerCase().includes(query) ||
       msg.preview.toLowerCase().includes(query) ||
-      (msg.subject && msg.subject.toLowerCase().includes(query))
-    );
+      (msg.subject && msg.subject.toLowerCase().includes(query));
+
+    if (!matchesSearch) return false;
+
+    if (selectedPlatform !== 'all') {
+      if (selectedPlatform === 'whatsapp') {
+        if (msg.platform !== 'whatsapp') return false;
+      } else if (selectedPlatform === 'gmail') {
+        if (msg.platform !== 'gmail') return false;
+      } else if (selectedPlatform === 'outlook') {
+        if (msg.platform !== 'outlook') return false;
+      } else if (selectedPlatform === 'telegram') {
+        if (msg.platform !== 'telegram') return false;
+      } else if (selectedPlatform === 'erpnext') {
+        if (msg.platform !== 'erpnext') return false;
+      }
+    }
+
+    return true;
   });
 
   const getCount = (tab: 'all' | 'whatsapp' | 'email') => {
@@ -603,7 +458,8 @@ export default function Inbox() {
       } else if (message.platform === 'instagram' && message.roomId) {
         navigate(`/inbox/chat/ig?room=${encodeURIComponent(message.roomId)}&name=${encodeURIComponent(message.sender.name)}`);
       } else if (message.platform === 'telegram' && message.roomId) {
-        navigate(`/inbox/chat/${message.id}?name=${encodeURIComponent(message.sender.name)}`);
+        const avatarParam = message.sender.avatar ? `&avatar=${encodeURIComponent(message.sender.avatar)}` : '';
+        navigate(`/inbox/chat/${message.id}?name=${encodeURIComponent(message.sender.name)}${avatarParam}`);
       } else {
         navigate(`/inbox/chat/${message.id}`);
       }
@@ -637,22 +493,55 @@ export default function Inbox() {
     <div className="min-h-screen bg-background pb-24 pt-0">
       <TopBar title="Inbox" />
 
-      <main className="px-4 pt-0 pb-4 space-y-4">
+      <main className="px-4 pt-0 pb-4 space-y-3">
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
           className="relative"
         >
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <input
             type="text"
             placeholder="Search messages..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-11 pl-10 pr-4 rounded-xl bg-muted/50 border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
+            className="w-full h-9 pl-9 pr-4 rounded-lg bg-muted/50 border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
           />
         </motion.div>
+
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-bold text-muted-foreground/50 uppercase tracking-widest shrink-0">Connect</span>
+          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
+            {[
+              { id: 'all', label: 'All' },
+              { id: 'whatsapp', label: 'WhatsApp' },
+              { id: 'gmail', label: 'Gmail' },
+              { id: 'outlook', label: 'Outlook' },
+              { id: 'telegram', label: 'Telegram' },
+              { id: 'erpnext', label: 'ERPNext' },
+            ].map((filter) => {
+              const config = platformConfig[filter.id] || DEFAULT_PLATFORM;
+              const Icon = config.icon;
+
+              return (
+                <button
+                  key={filter.id}
+                  onClick={() => setSelectedPlatform(filter.id)}
+                  className={cn(
+                    "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all border",
+                    selectedPlatform === filter.id
+                      ? "bg-foreground text-background border-foreground shadow-sm"
+                      : "bg-muted/30 border-border text-muted-foreground hover:bg-muted hover:border-muted-foreground/30"
+                  )}
+                >
+                  {filter.id !== 'all' && <Icon className="h-3 w-3" />}
+                  {filter.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
         {/* Reverted Tabs UI to single list as per user request */}
 
@@ -784,7 +673,7 @@ export default function Inbox() {
                         initials={message.sender.initials}
                         src={message.sender.avatar}
                         size="lg"
-                        isGroup={message.platform === 'whatsapp' && message.id.includes('@g.us')}
+                        isGroup={message.isGroup || false}
                       />
                       <div
                         className={cn(

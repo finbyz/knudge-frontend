@@ -7,7 +7,11 @@ export interface PlatformStatus {
 
 export interface BridgeStatus {
   whatsapp: PlatformStatus;
+  gmail: PlatformStatus;
+  outlook: PlatformStatus;
+  erpnext: PlatformStatus;
   telegram: PlatformStatus;
+  instagram: PlatformStatus;
 }
 
 export interface LoginResponse {
@@ -67,7 +71,7 @@ export const bridgesApi = {
     return ApiClient.get('/gmail/auth_url');
   },
 
-  getGmailStatus: async (): Promise<{ is_connected: boolean, email?: string }> => {
+  getGmailStatus: async (): Promise<{ is_connected: boolean, email?: string, contact_count?: number }> => {
     return ApiClient.get('/gmail/status');
   },
 
@@ -84,7 +88,7 @@ export const bridgesApi = {
     return ApiClient.get('/outlook/auth_url');
   },
 
-  getOutlookStatus: async (): Promise<{ is_connected: boolean, email?: string }> => {
+  getOutlookStatus: async (): Promise<{ is_connected: boolean, email?: string, contact_count?: number }> => {
     return ApiClient.get('/outlook/status');
   },
 
@@ -94,6 +98,10 @@ export const bridgesApi = {
 
   disconnectOutlook: async (): Promise<{ status: string }> => {
     return ApiClient.post('/outlook/disconnect', {});
+  },
+
+  syncOutlookEmails: async (): Promise<{ status: string, message: string, inbox_synced: number, sent_synced: number }> => {
+    return ApiClient.post('/outlook/sync', {});
   },
 
   // ERPNext Integration
