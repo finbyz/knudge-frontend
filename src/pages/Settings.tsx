@@ -9,8 +9,23 @@ import { authApi, UserResponse } from '@/api/auth';
 import { contactsApi, Circle, Contact } from '@/api/contacts';
 import { useAuthStore } from '@/stores/authStore';
 import { toast } from 'sonner';
+import { knowledgeApi, KnowledgeDocument } from '@/api/knowledge';
+import { researchApi, UserResearchProfile } from '@/api/research';
+import { Avatar } from '@/components/Avatar';
+import { FileText, Trash2, Upload, Loader2, AlertCircle, RefreshCw, Globe, ExternalLink } from 'lucide-react';
+import { useRef } from 'react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
-type ChannelType = 'whatsapp' | 'linkedin' | 'email' | 'outlook';
+type ChannelType = 'whatsapp' | 'linkedin' | 'email' | 'outlook' | 'telegram';
 
 // Helper to determine channels from circle frequency/name (since backend Circle doesn't have channels/outreachAgenda yet)
 // We will use local state or defaults for now until backend supports it fully
@@ -23,12 +38,58 @@ interface CircleWithUI extends Circle {
 
 const channelOptions: { id: ChannelType; label: string; color: string; icon: React.ReactNode }[] = [
   { id: 'whatsapp', label: 'WhatsApp', color: '#25D366', icon: <MessageCircle className="h-4 w-4" /> },
+  { id: 'telegram', label: 'Telegram', color: '#229ED9', icon: <Send className="h-4 w-4" /> },
   { id: 'linkedin', label: 'LinkedIn', color: '#0A66C2', icon: <LinkedinIcon className="h-4 w-4" /> },
   { id: 'email', label: 'Email', color: '#6B7280', icon: <Mail className="h-4 w-4" /> },
   { id: 'outlook', label: 'Outlook', color: '#0078D4', icon: <Mail className="h-4 w-4" /> },
 ];
 
 const frequencyOptions = ['Daily', 'Weekly', 'Every 2 weeks', 'Monthly', 'Quarterly'];
+
+const renderHighlights = (text: string): React.ReactNode => {
+  if (!text) return null;
+  const parts = text.split(/(\[\[.*?\]\])/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('[[') && part.endsWith(']]')) {
+      const word = part.slice(2, -2);
+      return (
+        <span key={i} className="text-primary font-semibold">
+          {word}
+        </span>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
+};
+
+const CollapsibleText = ({ text, maxLength = 250, className }: { text: string; maxLength?: number; className?: string }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  if (!text) return null;
+
+  return (
+    <div className="w-full">
+      <p className={cn(
+        "text-sm text-foreground mt-1 transition-all leading-relaxed",
+        !isExpanded && text.length > maxLength && "line-clamp-3",
+        className
+      )}>
+        {text}
+      </p>
+      {text.length > maxLength && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation(); // Prevent parent clicks if inside a clickable card
+            setIsExpanded(!isExpanded);
+          }}
+          className="text-xs text-primary font-medium mt-1.5 hover:underline focus:outline-none flex items-center gap-1"
+        >
+          {isExpanded ? "Show Less" : "Read More"}
+        </button>
+      )}
+    </div>
+  );
+};
 
 export default function Settings() {
   const { logout, setUser } = useAuthStore();
@@ -37,6 +98,7 @@ export default function Settings() {
   const [birthdayReminders, setBirthdayReminders] = useState(true);
   const [socialMonitoring, setSocialMonitoring] = useState(true);
   const [pushNotifications, setPushNotifications] = useState(true);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const [circles, setCircles] = useState<CircleWithUI[]>([]);
   const [allContacts, setAllContacts] = useState<Contact[]>([]);
@@ -56,9 +118,15 @@ export default function Settings() {
 
   const [showProfileForm, setShowProfileForm] = useState(false);
   const [userProfile, setUserProfile] = useState<UserResponse | null>(null);
+  const [research, setResearch] = useState<UserResearchProfile | null>(null);
   const [profileForm, setProfileForm] = useState<UserResponse>({
     id: '', username: '', email: ''
   });
+  // Knowledge Base State
+  const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [isResearcing, setIsResearching] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadData();
@@ -66,12 +134,16 @@ export default function Settings() {
 
   const loadData = async () => {
     try {
-      const [userData, circlesData, contactsData] = await Promise.all([
+      const [userData, circlesData, contactsData, documentsRes, researchData] = await Promise.all([
         authApi.getMe(),
         contactsApi.getCircles(),
-        contactsApi.getContacts()
+        contactsApi.getContacts(),
+        knowledgeApi.getDocuments(),
+        researchApi.getUserResearchProfile()
       ]);
       setUserProfile(userData);
+      setResearch(researchData);
+      setDocuments(documentsRes.documents);
       setUser(userData); // Sync to global store
       // Load notification preferences - use ?? to handle undefined/null with default true
       setBirthdayReminders(userData.birthday_reminders ?? true);
@@ -205,13 +277,17 @@ export default function Settings() {
     let matchesChannel = false;
 
     if (selectedChannels.includes('whatsapp')) {
-      if (contact.phone) matchesChannel = true;
+      if (contact.phone || contact.is_group || contact.provider === 'whatsapp') matchesChannel = true;
     }
     if (!matchesChannel && (selectedChannels.includes('email') || selectedChannels.includes('outlook'))) {
       if (contact.email) matchesChannel = true;
     }
     if (!matchesChannel && selectedChannels.includes('linkedin')) {
       if (contact.linkedin_url) matchesChannel = true;
+    }
+    if (!matchesChannel && selectedChannels.includes('telegram')) {
+      // Check provider or existence of phone (since Telegram uses phone)
+      if ((contact as any).provider === 'telegram' || contact.phone) matchesChannel = true;
     }
 
     return matchesChannel;
@@ -286,10 +362,15 @@ export default function Settings() {
   };
 
   const handleEditProfile = () => {
-    if (userProfile) {
-      setProfileForm(userProfile);
-      setShowProfileForm(true);
-    }
+    setProfileForm(userProfile ?? {
+      id: '', username: '', email: '',
+      first_name: '',
+      last_name: '',
+      phone: '',
+      linkedin_url: '',
+      personal_profile: ''
+    });
+    setShowProfileForm(true);
   };
 
   const handleSaveProfile = async () => {
@@ -311,99 +392,201 @@ export default function Settings() {
     }
   };
 
+  const handleReResearch = async () => {
+    if (!userProfile?.linkedin_url) {
+      toast.error("Please add a LinkedIn URL in Profile settings first");
+      return;
+    }
+
+    setIsResearching(true);
+    try {
+      const result = await researchApi.researchUserProfile(userProfile.linkedin_url);
+      setResearch(result);
+
+      // Refresh user data (for photo_url)
+      const freshUser = await authApi.getMe();
+      setUserProfile(freshUser);
+      setUser(freshUser);
+
+      // Refresh KB documents (for new research chunks)
+      const docs = await knowledgeApi.getDocuments();
+      setDocuments(docs.documents);
+
+      toast.success("Profile research complete! Your digital twin is updated.");
+    } catch (err: any) {
+      toast.error(err.message || "Research failed");
+    } finally {
+      setIsResearching(false);
+    }
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate size (10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('File too large (max 10MB)');
+      return;
+    }
+
+    setUploadingFile(true);
+    try {
+      await knowledgeApi.uploadDocument(file);
+      toast.success('Document uploaded');
+      // Refresh list
+      const res = await knowledgeApi.getDocuments();
+      setDocuments(res.documents);
+    } catch (error: any) {
+      toast.error(error.message || 'Upload failed');
+    } finally {
+      setUploadingFile(false);
+      // Reset input
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDeleteDocument = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this document?')) return;
+
+    try {
+      await knowledgeApi.deleteDocument(id);
+      setDocuments(prev => prev.filter(d => d.id !== id));
+      toast.success('Document deleted');
+    } catch (error) {
+      toast.error('Failed to delete document');
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-background pb-24 pt-20">
+    <div className="min-h-screen bg-background pb-24 pt-0">
       <TopBar title="Settings" />
 
-      <main className="px-4 py-6 space-y-6">
+      <main className="px-4 pt-0 pb-6 space-y-6">
         {/* Profile Section */}
         <motion.section
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
         >
-          <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 px-1">Profile</h2>
-          <div className="bg-card rounded-2xl border border-border overflow-hidden">
-            <div className="p-4 flex items-center gap-4">
-              <div className="h-14 w-14 rounded-full gradient-primary flex items-center justify-center">
-                <User className="h-6 w-6 text-primary-foreground" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-foreground">
-                  {userProfile ? `${userProfile.first_name || ''} ${userProfile.last_name || ''}` : 'User'}
-                </h3>
-                <p className="text-sm text-muted-foreground">{userProfile?.email}</p>
-              </div>
-              <button
-                onClick={handleEditProfile}
-                className="h-9 w-9 rounded-xl bg-muted/50 flex items-center justify-center hover:bg-muted transition-colors"
-              >
-                <Edit2 className="h-4 w-4 text-muted-foreground" />
-              </button>
-            </div>
-            <div className="border-t border-border p-4">
-              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Persona Profile</label>
-              <p className="text-sm text-foreground mt-1">{userProfile?.personal_profile || 'No profile description yet.'}</p>
-            </div>
-          </div>
-        </motion.section>
-
-        {/* Profile Section */}
-        <motion.section
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="bg-card rounded-2xl p-6 border border-border"
-        >
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold flex items-center gap-3">
-              <User className="h-6 w-6" />
-              Profile
-            </h2>
+          <div className="flex items-center justify-between mb-3 px-1">
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Your Digital Twin</h2>
             <button
-              onClick={handleEditProfile}
-              className="px-4 py-2 bg-primary text-primary-foreground rounded-lg flex items-center gap-2 hover:opacity-90 transition"
+              onClick={handleReResearch}
+              disabled={isResearcing}
+              className="flex items-center gap-1.5 text-primary text-sm font-medium disabled:opacity-50"
             >
-              <Edit2 className="h-4 w-4" />
-              Edit
+              <RefreshCw className={cn("h-4 w-4", isResearcing && "animate-spin")} />
+              {isResearcing ? "Analysing..." : "Re-research"}
             </button>
           </div>
 
-          {/* Profile Display */}
-          {userProfile && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="text-sm text-muted-foreground font-medium">First Name</label>
-                <p className="font-semibold text-foreground mt-1">{userProfile.first_name || '-'}</p>
-              </div>
-              <div>
-                <label className="text-sm text-muted-foreground font-medium">Last Name</label>
-                <p className="font-semibold text-foreground mt-1">{userProfile.last_name || '-'}</p>
-              </div>
-              <div>
-                <label className="text-sm text-muted-foreground font-medium">Phone</label>
-                <p className="font-semibold text-foreground mt-1">{userProfile.phone || '-'}</p>
-              </div>
-              <div>
-                <label className="text-sm text-muted-foreground font-medium">LinkedIn</label>
-                <p className="font-semibold text-blue-500 cursor-pointer mt-1">
-                  {userProfile.linkedin_url ? (
-                    <a href={userProfile.linkedin_url} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                      View Profile →
-                    </a>
-                  ) : (
-                    '-'
+          <div className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm">
+            {/* Header info */}
+            <div className="p-5 flex items-center gap-5">
+              <Avatar
+                src={userProfile?.photo_url}
+                initials={`${userProfile?.first_name?.[0] || 'U'}${userProfile?.last_name?.[0] || ''}`}
+                size="xl"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-lg font-bold text-foreground truncate">
+                    {userProfile ?
+                      (userProfile.first_name || userProfile.last_name
+                        ? `${userProfile.first_name || ''} ${userProfile.last_name || ''}`.trim()
+                        : userProfile.username)
+                      : 'User'}
+                  </h3>
+                  <button
+                    onClick={handleEditProfile}
+                    className="p-1 text-muted-foreground hover:text-primary transition-colors"
+                  >
+                    <Edit2 className="h-4 w-4" />
+                    Edit
+                  </button>
+                </div>
+                {research?.headline && (
+                  <p className="text-sm font-medium text-foreground/80 line-clamp-1 mb-1">
+                    {research.headline}
+                  </p>
+                )}
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  {research?.location && (
+                    <span className="flex items-center gap-1">
+                      <Globe className="h-3 w-3" /> {research.location}
+                    </span>
                   )}
+                  {userProfile?.linkedin_url && (
+                    <a
+                      href={userProfile.linkedin_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-primary hover:underline"
+                    >
+                      <LinkedinIcon className="h-3 w-3" /> LinkedIn <ExternalLink className="h-2 w-2" />
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* AI Summary / Highlights */}
+            {research?.short_summary ? (
+              <div className="px-5 pb-5 pt-2 border-t border-border/50">
+                <p className="text-[15px] leading-relaxed text-foreground">
+                  {renderHighlights(research.short_summary)}
+                </p>
+
+                {research.full_bio && (
+                  <div className="mt-4">
+                    <CollapsibleText
+                      text={research.full_bio}
+                      maxLength={300}
+                      className="text-muted-foreground italic leading-relaxed"
+                    />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="px-5 pb-5 pt-3 border-t border-border/50">
+                <p className="text-sm text-muted-foreground">
+                  Set your LinkedIn URL and click "Re-research" to build your detailed profile.
                 </p>
               </div>
-              {userProfile.personal_profile && (
-                <div className="col-span-1 md:col-span-2">
-                  <label className="text-sm text-muted-foreground font-medium">Personal Profile</label>
-                  <p className="font-semibold text-foreground mt-1 text-sm">{userProfile.personal_profile}</p>
-                </div>
-              )}
-            </div>
-          )}
+            )}
+
+            {/* Talking Points & Topics Footer */}
+            {(research?.talking_points?.length || research?.topics?.length) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-0 border-t border-border">
+                {research.talking_points?.length > 0 && (
+                  <div className="p-5 border-b md:border-b-0 md:border-r border-border">
+                    <h4 className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-3">Talking Points</h4>
+                    <ul className="space-y-2">
+                      {research.talking_points.slice(0, 3).map((point, i) => (
+                        <li key={i} className="text-sm text-foreground flex gap-2">
+                          <span className="text-primary mt-1">•</span>
+                          <span>{point}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {research.topics?.length > 0 && (
+                  <div className="p-5 bg-muted/20">
+                    <h4 className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-3">Core Topics</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {research.topics.map((topic, i) => (
+                        <span key={i} className="px-2 py-1 rounded-md bg-background border border-border text-[11px] font-medium text-muted-foreground">
+                          {topic}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </motion.section>
 
         {/* Circles Section */}
@@ -600,11 +783,87 @@ export default function Settings() {
               <span className="px-3 py-1 rounded-full bg-warning/10 text-warning text-xs font-medium">Active</span>
             </div>
             <button
-              onClick={logout}
+              onClick={() => setShowLogoutConfirm(true)}
               className="w-full p-4 flex items-center gap-3 text-destructive border-t border-border hover:bg-destructive/5 transition-colors">
               <LogOut className="h-5 w-5" />
               <span className="font-medium">Log Out</span>
             </button>
+          </div>
+        </motion.section>
+        {/* Knowledge Base Section */}
+        <motion.section
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.5 }}
+        >
+          <div className="flex items-center justify-between mb-3 px-1">
+            <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Knowledge Base</h2>
+            <div>
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                accept=".pdf,.docx,.txt"
+                onChange={handleFileUpload}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploadingFile}
+                className="flex items-center gap-1 text-primary text-sm font-medium disabled:opacity-50"
+              >
+                {uploadingFile ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="h-4 w-4" />
+                )}
+                Upload
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-card rounded-2xl border border-border divide-y divide-border overflow-hidden">
+            {documents.length === 0 ? (
+              <div className="p-8 text-center">
+                <FileText className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-50" />
+                <p className="text-sm font-medium text-foreground">No documents yet</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Upload PDFs or Docs to help AI understand your business
+                </p>
+              </div>
+            ) : (
+              documents.map((doc) => (
+                <div key={doc.id} className="p-4 flex items-center gap-3 hover:bg-muted/30 transition-colors">
+                  <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <FileText className="h-5 w-5 text-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-medium text-foreground truncate">{doc.original_filename}</h3>
+                      {doc.status === 'PENDING' && (
+                        <span className="text-[10px] bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300 px-1.5 py-0.5 rounded-full font-medium">Queued</span>
+                      )}
+                      {doc.status === 'PROCESSING' && (
+                        <span className="text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 px-1.5 py-0.5 rounded-full font-medium">Processing</span>
+                      )}
+                      {doc.status === 'FAILED' && (
+                        <span className="text-[10px] bg-destructive/10 text-destructive px-1.5 py-0.5 rounded-full font-medium flex items-center gap-1">
+                          <AlertCircle className="h-3 w-3" /> Failed
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {(doc.file_size / 1024).toFixed(0)} KB • {new Date(doc.created_at.endsWith('Z') ? doc.created_at : doc.created_at + 'Z').toLocaleDateString()}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteDocument(doc.id)}
+                    className="h-8 w-8 rounded-lg hover:bg-destructive/10 hover:text-destructive text-muted-foreground flex items-center justify-center transition-colors"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))
+            )}
           </div>
         </motion.section>
       </main>
@@ -796,9 +1055,21 @@ export default function Settings() {
                           )}>
                             {circleForm.contact_ids.includes(contact.id) && <Plus className="h-3 w-3 text-primary-foreground" />}
                           </div>
-                          <div className="text-left">
-                            <div className="text-sm font-medium text-foreground">{contact.name}</div>
-                            {(contact.email || contact.phone) && <div className="text-xs text-muted-foreground">{contact.email || contact.phone}</div>}
+                          <div className="text-left flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <div className="text-sm font-medium text-foreground truncate">{contact.name}</div>
+                              {contact.is_group && (
+                                <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-bold uppercase tracking-wider">
+                                  <Users className="h-2.5 w-2.5" />
+                                  Group
+                                </span>
+                              )}
+                            </div>
+                            {(contact.email || (contact.phone && !contact.is_group)) && (
+                              <div className="text-xs text-muted-foreground truncate">
+                                {contact.email || contact.phone}
+                              </div>
+                            )}
                           </div>
                         </button>
                       ))
@@ -865,7 +1136,7 @@ export default function Settings() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {showProfileForm && userProfile && (
+        {showProfileForm && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -913,6 +1184,17 @@ export default function Settings() {
                 </div>
 
                 <div>
+                  <label className="text-sm font-medium text-foreground mb-1 block">Email</label>
+                  <input
+                    type="email"
+                    value={profileForm.email || ''}
+                    disabled={true} // Usually email is read-only in profile unless there's a specific flow
+                    className="w-full h-11 px-4 rounded-xl bg-muted/30 border border-border text-muted-foreground cursor-not-allowed"
+                    title="Email cannot be changed"
+                  />
+                </div>
+
+                <div>
                   <label className="text-sm font-medium text-foreground mb-1 block">Phone</label>
                   <input
                     type="tel"
@@ -953,6 +1235,26 @@ export default function Settings() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <AlertDialog open={showLogoutConfirm} onOpenChange={setShowLogoutConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to log out?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You will need to log back in to access your data and conversations.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={logout}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Log Out
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
