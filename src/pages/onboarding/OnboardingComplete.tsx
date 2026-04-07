@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Check, Loader2, Zap, PartyPopper } from 'lucide-react';
 import { useOnboardingStore } from '@/stores/onboardingStore';
+import { authApi } from '@/api/auth';
 import { cn } from '@/lib/utils';
 
 const steps = [
@@ -32,14 +33,26 @@ export default function OnboardingComplete() {
 
   useEffect(() => {
     if (currentStep === steps.length) {
-      setTimeout(() => {
-        setIsComplete(true);
-        completeOnboarding();
-        
+      const handleComplete = async () => {
+        try {
+          // Trigger AI deck generation
+          await authApi.generateOnboardingDecks();
+        } catch (error) {
+          console.error("Failed to generate onboarding decks:", error);
+          // Fallback is handled by backend (generate_ai_onboarding_decks calls create_starter_deck on error)
+        }
+
         setTimeout(() => {
-          navigate('/deck');
-        }, 1500);
-      }, 500);
+          setIsComplete(true);
+          completeOnboarding();
+          
+          setTimeout(() => {
+            navigate('/deck');
+          }, 1500);
+        }, 500);
+      };
+
+      handleComplete();
     }
   }, [currentStep, completeOnboarding, navigate]);
 

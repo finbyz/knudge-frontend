@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils';
 import { LucideIcon } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 interface StatsCardProps {
   icon: LucideIcon;
@@ -36,19 +37,41 @@ export function StatsCard({ icon: Icon, label, value, trend, variant = 'default'
   const classes = variantClasses[variant];
 
   return (
-    <div className={cn('rounded-2xl p-4', classes.bg)}>
-      <div className="flex items-start justify-between">
-        <div className={cn('h-10 w-10 rounded-xl flex items-center justify-center', classes.iconBg)}>
-          <Icon className={cn('h-5 w-5', classes.iconText)} />
+    <motion.div 
+      whileHover={{ y: -4, scale: 1.02 }}
+      transition={{ type: "spring", stiffness: 400, damping: 25 }}
+      className={cn(
+        'glass-card rounded-3xl p-5 relative overflow-hidden group transition-all duration-300',
+        'hover:shadow-elevated hover:iridescent-border'
+      )}
+    >
+      <div className="flex items-start justify-between relative z-10">
+        <div className={cn(
+          'h-12 w-12 rounded-2xl flex items-center justify-center shadow-sm transition-transform duration-500 group-hover:rotate-6', 
+          classes.iconBg
+        )}>
+          <Icon className={cn('h-6 w-6', classes.iconText)} />
         </div>
         {trend && (
-          <span className="text-xs font-medium text-success">{trend}</span>
+          <div className="flex flex-col items-end">
+            <span className="text-[10px] font-bold text-success bg-success/10 px-2 py-0.5 rounded-full uppercase tracking-wider">
+              {trend}
+            </span>
+          </div>
         )}
       </div>
-      <div className="mt-3">
-        <p className="text-2xl font-bold text-foreground">{value}</p>
-        <p className="text-sm text-muted-foreground mt-0.5">{label}</p>
+      <div className="mt-4 relative z-10">
+        <p className="text-3xl font-extrabold tracking-tight text-foreground">{value}</p>
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mt-1 opacity-70">
+          {label}
+        </p>
       </div>
-    </div>
+      
+      {/* Absolute decorative element */}
+      <div className={cn(
+        "absolute -right-4 -bottom-4 h-24 w-24 opacity-[0.03] transition-opacity duration-500 group-hover:opacity-[0.07]",
+        classes.iconBg
+      )} style={{ borderRadius: '50%' }} />
+    </motion.div>
   );
 }

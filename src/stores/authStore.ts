@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useInboxStore } from './inboxStore';
+import { useOnboardingStore } from './onboardingStore';
 
 interface User {
   id: string;
@@ -51,6 +52,7 @@ export const useAuthStore = create<AuthState>()(
       logout: () => {
         // Clear other stores to prevent data leakage between users
         useInboxStore.getState().reset();
+        useOnboardingStore.getState().reset();
 
         set({
           accessToken: null,

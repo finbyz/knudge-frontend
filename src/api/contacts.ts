@@ -14,6 +14,7 @@ export interface Contact {
   created_at?: string;
   provider?: string;
   instagram_username?: string;
+  is_group?: boolean;
 }
 
 export interface CreateCircleRequest {

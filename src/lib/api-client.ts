@@ -72,6 +72,15 @@ export class ApiClient {
     return this.handleResponse(response);
   }
 
+  static async patch(endpoint: string, body: any, token?: string) {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      method: 'PATCH',
+      headers: this.getHeaders(token),
+      body: JSON.stringify(body),
+    });
+    return this.handleResponse(response);
+  }
+
   static async postForm(endpoint: string, formData: FormData, token?: string) {
     const headers: HeadersInit = {};
 

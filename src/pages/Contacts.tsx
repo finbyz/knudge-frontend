@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Plus, X, Calendar, Sparkles, MessageSquare, Rss, Camera, User, Loader2, RotateCw, Mail, Building2, Send } from 'lucide-react';
+import { Search, Plus, X, Calendar, Sparkles, MessageSquare, Rss, Camera, User, Loader2, RotateCw, Mail, Building2, Send, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ContactItem } from '@/components/ContactItem';
 import { Avatar } from '@/components/Avatar';
@@ -11,6 +11,7 @@ import { TopBar } from '@/components/TopBar';
 import { contactsApi, Contact, Circle } from '@/api/contacts';
 import { toast } from 'sonner';
 import { formatPhone } from '@/lib/utils';
+import { remindersApi } from '@/api/reminders';
 
 // Platform options for new contacts
 const platformOptions = [
@@ -46,8 +47,11 @@ export default function Contacts() {
   const [loadingConversations, setLoadingConversations] = useState(false);
   const [refreshingConversations, setRefreshingConversations] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [savingReminder, setSavingReminder] = useState(false);
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleNote, setScheduleNote] = useState('');
+  const [contactReminders, setContactReminders] = useState<any[]>([]);
+  const [loadingReminders, setLoadingReminders] = useState(false);
 
   useEffect(() => {
     loadCircles();
@@ -60,8 +64,10 @@ export default function Contacts() {
   useEffect(() => {
     if (selectedContact) {
       loadConversations(selectedContact.id);
+      loadContactReminders(selectedContact.id);
     } else {
       setConversations([]);
+      setContactReminders([]);
     }
   }, [selectedContact]);
 
@@ -136,6 +142,34 @@ export default function Contacts() {
     }
   };
 
+  const loadContactReminders = async (contactId: string) => {
+    setLoadingReminders(true);
+    try {
+      const response = await remindersApi.list("PENDING", contactId);
+      if (response.success) {
+        setContactReminders(response.reminders);
+      }
+    } catch (error) {
+      console.error("Failed to load reminders:", error);
+    } finally {
+      setLoadingReminders(false);
+    }
+  };
+
+  const handleDeleteReminder = async (id: string) => {
+    try {
+      const response = await remindersApi.delete(id);
+      if (response.success) {
+        toast.success("Reminder deleted");
+        if (selectedContact) {
+          loadContactReminders(selectedContact.id);
+        }
+      }
+    } catch (error) {
+      toast.error("Failed to delete reminder");
+    }
+  };
+
   const filterOptions = [
     { id: null, label: 'All Circles' },
     ...circles.map(c => ({ id: c.id, label: c.name }))
@@ -143,7 +177,7 @@ export default function Contacts() {
 
   // Helper for platform icons in filters
   const getPlatformIcon = (id: string) => {
-    switch(id) {
+    switch (id) {
       case 'whatsapp': return <MessageSquare className="h-3 w-3" />;
       case 'gmail': return <Mail className="h-3 w-3" />;
       case 'outlook': return <Mail className="h-3 w-3" />;
@@ -196,7 +230,7 @@ export default function Contacts() {
       <TopBar title="Contacts" />
 
       {/* Filter Bar - from api integrate but styled to fit under TopBar */}
-      <div className="px-4 pt-0 pb-2 space-y-3">
+      <div className="max-w-5xl mx-auto px-6 pt-0 pb-4 space-y-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <input
@@ -247,7 +281,7 @@ export default function Contacts() {
       </div>
 
       {/* Contact List */}
-      <main className="flex-1 overflow-y-auto px-4">
+      <main className="max-w-5xl mx-auto px-6 pb-20">
         <div className="divide-y divide-border/50">
           {filteredContacts.length > 0 ? (
             filteredContacts.map((contact) => (
@@ -578,6 +612,49 @@ export default function Contacts() {
                   </div>
                 </div>
 
+                {/* Active Reminders Section */}
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-orange-500" />
+                      <span className="text-sm font-semibold text-foreground">Active Reminders</span>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    {loadingReminders ? (
+                      <div className="flex justify-center py-4">
+                        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                      </div>
+                    ) : contactReminders.length > 0 ? (
+                      contactReminders.map((reminder) => (
+                        <div key={reminder.id} className="p-4 rounded-2xl bg-orange-500/5 border border-orange-500/10 flex justify-between items-start">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-orange-600 uppercase tracking-wider">
+                                {new Date(reminder.remind_at).toLocaleDateString([], { month: 'short', day: 'numeric' })} at {new Date(reminder.remind_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            {reminder.note && (
+                              <p className="text-sm text-foreground">{reminder.note}</p>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => handleDeleteReminder(reminder.id)}
+                            className="p-1.5 rounded-lg hover:bg-orange-500/10 text-muted-foreground hover:text-destructive transition-colors"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-4 rounded-xl bg-muted/30 border border-border border-dashed text-center">
+                        <Calendar className="h-5 w-5 text-muted-foreground mx-auto mb-1" />
+                        <p className="text-xs text-muted-foreground">No pending reminders</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <div className="flex gap-3">
                   <Button variant="outline" className="flex-1" onClick={() => setShowScheduleModal(true)}>
                     <Calendar className="h-4 w-4 mr-2" />
@@ -612,6 +689,9 @@ export default function Contacts() {
         <div className="fixed inset-0 z-[60] bg-foreground/20 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-card rounded-2xl p-5 w-full max-w-sm space-y-4 shadow-elevated">
             <h3 className="font-semibold text-foreground">Schedule Follow-up</h3>
+            <p className="text-xs text-muted-foreground">
+              {selectedContact ? `For: ${selectedContact.name}` : 'Set a reminder'}
+            </p>
             <div>
               <label className="text-sm text-muted-foreground mb-1 block">Date & Time</label>
               <input
@@ -637,18 +717,40 @@ export default function Contacts() {
               </Button>
               <Button
                 className="flex-1 gradient-primary text-primary-foreground border-0"
-                onClick={() => {
+                disabled={savingReminder}
+                onClick={async () => {
                   if (!scheduleDate) {
-                    toast.error("Please select a date");
+                    toast.error("Please select a date & time");
                     return;
                   }
-                  toast.success(`Follow-up scheduled for ${new Date(scheduleDate).toLocaleString()}`);
-                  setShowScheduleModal(false);
-                  setScheduleDate('');
-                  setScheduleNote('');
+                  setSavingReminder(true);
+                  try {
+                    await remindersApi.create({
+                      contact_id: selectedContact?.id,
+                      contact_name: selectedContact?.name,
+                      remind_at: new Date(scheduleDate).toISOString(),
+                      note: scheduleNote || undefined,
+                    });
+                    toast.success(`Reminder set for ${new Date(scheduleDate).toLocaleString()}`);
+                    setShowScheduleModal(false);
+                    setScheduleDate('');
+                    setScheduleNote('');
+                    if (selectedContact) {
+                      loadContactReminders(selectedContact.id);
+                    }
+                  } catch (error) {
+                    toast.error("Failed to create reminder");
+                  } finally {
+                    setSavingReminder(false);
+                  }
                 }}
               >
-                Schedule
+                {savingReminder ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Calendar className="h-4 w-4 mr-2" />
+                )}
+                {savingReminder ? 'Saving...' : 'Schedule'}
               </Button>
             </div>
           </div>

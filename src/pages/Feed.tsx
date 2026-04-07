@@ -64,15 +64,15 @@ export default function Feed() {
       </Link>
 
       {/* Tabs - positioned below fixed header */}
-      <div className="sticky top-16 z-30 bg-background/80 backdrop-blur-xl border-b border-border">
+      <div className="sticky top-[88px] z-30 bg-background/80 backdrop-blur-xl border-b border-border">
         <div className="flex items-center gap-1 px-4 py-3 overflow-x-auto no-scrollbar">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${activeTab === tab.id
-                  ? 'gradient-primary text-primary-foreground'
-                  : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                ? 'gradient-primary text-primary-foreground'
+                : 'bg-muted/50 text-muted-foreground hover:bg-muted'
                 }`}
             >
               {tab.label}

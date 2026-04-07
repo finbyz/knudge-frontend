@@ -32,14 +32,14 @@ export function AppLayout({ children }: AppLayoutProps) {
     <div className="min-h-screen bg-background flex w-full overflow-x-hidden">
       {/* Desktop Sidebar - Only visible on lg+ screens */}
       {isDesktop && (
-        <DesktopSidebar 
-          collapsed={sidebarCollapsed} 
-          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)} 
+        <DesktopSidebar
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
         />
       )}
 
       {/* Main Content Area */}
-      <main 
+      <main
         className={cn(
           'flex-1 min-h-screen w-full transition-all duration-300 overflow-x-hidden',
           isDesktop && !sidebarCollapsed && 'lg:ml-64',

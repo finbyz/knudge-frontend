@@ -11,6 +11,8 @@ export interface ActionCard {
   priority: 'high' | 'medium' | 'low';
   createdAt: string;
   subject?: string;
+  circleName?: string;
+  circleAgenda?: string;
 }
 
 export interface Connection {

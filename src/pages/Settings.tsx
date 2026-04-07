@@ -462,7 +462,7 @@ export default function Settings() {
     <div className="min-h-screen bg-background pb-24 pt-0">
       <TopBar title="Settings" />
 
-      <main className="px-4 pt-0 pb-6 space-y-6">
+      <main className="max-w-5xl mx-auto px-6 pt-0 pb-12 space-y-10">
         {/* Profile Section */}
         <motion.section
           initial={{ opacity: 0, y: 20 }}
@@ -1246,7 +1246,7 @@ export default function Settings() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
+            <AlertDialogAction
               onClick={logout}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >

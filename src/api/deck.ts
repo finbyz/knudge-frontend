@@ -37,4 +37,8 @@ export const deckApi = {
       instructions
     });
   },
+
+  generateOnboardingCards: async () => {
+    return ApiClient.post("/deck/onboarding");
+  },
 };

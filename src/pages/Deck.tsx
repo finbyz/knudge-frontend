@@ -29,7 +29,9 @@ const mapDeckItemToCard = (item: DeckItem): ActionCard => ({
   platform: item.platform as ActionCard['platform'],
   createdAt: new Date(item.created_at || Date.now()).toLocaleDateString(),
   priority: 'medium',
-  subject: item.content_payload.subject
+  subject: item.content_payload.subject,
+  circleName: item.content_payload.circle_name,
+  circleAgenda: item.content_payload.circle_agenda,
 });
 
 export default function Deck() {
@@ -41,11 +43,29 @@ export default function Deck() {
     loadDeck();
   }, []);
 
+  const [hasTriggeredOnboarding, setHasTriggeredOnboarding] = useState(false);
+
   const loadDeck = async () => {
+    setLoading(true);
     try {
       const items = await deckApi.getDeck();
-      const mappedCards = items.map(mapDeckItemToCard);
-      setCards(mappedCards);
+
+      // If no cards, trigger onboarding once
+      if (items.length === 0 && !hasTriggeredOnboarding) {
+        setHasTriggeredOnboarding(true);
+        try {
+          await deckApi.generateOnboardingCards();
+          // Reload deck after generation
+          const freshItems = await deckApi.getDeck();
+          setCards(freshItems.map(mapDeckItemToCard));
+          setLoading(false);
+          return;
+        } catch (e) {
+          console.error("Failed to generate onboarding cards", e);
+        }
+      }
+
+      setCards(items.map(mapDeckItemToCard));
     } catch (error) {
       console.error("Failed to load deck:", error);
       toast.error("Failed to load action cards.");
@@ -109,7 +129,7 @@ export default function Deck() {
 
       {/* Progress bar - below TopBar */}
       {!isEmpty && (
-        <div className="sticky top-0 z-40 h-1 bg-muted">
+        <div className="sticky top-[88px] z-40 h-1 bg-muted">
           <motion.div
             className="h-full gradient-primary"
             initial={{ width: 0 }}
@@ -123,7 +143,7 @@ export default function Deck() {
       )}
 
       {/* Card Stack */}
-      <main className="px-4 pt-0 pb-2">
+      <main className="max-w-5xl mx-auto px-6 pt-4 pb-2 space-y-4">
         {isEmpty ? (
           <motion.div
             initial={{ opacity: 0, scale: 0.9 }}

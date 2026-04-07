@@ -8,6 +8,16 @@ import { bridgesApi } from '@/api/bridges';
 import { useAuthStore } from '@/stores/authStore';
 import { QRCodeSVG } from 'qrcode.react';
 import { TelegramLoginModal } from '@/components/TelegramLoginModal';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const platformNames = {
   whatsapp: 'WhatsApp',
@@ -56,6 +66,9 @@ export default function Connections() {
   const [igPassword, setIgPassword] = useState('');
   const [igVerificationCode, setIgVerificationCode] = useState('');
   const [requiresIgMfa, setRequiresIgMfa] = useState(false);
+
+  // Disconnect confirmation state
+  const [disconnectPlatform, setDisconnectPlatform] = useState<string | null>(null);
 
   useEffect(() => {
     fetchStatus();
@@ -366,6 +379,10 @@ export default function Connections() {
     fetchStatus();
   };
 
+  const requestDisconnect = (platform: string) => {
+    setDisconnectPlatform(platform);
+  };
+
   const handleDisconnect = async (platform: string) => {
     try {
       if (platform === 'gmail') await bridgesApi.disconnectGmail();
@@ -383,6 +400,13 @@ export default function Connections() {
       toast.success(`${platformNames[platform as keyof typeof platformNames]} disconnected.`);
     } catch (error) {
       toast.error("Failed to disconnect.");
+    }
+  };
+
+  const confirmDisconnect = async () => {
+    if (disconnectPlatform) {
+      await handleDisconnect(disconnectPlatform);
+      setDisconnectPlatform(null);
     }
   };
 
@@ -464,10 +488,10 @@ export default function Connections() {
   };
 
   return (
-    <div className="h-full bg-background pb-24">
+    <div className="min-h-screen bg-background pb-20 pt-0">
       <TopBar title="Connections" />
 
-      <main className="px-4 py-6 space-y-4">
+      <main className="max-w-5xl mx-auto px-6 pt-0 pb-12 space-y-8">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
           <p className="text-muted-foreground mb-4">
             Connect your messaging platforms to let Knudge sync your conversations and draft personalized messages.
@@ -479,7 +503,7 @@ export default function Connections() {
             <ConnectionCard
               connection={connection}
               onConnect={() => handleConnect(connection.platform)}
-              onDisconnect={() => handleDisconnect(connection.platform)}
+              onDisconnect={() => requestDisconnect(connection.platform)}
               onSync={() => handleSyncContacts(connection.platform)}
               isSyncing={syncingPlatform === connection.platform}
             />
@@ -644,6 +668,27 @@ export default function Connections() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Disconnect Confirmation Dialog */}
+      <AlertDialog open={!!disconnectPlatform} onOpenChange={(open) => { if (!open) setDisconnectPlatform(null); }}>
+        <AlertDialogContent className="rounded-2xl max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Disconnect {disconnectPlatform ? platformNames[disconnectPlatform as keyof typeof platformNames] : ''}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will disconnect your {disconnectPlatform ? platformNames[disconnectPlatform as keyof typeof platformNames] : ''} account from Knudge. Your synced data will be removed and you'll need to reconnect to access it again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDisconnect}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Disconnect
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

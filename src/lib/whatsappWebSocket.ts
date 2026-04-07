@@ -1,44 +1,48 @@
 /**
- * Telegram WebSocket Client
+ * WhatsApp WebSocket Client
  * 
- * Manages WebSocket connection for real-time Telegram message updates.
+ * Manages WebSocket connection for real-time WhatsApp message updates.
  * Provides connection management, auto-reconnection, and message handling.
  */
 
-type TelegramMessage = {
+type WhatsappMessage = {
     id: string;
-    chat_id: string;
+    room_id: string;
     text: string;
-    direction: 'INCOMING' | 'OUTGOING';
+    type: 'incoming' | 'outgoing';
     timestamp: string;
-    contact_name: string;
-    platform: 'telegram';
+    status: string;
+    message_type: string;
     media_url?: string;
     media_mimetype?: string;
+    sender_name?: string;
+    avatar?: string;
+    normalized_phone?: string;
+    identity_key?: string;
 };
 
 type WebSocketMessage = {
-    type: 'new_telegram_message' | 'heartbeat';
-    data?: TelegramMessage;
+    type: 'new_whatsapp_message' | 'heartbeat';
+    data?: WhatsappMessage;
 };
 
-type MessageHandler = (message: TelegramMessage) => void;
+type MessageHandler = (message: WhatsappMessage) => void;
 
-class TelegramWebSocketClient {
+class WhatsAppWebSocketClient {
     private ws: WebSocket | null = null;
     private reconnectAttempts = 0;
     private maxReconnectAttempts = 10;
-    private reconnectDelay = 1000; // Start with 1 second
+    private reconnectDelay = 1000;
     private pingInterval: NodeJS.Timeout | null = null;
     private messageHandlers: Set<MessageHandler> = new Set();
     private isConnecting = false;
 
     /**
-     * Connect to the Telegram WebSocket endpoint
+     * Connect to the WhatsApp WebSocket endpoint
      */
     connect(accessToken: string): void {
         if (this.ws?.readyState === WebSocket.OPEN || this.isConnecting) {
-            console.log('[TelegramWS] Already connected or connecting');
+            console.log('[WhatsAppWS] Already connected or connecting');
             return;
         }
 
@@ -50,13 +54,13 @@ class TelegramWebSocketClient {
             .replace('https://', 'wss://')
             .replace('http://', 'ws://');
 
-        const url = `${wsUrl}/ws/telegram/messages?token=${accessToken}`;
+        const url = `${wsUrl}/ws/whatsapp/messages?token=${accessToken}`;
 
         try {
             this.ws = new WebSocket(url);
 
             this.ws.onopen = () => {
-                console.log('[TelegramWS] Connected');
+                console.log('[WhatsAppWS] Connected');
                 this.isConnecting = false;
                 this.reconnectAttempts = 0;
                 this.reconnectDelay = 1000;
@@ -64,68 +68,56 @@ class TelegramWebSocketClient {
             };
 
             this.ws.onmessage = (event) => {
-                // Handle plain text responses (like 'pong')
-                if (typeof event.data === 'string') {
-                    if (event.data === 'pong') {
-                        // Pong response to our ping, ignore
-                        return;
-                    }
-                }
+                if (event.data === 'pong') return;
 
                 try {
                     const message: WebSocketMessage = JSON.parse(event.data);
 
                     if (message.type === 'heartbeat') {
-                        // Server heartbeat, respond with ping
                         this.ws?.send('ping');
                         return;
                     }
 
-                    if (message.type === 'new_telegram_message' && message.data) {
-                        console.log('[TelegramWS] New message:', message.data.text?.slice(0, 50));
+                    if (message.type === 'new_whatsapp_message' && message.data) {
+                        console.log('[WhatsAppWS] New message from:', message.data.sender_name);
                         // Notify all handlers
                         this.messageHandlers.forEach(handler => {
                             try {
                                 handler(message.data!);
                             } catch (e) {
-                                console.error('[TelegramWS] Handler error:', e);
+                                console.error('[WhatsAppWS] Handler error:', e);
                             }
                         });
                     }
                 } catch (e) {
-                    // Only log if it's not a known plain text response
                     if (event.data !== 'pong') {
-                        console.error('[TelegramWS] Parse error:', e);
+                        console.error('[WhatsAppWS] Parse error:', e);
                     }
                 }
             };
 
             this.ws.onclose = (event) => {
-                console.log('[TelegramWS] Disconnected:', event.code, event.reason);
+                console.log('[WhatsAppWS] Disconnected:', event.code, event.reason);
                 this.isConnecting = false;
                 this.stopPing();
 
-                // Attempt reconnection if not a clean close
                 if (event.code !== 1000) {
                     this.scheduleReconnect(accessToken);
                 }
             };
 
             this.ws.onerror = (error) => {
-                console.error('[TelegramWS] Error:', error);
+                console.error('[WhatsAppWS] Error:', error);
                 this.isConnecting = false;
             };
 
         } catch (e) {
-            console.error('[TelegramWS] Connection error:', e);
+            console.error('[WhatsAppWS] Connection error:', e);
             this.isConnecting = false;
             this.scheduleReconnect(accessToken);
         }
     }
 
-    /**
-     * Disconnect from WebSocket
-     */
     disconnect(): void {
         this.stopPing();
         if (this.ws) {
@@ -135,40 +127,31 @@ class TelegramWebSocketClient {
         this.reconnectAttempts = 0;
     }
 
-    /**
-     * Schedule a reconnection attempt with exponential backoff
-     */
     private scheduleReconnect(accessToken: string): void {
         if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-            console.log('[TelegramWS] Max reconnect attempts reached');
+            console.log('[WhatsAppWS] Max reconnect attempts reached');
             return;
         }
 
         this.reconnectAttempts++;
         const delay = Math.min(this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1), 30000);
 
-        console.log(`[TelegramWS] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+        console.log(`[WhatsAppWS] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
 
         setTimeout(() => {
             this.connect(accessToken);
         }, delay);
     }
 
-    /**
-     * Start sending periodic pings to keep connection alive
-     */
     private startPing(): void {
         this.stopPing();
         this.pingInterval = setInterval(() => {
             if (this.ws?.readyState === WebSocket.OPEN) {
                 this.ws.send('ping');
             }
-        }, 30000); // Ping every 30 seconds
+        }, 30000);
     }
 
-    /**
-     * Stop the ping interval
-     */
     private stopPing(): void {
         if (this.pingInterval) {
             clearInterval(this.pingInterval);
@@ -176,26 +159,17 @@ class TelegramWebSocketClient {
         }
     }
 
-    /**
-     * Register a handler for new messages
-     */
     onMessage(handler: MessageHandler): () => void {
         this.messageHandlers.add(handler);
-        // Return unsubscribe function
         return () => {
             this.messageHandlers.delete(handler);
         };
     }
 
-    /**
-     * Check if connected
-     */
     isConnected(): boolean {
         return this.ws?.readyState === WebSocket.OPEN;
     }
 }
 
-// Singleton instance
-export const telegramWS = new TelegramWebSocketClient();
-
-export type { TelegramMessage, MessageHandler };
+export const whatsappWS = new WhatsAppWebSocketClient();
+export type { WhatsappMessage, MessageHandler };

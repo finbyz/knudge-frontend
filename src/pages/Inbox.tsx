@@ -128,7 +128,7 @@ interface SwipeState {
 export default function Inbox() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
-  const { messages, setMessages, addMessages, setLoading, markFetched, shouldRefetch, isLoading, updateOrAddMessage } = useInboxStore();
+  const { messages, setMessages, addMessages, setLoading, markFetched, shouldRefetch, isLoading, updateOrAddMessage, markAsRead } = useInboxStore();
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [localMessages, setLocalMessages] = useState<InboxMessage[]>([]);
@@ -187,6 +187,8 @@ export default function Inbox() {
             phone: chat.phone || undefined,
           },
           platform: chat.platform,
+          email_direction: chat.email_direction,
+          email_status: chat.email_status,
           subject: chat.subject || undefined,
           preview: chat.preview,
           timestamp: validDate ? formatGmailDate(msgDate!, chat.platform !== 'whatsapp') : '',
@@ -326,7 +328,7 @@ export default function Inbox() {
 
   const filteredMessages = localMessages.filter((msg) => {
     const query = searchQuery.toLowerCase();
-    const matchesSearch = !query || 
+    const matchesSearch = !query ||
       msg.sender.name.toLowerCase().includes(query) ||
       msg.preview.toLowerCase().includes(query) ||
       (msg.subject && msg.subject.toLowerCase().includes(query));
@@ -342,8 +344,10 @@ export default function Inbox() {
         if (msg.platform !== 'outlook') return false;
       } else if (selectedPlatform === 'telegram') {
         if (msg.platform !== 'telegram') return false;
-      } else if (selectedPlatform === 'erpnext') {
-        if (msg.platform !== 'erpnext') return false;
+      } else if (selectedPlatform === 'instagram') {
+        if (msg.platform !== 'instagram') return false;
+      } else if ((selectedPlatform as string) === 'erpnext') {
+        if ((msg.platform as string) === 'erpnext') return true;
       }
     }
 
@@ -442,9 +446,7 @@ export default function Inbox() {
       toggleSelection(message.id);
     } else if (!swipeState.isSwiping) {
       if (message.unread) {
-        setLocalMessages(prev =>
-          prev.map(m => m.id === message.id ? { ...m, unread: false } : m)
-        );
+        markAsRead(message.id, message.roomId, message.normalizedPhone, message.identityKey);
       }
 
       if (['email', 'outlook', 'gmail'].includes(message.platform)) {
@@ -492,12 +494,12 @@ export default function Inbox() {
   return (
     <div className="min-h-screen bg-background pb-24 pt-0">
       <TopBar title="Inbox" />
-
-      <main className="px-4 pt-0 pb-4 space-y-3">
+      {/* Filter Bar - from api integrate but styled to fit under TopBar */}
+      <main className="max-w-5xl mx-auto px-6 pt-0 pb-8 space-y-6">
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
+          transition={{ duration: 0.4 }}
           className="relative"
         >
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -524,12 +526,16 @@ export default function Inbox() {
               const config = platformConfig[filter.id] || DEFAULT_PLATFORM;
               const Icon = config.icon;
 
+              const unreadCount = filter.id === 'all'
+                ? localMessages.filter(m => m.unread).length
+                : localMessages.filter(m => m.unread && m.platform === filter.id).length;
+
               return (
                 <button
                   key={filter.id}
                   onClick={() => setSelectedPlatform(filter.id)}
                   className={cn(
-                    "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all border",
+                    "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all border relative",
                     selectedPlatform === filter.id
                       ? "bg-foreground text-background border-foreground shadow-sm"
                       : "bg-muted/30 border-border text-muted-foreground hover:bg-muted hover:border-muted-foreground/30"
@@ -537,6 +543,16 @@ export default function Inbox() {
                 >
                   {filter.id !== 'all' && <Icon className="h-3 w-3" />}
                   {filter.label}
+                  {unreadCount > 0 && (
+                    <span className={cn(
+                      "ml-0.5 min-w-4 h-4 px-1 rounded-full text-[10px] font-bold flex items-center justify-center",
+                      selectedPlatform === filter.id
+                        ? "bg-background text-foreground"
+                        : "bg-primary text-primary-foreground"
+                    )}>
+                      {unreadCount}
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -715,6 +731,18 @@ export default function Inbox() {
                             )}>
                               {highlightText(message.subject, searchQuery)}
                             </p>
+                          )}
+                          {message.email_direction && (
+                            <span
+                              className={cn(
+                                "inline-flex items-center mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border",
+                                message.email_direction === 'OUTGOING'
+                                  ? "bg-success/10 text-success border-success/20"
+                                  : "bg-primary/10 text-primary border-primary/20"
+                              )}
+                            >
+                              {message.email_direction === 'OUTGOING' ? 'Sent' : 'Received'}
+                            </span>
                           )}
                           <p className="text-[14px] text-muted-foreground line-clamp-1 mt-0 font-normal leading-normal">
                             {highlightText(cleanPreview(message.preview) || 'No preview available', searchQuery)}

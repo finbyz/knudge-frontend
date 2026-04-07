@@ -99,7 +99,14 @@ export const useOnboardingStore = create<OnboardingState>()(
         }
       },
       
-      setGoal: (goal) => set({ goal }),
+      setGoal: (goal) => {
+        set({ goal });
+        // Sync to backend
+        const { user } = useAuthStore.getState();
+        if (user && goal) {
+          authApi.updateMe({ onboarding_goal: goal }).catch(console.error);
+        }
+      },
       
       setProfile: (profile) => set((state) => ({
         profile: { ...state.profile, ...profile }

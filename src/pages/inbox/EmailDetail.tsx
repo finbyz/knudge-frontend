@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, ChevronDown, ChevronUp, MoreVertical, Reply, ReplyAll, Forward, Paperclip, Download, Mail } from 'lucide-react';
+import { ChevronLeft, ChevronDown, ChevronUp, ChevronRight, MoreVertical, Reply, ReplyAll, Forward, Paperclip, Download, Mail } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import EmailComposer from '@/components/inbox/EmailComposer';
@@ -9,7 +9,7 @@ import { ConversationalEmailView } from '@/components/inbox/ConversationalEmailV
 import { useSwipeable } from 'react-swipeable';
 import { useToast } from '@/hooks/use-toast';
 import { API_BASE_URL } from '@/lib/api-client';
-
+import { useInboxStore } from '@/stores/inboxStore';
 interface EmailAttachment {
     name: string;
     size: string;
@@ -21,6 +21,7 @@ interface EmailThread {
     email: string;
     timestamp: string;
     body: string;
+    bodyHtml?: string;
     attachments: EmailAttachment[];
 }
 
@@ -31,6 +32,7 @@ interface EmailData {
     cc?: string[];
     from: string;
     fromEmail: string;
+    direction?: string; // INCOMING / OUTGOING
     threads: EmailThread[];
 }
 
@@ -147,6 +149,40 @@ export default function EmailDetail() {
     const [viewMode, setViewMode] = useState<'threaded' | 'conversational'>('conversational');
     const { toast } = useToast();
 
+
+    const { messages } = useInboxStore();
+    const currentIndex = messages.findIndex(m =>
+        m.id === `email-${emailId}` ||
+        m.roomId === emailId ||
+        m.id.includes(emailId || '')
+    );
+    const prevMessage = currentIndex > 0 ? messages[currentIndex - 1] : null;
+    const nextMessage = currentIndex < messages.length - 1 ? messages[currentIndex + 1] : null;
+
+    const markAsRead = useInboxStore((state) => state.markAsRead);
+
+    const navigateToMessage = (message: any) => {
+        if (!message) return;
+        // markAsRead — saare possible IDs se try karo
+        markAsRead(message.id, message.roomId, message.normalizedPhone, message.identityKey);
+
+        if (['email', 'gmail', 'outlook'].includes(message.platform)) {
+            const realId = message.id.startsWith('email-')
+                ? message.id.replace('email-', '')
+                : message.id;
+            navigate(`/inbox/email/${realId}`);
+        } else if (message.platform === 'whatsapp' && message.roomId) {
+            const roomParam = encodeURIComponent(message.roomId);
+            const phoneParam = message.sender?.phone
+                ? `&phone=${encodeURIComponent(message.sender.phone)}`
+                : '';
+            navigate(`/inbox/chat/wa?room=${roomParam}&name=${encodeURIComponent(message.sender?.name || '')}${phoneParam}`);
+        } else if (message.platform === 'telegram' && message.roomId) {
+            navigate(`/inbox/chat/${message.id}?name=${encodeURIComponent(message.sender?.name || '')}`);
+        } else {
+            navigate(`/inbox/chat/${message.id}`);
+        }
+    };
     // Use sample if not fetched yet or if using demo IDs
     const email = fetchedEmail || sampleEmails[emailId || '3'] || sampleEmails['3'];
 
@@ -164,19 +200,23 @@ export default function EmailDetail() {
                 .then(res => res.json())
                 .then(data => {
                     if (data && data.id) {
+                        const plainText = (data.body_text || 'No content').trim();
+
                         setFetchedEmail({
                             id: data.id,
                             subject: data.subject || 'No Subject',
                             to: [data.to_email],
                             from: data.from_email.split('<')[0].replace(/"/g, '').trim(),
                             fromEmail: data.from_email,
+                            direction: data.direction,
                             threads: [
                                 {
                                     id: 1,
                                     sender: data.from_email.split('<')[0].replace(/"/g, '').trim(),
                                     email: data.from_email,
                                     timestamp: new Date(data.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                                    body: data.body_text || 'No content',
+                                    body: plainText,
+                                    bodyHtml: data.body_html || undefined,
                                     attachments: []
                                 }
                             ]
@@ -213,6 +253,7 @@ export default function EmailDetail() {
             {/* Header */}
             <header className="sticky top-0 z-50 bg-card border-b border-border p-4">
                 <div className="flex items-center justify-between mb-2">
+                    {/* Back button */}
                     <button
                         onClick={() => navigate('/inbox')}
                         className="p-2 -ml-2 hover:bg-muted rounded-full transition-colors"
@@ -220,12 +261,55 @@ export default function EmailDetail() {
                         <ChevronLeft className="h-5 w-5 text-foreground" />
                     </button>
 
-                    <button className="p-2 hover:bg-muted rounded-full transition-colors">
-                        <MoreVertical className="h-5 w-5 text-muted-foreground" />
-                    </button>
-                </div>
+                    {/* Prev/Next + Menu */}
+                    <div className="flex items-center gap-1">
+                        {/* Previous */}
+                        <button
+                            onClick={() => navigateToMessage(prevMessage)}
+                            disabled={!prevMessage}
+                            className={cn(
+                                "p-2 rounded-full transition-colors",
+                                prevMessage
+                                    ? "hover:bg-muted text-foreground"
+                                    : "text-muted-foreground/30 cursor-not-allowed"
+                            )}
+                        >
+                            <ChevronLeft className="h-5 w-5" />
+                        </button>
 
+                        {/* Next */}
+                        <button
+                            onClick={() => navigateToMessage(nextMessage)}
+                            disabled={!nextMessage}
+                            className={cn(
+                                "p-2 rounded-full transition-colors",
+                                nextMessage
+                                    ? "hover:bg-muted text-foreground"
+                                    : "text-muted-foreground/30 cursor-not-allowed"
+                            )}
+                        >
+                            <ChevronRight className="h-5 w-5" />
+                        </button>
+
+                        {/* Menu */}
+                        <button className="p-2 hover:bg-muted rounded-full transition-colors">
+                            <MoreVertical className="h-5 w-5 text-muted-foreground" />
+                        </button>
+                    </div>
+                </div>
                 <h1 className="text-xl font-bold text-foreground">{email.subject}</h1>
+                {email.direction && (
+                    <div className="mt-1">
+                        <span className={cn(
+                            "inline-flex items-center text-[10px] font-semibold px-2 py-0.5 rounded-full border",
+                            email.direction === 'OUTGOING'
+                                ? "bg-success/10 text-success border-success/20"
+                                : "bg-primary/10 text-primary border-primary/20"
+                        )}>
+                            {email.direction === 'OUTGOING' ? 'Sent' : 'Received'}
+                        </span>
+                    </div>
+                )}
             </header>
 
             {/* Sender/Recipient Section */}
@@ -325,9 +409,16 @@ export default function EmailDetail() {
                                         className="overflow-hidden"
                                     >
                                         <div className="p-6 pt-4">
-                                            <p className="text-base text-foreground leading-relaxed whitespace-pre-wrap">
-                                                {thread.body}
-                                            </p>
+                                            {thread.bodyHtml ? (
+                                                <div
+                                                    className="text-base text-foreground leading-relaxed email-html-content"
+                                                    dangerouslySetInnerHTML={{ __html: thread.bodyHtml }}
+                                                />
+                                            ) : (
+                                                <p className="text-base text-foreground leading-relaxed whitespace-pre-wrap">
+                                                    {thread.body}
+                                                </p>
+                                            )}
 
                                             {/* Attachments */}
                                             {thread.attachments.length > 0 && (
@@ -355,7 +446,7 @@ export default function EmailDetail() {
             </main>
 
             {/* Action Bar - positioned above BottomNav with proper spacing */}
-            <div className="fixed bottom-20 left-0 right-0 z-40 bg-card border-t border-border shadow-sm px-4 py-2">
+            <div className="fixed bottom-0 left-64 right-0 z-40 bg-card border-t border-border shadow-sm px-4 py-2">
                 <div className="max-w-lg mx-auto flex gap-2">
                     <button
                         onClick={() => openComposer('reply')}

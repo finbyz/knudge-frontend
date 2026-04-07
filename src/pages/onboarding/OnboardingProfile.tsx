@@ -148,6 +148,7 @@ export default function OnboardingProfile() {
         const updated = await authApi.updateMe({
           first_name: form.firstName,
           last_name: form.lastName,
+          linkedin_url: form.linkedinUrl,
         });
         setUser(updated);
       } catch {

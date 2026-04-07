@@ -267,195 +267,214 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
       >
         {/* Header - hide content for stacked cards using visibility for smoother animations */}
         <div style={{ visibility: isTop ? 'visible' : 'hidden' }}>
-        {/* Header */}
-        <div className="p-3 sm:p-4 border-b border-border/50 bg-card/60 backdrop-blur-sm flex-shrink-0">
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-              <Avatar
-                initials={card.contact.avatar || card.contact.name.substring(0, 2)}
-                size="lg"
-              />
-              <div className="min-w-0 flex-1">
-                <h3 className="font-semibold text-foreground text-lg truncate">{card.contact.name}</h3>
-                <p className="text-sm text-muted-foreground truncate">
-                  {card.contact.email || card.contact.phone || 'Contact'}
-                </p>
-              </div>
-            </div>
-            <PlatformBadge platform={card.platform} size="lg" />
-          </div>
-        </div>
-
-        {/* Context */}
-        <div className="px-3 sm:px-4 py-2 bg-card/40 border-b border-border/50 flex-shrink-0">
-          <p className="text-xs sm:text-sm text-muted-foreground">{card.context}</p>
-        </div>
-
-        {/* Message section */}
-        <div className="p-3 sm:p-4 flex-shrink-0">
-          {/* AI Draft header */}
-          <div className="flex items-center justify-between mb-2 sm:mb-3">
-            <div className="flex items-center gap-2">
-              <div className="h-5 w-5 sm:h-6 sm:w-6 rounded-full bg-gradient-to-r from-purple-500 to-primary flex items-center justify-center">
-                <span className="text-white text-xs">✨</span>
-              </div>
-              <span className="text-xs sm:text-sm font-semibold text-foreground uppercase tracking-wider">
-                AI Draft
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Calendar className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
-              <span>{card.createdAt}</span>
-            </div>
-          </div>
-
-          {/* Draft text area */}
-          {/* Subject Line for specific platforms */}
-          {['email', 'gmail', 'outlook'].includes(card.platform) && (
-            <div className="mb-3">
-              {isEditing ? (
-                <input
-                  type="text"
-                  value={subject}
-                  onChange={(e) => setSubject(e.target.value)}
-                  placeholder="Subject"
-                  className="w-full p-2 rounded-lg bg-primary/5 border border-primary/20 text-foreground font-medium text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+          {/* Header */}
+          <div className="p-3 sm:p-4 border-b border-border/50 bg-card/60 backdrop-blur-sm flex-shrink-0">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                <Avatar
+                  initials={card.contact.avatar || card.contact.name.substring(0, 2)}
+                  size="lg"
                 />
-              ) : (
-                <div
-                  onClick={() => setIsEditing(true)}
-                  className="p-2 rounded-lg bg-primary/5 border border-primary/20 hover:border-primary/40 cursor-text transition-colors"
-                >
-                  <p className="text-foreground font-medium text-sm">
-                    <span className="text-muted-foreground font-normal">Subject: </span>
-                    {subject || '(No Subject)'}
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-semibold text-foreground text-lg truncate">{card.contact.name}</h3>
+                  <p className="text-sm text-muted-foreground truncate">
+                    {card.contact.email || card.contact.phone || 'Contact'}
                   </p>
                 </div>
-              )}
+              </div>
+              <PlatformBadge platform={card.platform} size="lg" />
             </div>
-          )}
+          </div>
 
-          {/* Draft text area */}
-          {isEditing ? (
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onBlur={() => {
-                // Only exit edit mode if we clicked outside? 
-                // Actually relying on blur for textarea might be annoying if click subject input.
-                // Let's remove onBlur auto-close or make it smarter.
-                // For simplicity, keep it but maybe delay or check active element.
-                // User can click "Send" to finish.
-                // Or we rely on the container click to open edit, and explicit 'Done' button?
-                // Current UX: click text -> edit -> blur -> view.
-                // If I click Subject input, Textarea blurs.
-                // I should wrap the whole editing block in a container that handles edit state?
-                // For now, I'll remove onBlur from textarea so user can switch between inputs.
-              }}
-              className="w-full min-h-[100px] sm:min-h-[120px] p-3 sm:p-4 rounded-xl bg-primary/5 border border-primary/20 text-foreground text-sm sm:text-base leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
-              autoFocus
-            />
-          ) : (
-            <div
-              onClick={() => setIsEditing(true)}
-              className="min-h-[100px] sm:min-h-[120px] p-3 sm:p-4 rounded-xl bg-primary/5 border border-primary/20 hover:border-primary/40 cursor-text transition-colors"
-            >
-              <p className="text-foreground text-sm sm:text-base leading-relaxed whitespace-pre-wrap break-words">{draft}</p>
-            </div>
-          )}
+          {/* Context */}
+          <div className="px-3 sm:px-4 py-2 bg-card/40 border-b border-border/50 flex-shrink-0">
+            <p className="text-xs sm:text-sm text-muted-foreground">{card.context}</p>
+          </div>
 
-          {/* Done Editing Button (Only visible when editing) */}
-          {isEditing && (
-            <div className="mt-2 flex justify-end">
-              <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>
-                Done Editing
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {/* Regenerate section */}
-        <div className="px-3 sm:px-4 pb-3 sm:pb-4 flex-shrink-0">
-          {showRegenerateInput ? (
-            <div className="space-y-2">
-              <input
-                type="text"
-                placeholder="Add instructions for regeneration..."
-                value={regenerateInstructions}
-                onChange={(e) => setRegenerateInstructions(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-lg bg-card/80 border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
-              />
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setShowRegenerateInput(false)}
-                  className="flex-1 h-10"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleRegenerate}
-                  className="flex-1 h-10 gradient-primary text-primary-foreground border-0"
-                >
-                  <RefreshCw className="h-4 w-4 mr-1.5" />
-                  Regenerate
-                </Button>
+          {/* Circle & Agenda - shows the generation prompt/context */}
+          {(card.circleName || card.circleAgenda) && (
+            <div className="px-3 sm:px-4 py-2 bg-primary/5 border-b border-border/50 flex-shrink-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                {card.circleName && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-primary/10 text-primary text-xs font-medium">
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                    {card.circleName}
+                  </span>
+                )}
+                {card.circleAgenda && (
+                  <span className="text-xs text-muted-foreground italic truncate">
+                    {card.circleAgenda}
+                  </span>
+                )}
               </div>
             </div>
-          ) : (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setShowRegenerateInput(true)}
-              className="w-full h-10 sm:h-11 border-2 border-dashed border-primary/30 hover:border-primary/50 hover:bg-primary/5 text-primary"
-            >
-              <RefreshCw className="h-4 w-4 mr-1.5" />
-              Regenerate with Instructions
-            </Button>
           )}
-        </div>
 
-        {/* Priority indicator */}
-        <div className="px-3 sm:px-4 pb-2 flex-shrink-0">
-          <div
-            className={cn(
-              'inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full text-xs font-medium',
-              card.priority === 'high' && 'bg-destructive/10 text-destructive',
-              card.priority === 'medium' && 'bg-warning/10 text-warning',
-              card.priority === 'low' && 'bg-success/10 text-success'
+          {/* Message section */}
+          <div className="p-3 sm:p-4 flex-shrink-0">
+            {/* AI Draft header */}
+            <div className="flex items-center justify-between mb-2 sm:mb-3">
+              <div className="flex items-center gap-2">
+                <div className="h-5 w-5 sm:h-6 sm:w-6 rounded-full bg-gradient-to-r from-purple-500 to-primary flex items-center justify-center">
+                  <span className="text-white text-xs">✨</span>
+                </div>
+                <span className="text-xs sm:text-sm font-semibold text-foreground uppercase tracking-wider">
+                  AI Draft
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <Calendar className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                <span>{card.createdAt}</span>
+              </div>
+            </div>
+
+            {/* Draft text area */}
+            {/* Subject Line for specific platforms */}
+            {['email', 'gmail', 'outlook'].includes(card.platform) && (
+              <div className="mb-3">
+                {isEditing ? (
+                  <input
+                    type="text"
+                    value={subject}
+                    onChange={(e) => setSubject(e.target.value)}
+                    placeholder="Subject"
+                    className="w-full p-2 rounded-lg bg-primary/5 border border-primary/20 text-foreground font-medium text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  />
+                ) : (
+                  <div
+                    onClick={() => setIsEditing(true)}
+                    className="p-2 rounded-lg bg-primary/5 border border-primary/20 hover:border-primary/40 cursor-text transition-colors"
+                  >
+                    <p className="text-foreground font-medium text-sm">
+                      <span className="text-muted-foreground font-normal">Subject: </span>
+                      {subject || '(No Subject)'}
+                    </p>
+                  </div>
+                )}
+              </div>
             )}
-          >
-            <span
-              className={cn(
-                'h-1.5 w-1.5 rounded-full',
-                card.priority === 'high' && 'bg-destructive',
-                card.priority === 'medium' && 'bg-warning',
-                card.priority === 'low' && 'bg-success'
-              )}
-            />
-            {card.priority.charAt(0).toUpperCase() + card.priority.slice(1)} Priority
-          </div>
-        </div>
 
-        {/* Swipe hint */}
-        <div className="px-3 sm:px-4 pb-3 sm:pb-4 flex-shrink-0">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-destructive/10 flex items-center justify-center">
-                <X className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-destructive" />
+            {/* Draft text area */}
+            {isEditing ? (
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={() => {
+                  // Only exit edit mode if we clicked outside? 
+                  // Actually relying on blur for textarea might be annoying if click subject input.
+                  // Let's remove onBlur auto-close or make it smarter.
+                  // For simplicity, keep it but maybe delay or check active element.
+                  // User can click "Send" to finish.
+                  // Or we rely on the container click to open edit, and explicit 'Done' button?
+                  // Current UX: click text -> edit -> blur -> view.
+                  // If I click Subject input, Textarea blurs.
+                  // I should wrap the whole editing block in a container that handles edit state?
+                  // For now, I'll remove onBlur from textarea so user can switch between inputs.
+                }}
+                className="w-full min-h-[100px] sm:min-h-[120px] p-3 sm:p-4 rounded-xl bg-primary/5 border border-primary/20 text-foreground text-sm sm:text-base leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
+                autoFocus
+              />
+            ) : (
+              <div
+                onClick={() => setIsEditing(true)}
+                className="min-h-[100px] sm:min-h-[120px] p-3 sm:p-4 rounded-xl bg-primary/5 border border-primary/20 hover:border-primary/40 cursor-text transition-colors"
+              >
+                <p className="text-foreground text-sm sm:text-base leading-relaxed whitespace-pre-wrap break-words">{draft}</p>
               </div>
-              <span>Skip</span>
+            )}
+
+            {/* Done Editing Button (Only visible when editing) */}
+            {isEditing && (
+              <div className="mt-2 flex justify-end">
+                <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>
+                  Done Editing
+                </Button>
+              </div>
+            )}
+          </div>
+
+          {/* Regenerate section */}
+          <div className="px-3 sm:px-4 pb-3 sm:pb-4 flex-shrink-0">
+            {showRegenerateInput ? (
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  placeholder="Add instructions for regeneration..."
+                  value={regenerateInstructions}
+                  onChange={(e) => setRegenerateInstructions(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-lg bg-card/80 border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowRegenerateInput(false)}
+                    className="flex-1 h-10"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={handleRegenerate}
+                    className="flex-1 h-10 gradient-primary text-primary-foreground border-0"
+                  >
+                    <RefreshCw className="h-4 w-4 mr-1.5" />
+                    Regenerate
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setShowRegenerateInput(true)}
+                className="w-full h-10 sm:h-11 border-2 border-dashed border-primary/30 hover:border-primary/50 hover:bg-primary/5 text-primary"
+              >
+                <RefreshCw className="h-4 w-4 mr-1.5" />
+                Regenerate with Instructions..
+              </Button>
+            )}
+          </div>
+
+          {/* Priority indicator */}
+          <div className="px-3 sm:px-4 pb-2 flex-shrink-0">
+            <div
+              className={cn(
+                'inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-full text-xs font-medium',
+                card.priority === 'high' && 'bg-destructive/10 text-destructive',
+                card.priority === 'medium' && 'bg-warning/10 text-warning',
+                card.priority === 'low' && 'bg-success/10 text-success'
+              )}
+            >
+              <span
+                className={cn(
+                  'h-1.5 w-1.5 rounded-full',
+                  card.priority === 'high' && 'bg-destructive',
+                  card.priority === 'medium' && 'bg-warning',
+                  card.priority === 'low' && 'bg-success'
+                )}
+              />
+              {card.priority.charAt(0).toUpperCase() + card.priority.slice(1)} Priority
             </div>
-            <div className="flex items-center gap-2">
-              <span>Send</span>
-              <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-success/10 flex items-center justify-center">
-                <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-success" />
+          </div>
+
+          {/* Swipe hint */}
+          <div className="px-3 sm:px-4 pb-3 sm:pb-4 flex-shrink-0">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-destructive/10 flex items-center justify-center">
+                  <X className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-destructive" />
+                </div>
+                <span>Skip</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span>Send</span>
+                <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-success/10 flex items-center justify-center">
+                  <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-success" />
+                </div>
               </div>
             </div>
           </div>
-        </div>
         </div>
       </div>
     </motion.div>

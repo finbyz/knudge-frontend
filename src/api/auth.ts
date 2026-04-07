@@ -31,6 +31,7 @@ export interface UserResponse {
   personal_profile?: string;
   photo_url?: string;          // LinkedIn profile photo from EnrichLayer
   onboarding_step?: number;
+  onboarding_goal?: string;
   birthday_reminders?: boolean;
   social_monitoring?: boolean;
   push_notifications?: boolean;
@@ -46,6 +47,7 @@ export interface UserUpdate {
   linkedin_url?: string;
   personal_profile?: string;
   onboarding_step?: number;
+  onboarding_goal?: string;
   birthday_reminders?: boolean;
   social_monitoring?: boolean;
   push_notifications?: boolean;
@@ -70,5 +72,9 @@ export const authApi = {
 
   updateMe: async (data: UserUpdate): Promise<UserResponse> => {
     return ApiClient.put('/auth/me', data);
+  },
+
+  generateOnboardingDecks: async (): Promise<{ status: string; message: string }> => {
+    return ApiClient.post('/auth/generate-onboarding-decks');
   },
 };

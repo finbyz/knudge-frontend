@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { NotificationPanel } from '@/components/NotificationPanel';
 import { useAuthStore } from '@/stores/authStore';
+import { useNotificationStore } from '@/stores/notificationStore';
 
 interface AppHeaderProps {
   showNotifications?: boolean;
@@ -11,6 +12,7 @@ interface AppHeaderProps {
 export function AppHeader({ showNotifications = true }: AppHeaderProps) {
   const [showNotificationPanel, setShowNotificationPanel] = useState(false);
   const { user } = useAuthStore();
+  const { unreadCount } = useNotificationStore();
 
   return (
     <>
@@ -32,7 +34,13 @@ export function AppHeader({ showNotifications = true }: AppHeaderProps) {
                 className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center relative hover:bg-muted transition-colors"
               >
                 <Bell className="h-5 w-5 text-muted-foreground" />
-                <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-destructive" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] rounded-full bg-destructive ring-2 ring-card flex items-center justify-center">
+                    <span className="text-[10px] font-bold text-destructive-foreground">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  </span>
+                )}
               </button>
             )}
             

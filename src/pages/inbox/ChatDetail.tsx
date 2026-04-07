@@ -10,6 +10,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { useInboxStore } from '@/stores/inboxStore';
 import { API_BASE_URL, API_HOST_URL } from '@/lib/api-client';
 import { Avatar } from '@/components/Avatar';
+import { whatsappWS } from '@/lib/whatsappWebSocket';
+import { telegramWS } from '@/lib/telegramWebSocket';
 
 interface ChatMessage {
   id: number | string;
@@ -27,7 +29,7 @@ interface ChatMessage {
   attachment?: {
     name: string;
     size: string;
-    type: 'image' | 'document';
+    type: 'image' | 'document' | 'video' | 'audio';
     url?: string;
   };
   mxc_uri?: string;
@@ -116,10 +118,11 @@ export default function ChatDetail() {
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [chatIdentity, setChatIdentity] = useState<{ normalized_phone?: string; identity_key?: string }>({});
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [showUndo, setShowUndo] = useState(false);
   const [originalText, setOriginalText] = useState('');
-  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [fullScreenImage, setFullScreenImage] = useState<string | null>(null);
   const pollingErrorCountRef = useRef(0);
   const MAX_POLLING_ERRORS = 3;
@@ -166,10 +169,9 @@ export default function ChatDetail() {
 
   // Mark as read when opened
   useEffect(() => {
-    if (contactId) {
-      markAsRead(`wa-room-${roomId || contactId}`);
-    } else if (roomId) {
-      markAsRead(`wa-room-${roomId}`);
+    const chatJid = roomId || contactId;
+    if (chatJid) {
+      markAsRead(`wa-chat-${chatJid}`, chatJid);
     }
   }, [contactId, roomId, markAsRead]);
 
@@ -200,6 +202,10 @@ export default function ChatDetail() {
         const data = await response.json();
         // Handle both old array format and new object format
         const msgs = Array.isArray(data) ? data : (data.messages || []);
+        setChatIdentity({
+          normalized_phone: data.normalized_phone,
+          identity_key: data.identity_key
+        });
 
         const chatMessages: ChatMessage[] = msgs.map((msg: any) => {
           const direction = (msg.direction || '').toUpperCase();
@@ -212,7 +218,7 @@ export default function ChatDetail() {
             timestamp: formatMessageTime(msg.timestamp),
             status: isOutgoing ? 'delivered' : undefined,
             message_type: msg.message_type,
-            media_url: msg.media_url ? `${API_HOST_URL}${msg.media_url}` : undefined,
+            media_url: msg.media_url ? `${API_HOST_URL}${msg.media_url}?token=${accessToken}` : undefined,
             media_mimetype: msg.media_mimetype,
             mxc_uri: msg.mxc_uri,
             sender_name: msg.sender_name,
@@ -258,7 +264,9 @@ export default function ChatDetail() {
             type: direction === 'OUTGOING' ? 'outgoing' : 'incoming',
             text: msg.text,
             timestamp: msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
-            status: direction === 'OUTGOING' ? 'sent' : undefined
+            status: direction === 'OUTGOING' ? 'sent' : undefined,
+            media_url: msg.media_url ? `${API_HOST_URL}${msg.media_url}?token=${accessToken}` : undefined,
+            media_mimetype: msg.media_mimetype,
           };
         });
 
@@ -282,81 +290,107 @@ export default function ChatDetail() {
     }
   }, [contactId, accessToken]); // Removed msgOffset from dependencies
 
-  // Polling for new messages every 10 seconds
+  // Real-time message updates via WebSocket
   useEffect(() => {
     if (!roomId || !accessToken) return;
 
-    const intervalId = setInterval(async () => {
-      // 1. Skip if already loading or tab is hidden
-      if (isLoadingMessages || document.visibilityState !== 'visible') return;
+    // Connect to WebSocket
+    whatsappWS.connect(accessToken);
 
-      // 2. Stop if too many errors
-      if (pollingErrorCountRef.current >= MAX_POLLING_ERRORS) {
-        console.warn("Stopping message polling due to repeated errors.");
-        clearInterval(intervalId);
-        return;
-      }
+    const unsubscribe = whatsappWS.onMessage((msg) => {
+      // 1. Only handle messages for the CURRENT room
+      // Matches by room_id, normalized_phone, or identity_key for robust cross-JID support
+      const isMatch =
+        msg.room_id === roomId ||
+        (msg.normalized_phone && msg.normalized_phone === chatIdentity.normalized_phone) ||
+        (msg.identity_key && msg.identity_key === chatIdentity.identity_key);
 
-      const decodedRoomId = decodeURIComponent(roomId);
-      try {
-        const response = await fetch(
-          `${API_BASE_URL}/whatsapp/messages/${encodeURIComponent(decodedRoomId)}?limit=10&offset=0`,
-          { headers: { Authorization: `Bearer ${accessToken}` } }
-        );
+      if (!isMatch) return;
 
-        if (response.ok) {
-          pollingErrorCountRef.current = 0; // Reset on success
-          const json = await response.json();
-          const data = Array.isArray(json) ? json : (json.messages || []);
+      setMessages(prev => {
+        const existingIds = new Set(prev.map(m => m.id));
+        if (existingIds.has(msg.id)) return prev;
 
-          setMessages(prev => {
-            const existingIds = new Set(prev.map(m => m.id));
-            const newMsgs: ChatMessage[] = [];
+        const isOutgoing = msg.type === 'outgoing';
+        const newMsg: ChatMessage = {
+          id: msg.id,
+          type: msg.type,
+          text: msg.text,
+          timestamp: new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          status: (msg.status as any) || 'delivered',
+          message_type: msg.message_type,
+          media_url: msg.media_url ? (msg.media_url.startsWith('http') ? msg.media_url : `${API_HOST_URL}${msg.media_url}?token=${accessToken}`) : undefined,
+          media_mimetype: msg.media_mimetype,
+          sender_name: msg.sender_name,
+          from_me: isOutgoing,
+          fromMe: isOutgoing,
+        };
 
-            data.forEach((msg: any) => {
-              const id = msg.id;
-              if (id && !existingIds.has(id)) {
-                const direction = (msg.direction || '').toUpperCase();
-                const isOutgoing = direction === 'OUTGOING' || direction === 'outgoing';
-                newMsgs.push({
-                  id,
-                  type: isOutgoing ? 'outgoing' : 'incoming',
-                  text: msg.text || msg.body || '',
-                  timestamp: formatMessageTime(msg.timestamp),
-                  status: isOutgoing ? 'delivered' : undefined,
-                  message_type: msg.message_type,
-                  media_url: msg.media_url ? `${API_HOST_URL}${msg.media_url}` : undefined,
-                  media_mimetype: msg.media_mimetype,
-                  mxc_uri: msg.mxc_uri,
-                  sender_name: msg.sender_name,
-                  attachment: msg.attachment
-                    ? {
-                      name: msg.attachment.name || 'Attachment',
-                      size: msg.attachment.size || '',
-                      type: msg.attachment.type || 'document',
-                      url: normalizeMediaUrl(msg.attachment.url),
-                    }
-                    : undefined,
-                });
-              }
-            });
+        return [...prev, newMsg];
+      });
 
-            if (newMsgs.length > 0) {
-              return [...prev, ...newMsgs.reverse()];
-            }
-            return prev;
+      // Scroll to bottom when new message arrives
+      setTimeout(() => {
+        if (messagesContainerRef?.current) {
+          messagesContainerRef.current.scrollTo({
+            top: messagesContainerRef.current.scrollHeight,
+            behavior: 'smooth'
           });
-        } else {
-          pollingErrorCountRef.current++;
         }
-      } catch (e) {
-        pollingErrorCountRef.current++;
-        console.error("Polling error:", e);
-      }
-    }, 10000);
+      }, 100);
+    });
 
-    return () => clearInterval(intervalId);
-  }, [roomId, accessToken, isLoadingMessages, formatMessageTime, normalizeMediaUrl]);
+    return () => {
+      unsubscribe();
+    };
+  }, [roomId, accessToken]);
+
+  // Real-time Telegram message updates via WebSocket
+  useEffect(() => {
+    if (!contactId || !contactId.startsWith('telegram-') || !accessToken) return;
+    const tgChatId = contactId.replace('telegram-', '');
+
+    // Connect to WebSocket
+    telegramWS.connect(accessToken);
+
+    const unsubscribe = telegramWS.onMessage((msg) => {
+      // 1. Only handle messages for the CURRENT chat
+      if (msg.chat_id !== tgChatId) return;
+
+      setMessages(prev => {
+        const existingIds = new Set(prev.map(m => String(m.id)));
+        if (existingIds.has(String(msg.id))) return prev;
+
+        const isOutgoing = msg.direction === 'OUTGOING';
+        const newMsg: ChatMessage = {
+          id: msg.id,
+          type: isOutgoing ? 'outgoing' : 'incoming',
+          text: msg.text,
+          timestamp: new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          status: isOutgoing ? 'sent' : undefined,
+          media_url: msg.media_url ? (msg.media_url.startsWith('http') ? msg.media_url : `${API_HOST_URL}${msg.media_url}?token=${accessToken}`) : undefined,
+          media_mimetype: msg.media_mimetype,
+          sender_name: msg.contact_name,
+        };
+
+        return [...prev, newMsg];
+      });
+
+      // Scroll to bottom
+      setTimeout(() => {
+        if (messagesContainerRef?.current) {
+          messagesContainerRef.current.scrollTo({
+            top: messagesContainerRef.current.scrollHeight,
+            behavior: 'smooth'
+          });
+        }
+      }, 100);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [contactId, accessToken]);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop } = e.currentTarget;
@@ -408,7 +442,8 @@ export default function ChatDetail() {
         name: tgContactName,
         initials: (tgContactName[0] || 'T').toUpperCase(),
         platform: "telegram",
-        lastSeen: "Telegram"
+        lastSeen: "Telegram",
+        avatar: avatarFromParams || undefined,
       });
 
       fetchTgMessages(false);
@@ -417,12 +452,52 @@ export default function ChatDetail() {
 
 
   // Navigation logic removed as it was based on static mocks
-  const goToPrevious = () => { };
-  const goToNext = () => { };
-  const hasPrevious = false;
-  const hasNext = false;
-  const currentIndex = 0;
+  // Navigation logic using inbox store
+  const inboxMessages = useInboxStore((state) => state.messages);
+  const currentInboxIndex = inboxMessages.findIndex(m =>
+    m.roomId === roomId ||
+    m.roomId === decodeURIComponent(roomId || '') ||
+    m.id === `telegram-${contactId?.replace('telegram-', '')}` ||
+    m.id === contactId
+  );
+  const hasPrevious = currentInboxIndex > 0;
+  const hasNext = currentInboxIndex < inboxMessages.length - 1 && currentInboxIndex !== -1;
+  const currentIndex = currentInboxIndex;
   const totalMessages = messages.length;
+  const navigateToInboxMessage = (inboxMsg: any) => {
+    console.log('navigating to:', inboxMsg.id, 'unread:', inboxMsg.unread, 'roomId:', inboxMsg.roomId);
+    console.log('currentInboxIndex:', currentInboxIndex);
+    console.log('inboxMessages count:', inboxMessages.length);
+    // markAsRead pehle karo — navigate se pehle store update hona chahiye
+    markAsRead(inboxMsg.id, inboxMsg.roomId, inboxMsg.normalizedPhone, inboxMsg.identityKey);
+
+    // Email ke liye alag ID format use hota hai store mein
+    if (['email', 'gmail', 'outlook'].includes(inboxMsg.platform)) {
+      // Email store ID se bhi markAsRead karo
+      const emailStoreId = inboxMsg.id.startsWith('email-') ? inboxMsg.id : `email-${inboxMsg.id}`;
+      markAsRead(emailStoreId, inboxMsg.roomId, inboxMsg.normalizedPhone, inboxMsg.identityKey);
+      setTimeout(() => navigate(`/inbox/email/${inboxMsg.id}`), 0);
+    } else if (inboxMsg.platform === 'whatsapp' && inboxMsg.roomId) {
+      const waStoreId = inboxMsg.id.startsWith('wa-chat-') ? inboxMsg.id : `wa-chat-${inboxMsg.roomId}`;
+      markAsRead(waStoreId, inboxMsg.roomId, inboxMsg.normalizedPhone, inboxMsg.identityKey);
+      const roomParam = encodeURIComponent(inboxMsg.roomId);
+      const phoneParam = inboxMsg.sender?.phone
+        ? `&phone=${encodeURIComponent(inboxMsg.sender.phone)}`
+        : '';
+      setTimeout(() => navigate(`/inbox/chat/wa?room=${roomParam}&name=${encodeURIComponent(inboxMsg.sender?.name || '')}${phoneParam}`), 0);
+    } else if (inboxMsg.platform === 'telegram' && inboxMsg.roomId) {
+      const avatarParam = inboxMsg.sender?.avatar ? `&avatar=${encodeURIComponent(inboxMsg.sender.avatar)}` : '';
+      setTimeout(() => navigate(`/inbox/chat/${inboxMsg.id}?name=${encodeURIComponent(inboxMsg.sender?.name || '')}${avatarParam}`), 0);
+    }
+  };
+  const goToPrevious = () => {
+    if (!hasPrevious) return;
+    navigateToInboxMessage(inboxMessages[currentInboxIndex - 1]);
+  };
+  const goToNext = () => {
+    if (!hasNext) return;
+    navigateToInboxMessage(inboxMessages[currentInboxIndex + 1]);
+  };
 
   // Swipe handlers for navigation
   const navSwipeHandlers = useSwipeable({
@@ -682,7 +757,7 @@ export default function ChatDetail() {
             } else {
               // Refresh WhatsApp messages
               const response = await fetch(
-                `${API_BASE_URL}/whatsapp/messages/${encodeURIComponent(decodedRoomId)}?limit=1000`,
+                `${API_BASE_URL}/whatsapp/messages/${encodeURIComponent(decodedRoomId)}?limit=50`,
                 { headers: { Authorization: `Bearer ${accessToken}` } }
               );
 
@@ -1003,7 +1078,7 @@ export default function ChatDetail() {
                         return null;
                       })()}
 
-                      {message.text && (
+                      {message.text && !/^\[(document|video|audio|image|sticker|ptt|location|vcard|contact)\]$/i.test(message.text) && (
                         <p className="text-base leading-relaxed">{message.text}</p>
                       )}
 

@@ -6,6 +6,7 @@ interface PlatformBadgeProps {
   platform: Platform;
   size?: 'sm' | 'md' | 'lg';
   showLabel?: boolean;
+  status?: 'connected' | 'disconnected' | 'syncing';
 }
 
 const platformConfig: Record<Platform, { label: string; bgClass: string; textClass: string; cardBg: string; borderClass: string; leftBorder: string }> = {
@@ -163,22 +164,24 @@ const iconSizes = {
   lg: 'h-5 w-5',
 };
 
-export function PlatformBadge({ platform, size = 'md', showLabel = false }: PlatformBadgeProps) {
+export function PlatformBadge({ platform, size = 'md', showLabel = false, status = 'connected' }: PlatformBadgeProps) {
   const config = platformConfig[platform] || platformConfig.rss; // Fallback to RSS styles
+  const isDisconnected = status === 'disconnected';
 
   return (
-    <div className={cn('flex items-center gap-2', showLabel && 'pr-2')}>
+    <div className={cn('flex items-center gap-2', showLabel && 'pr-2', isDisconnected && 'opacity-50')}>
       <div
         className={cn(
-          'rounded-xl flex items-center justify-center shadow-sm',
+          'rounded-xl flex items-center justify-center shadow-sm transition-all',
           config.bgClass,
-          sizeClasses[size]
+          sizeClasses[size],
+          isDisconnected && 'grayscale bg-gray-500/10'
         )}
       >
-        <PlatformIcon platform={platform} className={cn(iconSizes[size], config.textClass)} />
+        <PlatformIcon platform={platform} className={cn(iconSizes[size], isDisconnected ? 'text-gray-500' : config.textClass)} />
       </div>
       {showLabel && (
-        <span className={cn('text-sm font-medium', config.textClass)}>
+        <span className={cn('text-sm font-medium transition-all', isDisconnected ? 'text-gray-500' : config.textClass)}>
           {config.label}
         </span>
       )}

@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { ChevronLeft, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useOnboardingStore, GoalType } from '@/stores/onboardingStore';
+import { useAuthStore } from '@/stores/authStore';
 import { FixedBottomContainer } from '@/components/FixedBottomContainer';
 import { cn } from '@/lib/utils';
 
@@ -34,6 +35,7 @@ const goals = [
 export default function OnboardingGoal() {
   const navigate = useNavigate();
   const { setGoal, setStep } = useOnboardingStore();
+  const { logout } = useAuthStore();
   const [selected, setSelected] = useState<GoalType>(null);
 
   const handleNext = () => {
@@ -52,7 +54,7 @@ export default function OnboardingGoal() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => navigate('/onboarding/login')}
+            onClick={() => logout()}
             className="text-muted-foreground"
           >
             <ChevronLeft className="h-5 w-5 mr-1" />

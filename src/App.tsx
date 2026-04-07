@@ -9,6 +9,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useEffect, useState } from "react";
 import { authApi } from "@/api/auth";
+import { useNotificationStore } from "@/stores/notificationStore";
 import Index from "./pages/Index";
 import Deck from "./pages/Deck";
 import Connections from "./pages/Connections";
@@ -100,6 +101,7 @@ function AppRoutes() {
   const { completed, currentStep } = useOnboardingStore();
   const { accessToken, setUser } = useAuthStore();
   const isOnboardingRoute = location.pathname.startsWith('/onboarding');
+  const { startPolling, stopPolling } = useNotificationStore();
 
   useEffect(() => {
     if (accessToken) {
@@ -111,8 +113,16 @@ function AppRoutes() {
         // If getMe fails (e.g. token expired), we might want to logout or ignore
         // For now, ignore to avoid disruption if it's transient
       });
+
+      // Start notification polling for reminders
+      startPolling();
+    } else {
+      stopPolling();
     }
-  }, [accessToken, setUser]);
+    
+    // Clean up on unmount
+    return () => stopPolling();
+  }, [accessToken, setUser, startPolling, stopPolling]);
 
   // Case 1: Not authenticated - only allow login
   if (!accessToken) {
@@ -182,7 +192,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
-      <Sonner />
+      <Sonner position="bottom-left" />
       <BrowserRouter>
         <AppRoutes />
       </BrowserRouter>
