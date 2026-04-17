@@ -9,6 +9,7 @@ import { useSwipeable } from 'react-swipeable';
 import { useAuthStore } from '@/stores/authStore';
 import { useInboxStore } from '@/stores/inboxStore';
 import { API_BASE_URL, API_HOST_URL } from '@/lib/api-client';
+import { bridgesApi } from '@/api/bridges';
 import { Avatar } from '@/components/Avatar';
 import { whatsappWS } from '@/lib/whatsappWebSocket';
 import { telegramWS } from '@/lib/telegramWebSocket';
@@ -39,7 +40,7 @@ interface ContactInfo {
   id: string;
   name: string;
   initials: string;
-  platform: 'whatsapp' | 'linkedin' | 'signal' | 'telegram';
+  platform: 'whatsapp' | 'linkedin' | 'signal' | 'telegram' | 'instagram';
   lastSeen: string;
   phone?: string;
   avatar?: string;
@@ -65,6 +66,11 @@ const platformConfig = {
     icon: MessageCircle,
     bgColor: 'bg-[#229ED9]',
     label: 'Telegram',
+  },
+  instagram: {
+    icon: Camera,
+    bgColor: 'bg-[#E1306C]',
+    label: 'Instagram',
   },
 };
 
@@ -111,6 +117,7 @@ export default function ChatDetail() {
   // ✅ Robust Room ID extraction from URL
   const [searchParams] = useSearchParams();
   const roomId = searchParams.get('room');
+  const linkedInChatId = searchParams.get('chat_id');
   const contactNameFromParams = searchParams.get('name');
   const phoneFromParams = searchParams.get('phone');
   const avatarFromParams = searchParams.get('avatar');
@@ -141,7 +148,11 @@ export default function ChatDetail() {
     }
     return fallbackUrl || '';
   };
+  const archiveMessage = useInboxStore((state) => state.archiveMessage);
+  const toggleReadUnread = useInboxStore((state) => state.toggleReadUnread);
   const markAsRead = useInboxStore((state) => state.markAsRead);
+
+  const inboxMessages = useInboxStore((state) => state.messages);
   const formatMessageTime = useCallback((rawTimestamp: any): string => {
     if (!rawTimestamp) return '';
     let date: Date;
@@ -167,19 +178,73 @@ export default function ChatDetail() {
     return `${API_HOST_URL}/${url}`;
   }, []);
 
-  // Mark as read when opened
+  // Reset messages on ID change to avoid "ghosting" previous conversation
   useEffect(() => {
-    const chatJid = roomId || contactId;
-    if (chatJid) {
+    setMessages([]);
+    // We don't reset dynamicContact to null here IF we have enough info to keep it
+    // But setting isLoadingMessages is correct as we are starting a new load
+    setIsLoadingMessages(true);
+  }, [contactId, roomId, linkedInChatId]);
+
+  useEffect(() => {
+    const isTelegram = Boolean(contactId?.startsWith('telegram-'));
+    const isLinkedIn = contactId === 'li' && linkedInChatId;
+
+    if (contactId === 'wa' && roomId) {
+      const chatJid = decodeURIComponent(roomId);
       markAsRead(`wa-chat-${chatJid}`, chatJid);
+      markAsRead(chatJid, chatJid);
+    } else if (isTelegram && contactId) {
+      markAsRead(contactId);
+      const plainId = contactId.replace('telegram-', '');
+      markAsRead(plainId);
+    } else if (contactId === 'ig' && roomId) {
+      markAsRead(`ig-chat-${roomId}`, roomId);
+    } else if (isLinkedIn) {
+      markAsRead(`li-chat-${linkedInChatId}`, linkedInChatId);
     }
-  }, [contactId, roomId, markAsRead]);
+
+    const decodedRoom = roomId ? decodeURIComponent(roomId) : '';
+    const currentMsg = inboxMessages.find(
+      (m) =>
+        (roomId && (m.roomId === roomId || m.roomId === decodedRoom)) ||
+        (linkedInChatId && m.platform === 'linkedin' && m.roomId === linkedInChatId) ||
+        m.id === contactId ||
+        (roomId && m.id === `wa-chat-${decodedRoom}`)
+    );
+    if (currentMsg) {
+      markAsRead(currentMsg.id, currentMsg.roomId, currentMsg.normalizedPhone, currentMsg.identityKey);
+    }
+  }, [contactId, roomId, linkedInChatId, markAsRead, inboxMessages]);
 
   // Dynamic contact based on params or sample
   const [dynamicContact, setDynamicContact] = useState<ContactInfo | null>(null);
 
   // Use dynamic contact if available, otherwise fall back to sample
-  const contact = dynamicContact || sampleContacts[contactId || '1'] || sampleContacts['1'];
+  const contact = dynamicContact || (contactId && contactId.length < 5 ? (sampleContacts[contactId] || sampleContacts['1']) : null);
+  
+  if (!contact && isLoadingMessages) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-10 w-10 text-primary animate-spin" />
+          <p className="text-muted-foreground animate-pulse">Loading chat...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!contact) {
+      return (
+          <div className="min-h-screen bg-background flex items-center justify-center p-4 text-center">
+              <div>
+                <p className="text-muted-foreground text-lg">Chat not found</p>
+                <Button variant="link" onClick={() => navigate('/inbox')} className="mt-2">Back to Inbox</Button>
+              </div>
+          </div>
+      );
+  }
+
   const platform = platformConfig[contact.platform];
   const PlatformIcon = platform.icon;
 
@@ -252,12 +317,15 @@ export default function ChatDetail() {
       // const currentOffset = isLoadMore ? msgOffset : 0; // msgOffset is not defined, removing for now
 
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL || 'https://knudge-api-dev.finbyz.com'}/api/v1/telegram/messages/${tgChatId}?limit=${limit}`, // Removed offset
+        `${API_BASE_URL}/telegram/messages/${tgChatId}?limit=${limit}`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
       if (response.ok) {
         const data = await response.json();
-        const chatMessages: ChatMessage[] = data.map((msg: any) => {
+        // Handle both simple array and object results
+        const rows = Array.isArray(data) ? data : (data.messages || []);
+        
+        const chatMessages: ChatMessage[] = rows.map((msg: any) => {
           const direction = (msg.direction || '').toUpperCase();
           return {
             id: msg.id,
@@ -288,11 +356,67 @@ export default function ChatDetail() {
     } finally {
       setIsLoadingMessages(false);
     }
-  }, [contactId, accessToken]); // Removed msgOffset from dependencies
+  }, [contactId, accessToken, formatMessageTime]);
+
+  const fetchLiMessages = useCallback(async () => {
+    if (!linkedInChatId || !accessToken) return;
+    setIsLoadingMessages(true);
+    try {
+      const rows = await bridgesApi.getLinkedInChatMessages(linkedInChatId);
+      const chatMessages: ChatMessage[] = rows.map((msg) => {
+        const direction = (msg.direction || '').toUpperCase();
+        const isOutgoing = direction === 'OUTGOING';
+        return {
+          id: msg.id,
+          type: isOutgoing ? 'outgoing' : 'incoming',
+          text: msg.text || '',
+          timestamp: formatMessageTime(msg.timestamp),
+          status: isOutgoing ? 'sent' : undefined,
+        };
+      });
+      setMessages(chatMessages);
+    } catch (e) {
+      console.error(e);
+      toast({
+        variant: 'destructive',
+        description: 'Could not load LinkedIn messages',
+      });
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  }, [linkedInChatId, accessToken, formatMessageTime, toast]);
+
+  const fetchIgMessages = useCallback(async () => {
+    if (!roomId || !accessToken) return;
+    setIsLoadingMessages(true);
+    try {
+      const rows = await bridgesApi.getInstagramChatMessages(roomId);
+      const chatMessages: ChatMessage[] = rows.map((msg) => {
+        const direction = (msg.direction || '').toUpperCase();
+        const isOutgoing = direction === 'OUTGOING';
+        return {
+          id: msg.id,
+          type: isOutgoing ? 'outgoing' : 'incoming',
+          text: msg.content || msg.text || '',
+          timestamp: formatMessageTime(msg.timestamp),
+          status: isOutgoing ? 'sent' : undefined,
+        };
+      });
+      setMessages(chatMessages);
+    } catch (e) {
+      console.error(e);
+      toast({
+        variant: 'destructive',
+        description: 'Could not load Instagram messages',
+      });
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  }, [roomId, accessToken, formatMessageTime, toast]);
 
   // Real-time message updates via WebSocket
   useEffect(() => {
-    if (!roomId || !accessToken) return;
+    if (contactId !== 'wa' || !roomId || !accessToken) return;
 
     // Connect to WebSocket
     whatsappWS.connect(accessToken);
@@ -343,7 +467,7 @@ export default function ChatDetail() {
     return () => {
       unsubscribe();
     };
-  }, [roomId, accessToken]);
+  }, [contactId, roomId, accessToken]);
 
   // Real-time Telegram message updates via WebSocket
   useEffect(() => {
@@ -397,7 +521,18 @@ export default function ChatDetail() {
     // Removed hasMoreMessages check as it's no longer used for Telegram
     if (scrollTop === 0 && !isLoadingMessages) {
       const scrollHeightBefore = e.currentTarget.scrollHeight;
-      const fetchFunc = contact.platform === 'telegram' ? fetchTgMessages : fetchWaMessages;
+      const fetchFunc =
+        contact.platform === 'telegram'
+          ? fetchTgMessages
+          : contact.platform === 'linkedin'
+            ? async () => {
+                await fetchLiMessages();
+              }
+            : contact.platform === 'instagram'
+              ? async () => {
+                  await fetchIgMessages();
+                }
+              : fetchWaMessages;
       fetchFunc(true).then(() => {
         if (e.currentTarget) {
           e.currentTarget.scrollTop = e.currentTarget.scrollHeight - scrollHeightBefore;
@@ -406,15 +541,12 @@ export default function ChatDetail() {
     }
   };
 
-  // Fetch WhatsApp or Telegram messages
+  // Part 1: Setup Contact Identity (runs immediately without waiting for accessToken)
   useEffect(() => {
-    // ─── WhatsApp Logic (FIXED) ───────────────────────────────────────────────
-    if (roomId && accessToken) {
-      // FIX 1: Don't gate on contactNameFromParams — always set a contact so
-      //         the chat opens even when ?name= is missing from the URL.
-      const safeName = contactNameFromParams?.trim() || 'Unknown';
+    if (!contactId) return;
 
-      // FIX 2: Compute initials safely — never do string[0] on a possibly-empty value.
+    if (contactId === 'wa' && roomId) {
+      const safeName = contactNameFromParams?.trim() || 'Unknown';
       const nameParts = safeName.split(/\s+/).filter(Boolean);
       const initials =
         nameParts.length >= 2
@@ -422,19 +554,31 @@ export default function ChatDetail() {
           : safeName.slice(0, 2).toUpperCase() || '?';
 
       setDynamicContact({
-        id: contactId || 'wa',
-        name: safeName,   // FIX 3: always a real string, never null/undefined
+        id: contactId,
+        name: safeName,
         initials,
         platform: 'whatsapp',
         lastSeen: 'WhatsApp',
         phone: phoneFromParams || undefined,
         avatar: avatarFromParams || undefined,
       });
+    } else if (contactId === 'li' && linkedInChatId) {
+      const safeName = contactNameFromParams?.trim() || 'LinkedIn';
+      const nameParts = safeName.split(/\s+/).filter(Boolean);
+      const initials =
+        nameParts.length >= 2
+          ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
+          : safeName.slice(0, 2).toUpperCase() || '?';
 
-      fetchWaMessages();
-    }
-    // Telegram Logic — completely unchanged
-    else if (contactId && contactId.startsWith('telegram-') && accessToken) {
+      setDynamicContact({
+        id: contactId,
+        name: safeName,
+        initials,
+        platform: 'linkedin',
+        lastSeen: 'LinkedIn',
+        avatar: avatarFromParams || undefined,
+      });
+    } else if (contactId.startsWith('telegram-')) {
       const tgContactName = contactNameFromParams || 'Telegram User';
 
       setDynamicContact({
@@ -445,20 +589,65 @@ export default function ChatDetail() {
         lastSeen: "Telegram",
         avatar: avatarFromParams || undefined,
       });
-
-      fetchTgMessages(false);
+    } else if (contactId === 'ig' && roomId) {
+      const safeName = contactNameFromParams?.trim() || 'Instagram User';
+      setDynamicContact({
+        id: contactId,
+        name: safeName,
+        initials: (safeName[0] || 'I').toUpperCase(),
+        platform: 'instagram',
+        lastSeen: 'Instagram',
+        avatar: avatarFromParams || undefined,
+      });
     }
-  }, [roomId, contactNameFromParams, phoneFromParams, avatarFromParams, contactId, accessToken, toast, fetchTgMessages, fetchWaMessages]);
+  }, [
+    contactId,
+    roomId,
+    linkedInChatId,
+    contactNameFromParams,
+    phoneFromParams,
+    avatarFromParams,
+  ]);
+
+  // Part 2: Fetch Messages (runs when accessToken is available)
+  useEffect(() => {
+    if (!accessToken) return;
+
+    if (contactId === 'wa' && roomId) {
+      fetchWaMessages();
+    } else if (contactId === 'li' && linkedInChatId) {
+      void fetchLiMessages();
+    } else if (contactId && contactId.startsWith('telegram-')) {
+      fetchTgMessages(false);
+    } else if (contactId === 'ig' && roomId) {
+      fetchIgMessages();
+    }
+  }, [
+    accessToken,
+    contactId,
+    roomId,
+    linkedInChatId,
+    fetchTgMessages,
+    fetchWaMessages,
+    fetchLiMessages,
+    fetchIgMessages,
+  ]);
 
 
   // Navigation logic removed as it was based on static mocks
   // Navigation logic using inbox store
-  const inboxMessages = useInboxStore((state) => state.messages);
-  const currentInboxIndex = inboxMessages.findIndex(m =>
-    m.roomId === roomId ||
-    m.roomId === decodeURIComponent(roomId || '') ||
-    m.id === `telegram-${contactId?.replace('telegram-', '')}` ||
-    m.id === contactId
+  const decodedRoomForNav = roomId ? decodeURIComponent(roomId) : '';
+  const currentInboxIndex = inboxMessages.findIndex(
+    (m) =>
+      (contactId === 'wa' &&
+        roomId &&
+        (m.roomId === roomId || m.roomId === decodedRoomForNav)) ||
+      (contactId === 'li' &&
+        linkedInChatId &&
+        m.platform === 'linkedin' &&
+        m.roomId === linkedInChatId) ||
+      m.id === `telegram-${contactId?.replace('telegram-', '')}` ||
+      m.id === contactId
   );
   const hasPrevious = currentInboxIndex > 0;
   const hasNext = currentInboxIndex < inboxMessages.length - 1 && currentInboxIndex !== -1;
@@ -485,6 +674,23 @@ export default function ChatDetail() {
         ? `&phone=${encodeURIComponent(inboxMsg.sender.phone)}`
         : '';
       setTimeout(() => navigate(`/inbox/chat/wa?room=${roomParam}&name=${encodeURIComponent(inboxMsg.sender?.name || '')}${phoneParam}`), 0);
+    } else if (inboxMsg.platform === 'linkedin' && inboxMsg.roomId) {
+      const avatarParam = inboxMsg.sender?.avatar ? `&avatar=${encodeURIComponent(inboxMsg.sender.avatar)}` : '';
+      setTimeout(
+        () =>
+          navigate(
+            `/inbox/chat/li?chat_id=${encodeURIComponent(inboxMsg.roomId)}&name=${encodeURIComponent(inboxMsg.sender?.name || '')}${avatarParam}`
+          ),
+        0
+      );
+    } else if (inboxMsg.platform === 'instagram' && inboxMsg.roomId) {
+      setTimeout(
+        () =>
+          navigate(
+            `/inbox/chat/ig?room=${encodeURIComponent(inboxMsg.roomId)}&name=${encodeURIComponent(inboxMsg.sender?.name || '')}`
+          ),
+        0
+      );
     } else if (inboxMsg.platform === 'telegram' && inboxMsg.roomId) {
       const avatarParam = inboxMsg.sender?.avatar ? `&avatar=${encodeURIComponent(inboxMsg.sender.avatar)}` : '';
       setTimeout(() => navigate(`/inbox/chat/${inboxMsg.id}?name=${encodeURIComponent(inboxMsg.sender?.name || '')}${avatarParam}`), 0);
@@ -686,9 +892,24 @@ export default function ChatDetail() {
     setShowUndo(false);
 
     const isTelegram = contact.platform === 'telegram';
-    const decodedRoomId = roomId ? decodeURIComponent(roomId) : (isTelegram ? contactId.replace('telegram-', '') : null);
+    const isLinkedIn = contact.platform === 'linkedin';
+    const decodedRoomId = roomId
+      ? decodeURIComponent(roomId)
+      : isTelegram
+        ? contactId?.replace('telegram-', '') ?? null
+        : null;
 
-    if (!decodedRoomId) {
+    if (isLinkedIn && !linkedInChatId) {
+      toast({
+        description: "Missing chat",
+        variant: "destructive"
+      });
+      setMessages(prev => prev.filter(m => m.id !== tempId));
+      setInputText(messageText);
+      return;
+    }
+
+    if (!isLinkedIn && !decodedRoomId) {
       toast({
         description: "Missing ID",
         variant: "destructive"
@@ -699,10 +920,20 @@ export default function ChatDetail() {
     }
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://knudge-api-dev.finbyz.com';
-      let response: Response;
-      if (isTelegram) {
-        response = await fetch(`${import.meta.env.VITE_API_URL || 'https://knudge-api-dev.finbyz.com'}/api/v1/telegram/send`, {
+      let ok = false;
+      let realId: string | number = tempId;
+      let errDetail: string | undefined;
+
+      if (isLinkedIn && linkedInChatId) {
+        // Try native first if connected, otherwise fallback to unipile (deprecating)
+        const liStatus = await bridgesApi.getLinkedInStatus();
+        if (liStatus.messaging_connected) {
+          const sendResult = await bridgesApi.sendLinkedIn(linkedInChatId, messageText);
+          ok = sendResult.status === 'success' || sendResult.status === 'ok';
+          realId = sendResult.message_id ?? tempId;
+        }
+      } else if (isTelegram) {
+        const response = await fetch(`${import.meta.env.VITE_API_URL || 'https://knudge-api-dev.finbyz.com'}/api/v1/telegram/send`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -713,9 +944,16 @@ export default function ChatDetail() {
             chat_id: decodedRoomId,
           }),
         });
+        const result = await response.json();
+        ok = response.ok;
+        realId = result.event_id || tempId;
+        errDetail = typeof result.detail === 'string' ? result.detail : undefined;
+      } else if (contact.platform === 'instagram') {
+        const sendResult = await bridgesApi.sendInstagram(decodedRoomId || '', messageText);
+        ok = sendResult.status === 'sent';
+        realId = sendResult.message_id ?? tempId;
       } else {
-        // WhatsApp
-        response = await fetch(`${API_BASE_URL}/bridges/whatsapp/send`, {
+        const response = await fetch(`${API_BASE_URL}/bridges/whatsapp/send`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -724,17 +962,16 @@ export default function ChatDetail() {
           body: JSON.stringify({
             message: messageText,
             room_id: decodedRoomId,
-            bridge_id: bridgeId, // Pass bridge_id if available
+            bridge_id: bridgeId,
           }),
         });
+        const result = await response.json();
+        ok = response.ok;
+        realId = result.event_id || tempId;
+        errDetail = typeof result.detail === 'string' ? result.detail : undefined;
       }
 
-      const result = await response.json();
-
-      if (response.ok) {
-        // Update local message with real ID from backend if available
-        const realId = result.event_id || tempId;
-
+      if (ok) {
         setMessages(prev => prev.map(m =>
           m.id === tempId ? { ...m, id: realId, status: 'sent' } : m
         ));
@@ -746,16 +983,17 @@ export default function ChatDetail() {
         }, 1500);
 
         toast({ description: "Message sent!" });
-        setInputText(''); // Clear input again to be sure
+        setInputText('');
 
-        // Refresh messages from backend after send
         setTimeout(async () => {
           try {
             if (isTelegram) {
-              // Refresh Telegram messages
               await fetchTgMessages(false);
-            } else {
-              // Refresh WhatsApp messages
+            } else if (isLinkedIn) {
+              await fetchLiMessages();
+            } else if (contact.platform === 'instagram') {
+              await fetchIgMessages();
+            } else if (decodedRoomId) {
               const response = await fetch(
                 `${API_BASE_URL}/whatsapp/messages/${encodeURIComponent(decodedRoomId)}?limit=50`,
                 { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -787,7 +1025,7 @@ export default function ChatDetail() {
                 setMessages(chatMessages);
               }
             }
-          } catch (error) {
+          } catch {
             // Silent fail
           }
         }, 500);
@@ -795,7 +1033,7 @@ export default function ChatDetail() {
         setMessages(prev => prev.filter(m => m.id !== tempId));
         setInputText(messageText);
         toast({
-          description: result.detail || "Failed to send",
+          description: errDetail || "Failed to send",
           variant: "destructive"
         });
       }
@@ -803,11 +1041,11 @@ export default function ChatDetail() {
       setMessages(prev => prev.filter(m => m.id !== tempId));
       setInputText(messageText);
       toast({
-        description: "Network error",
+        description: error instanceof Error ? error.message : "Network error",
         variant: "destructive"
       });
     }
-  }, [inputText, accessToken, roomId, toast, contact.platform, fetchTgMessages, formatMessageTime, normalizeMediaUrl]);
+  }, [inputText, accessToken, roomId, linkedInChatId, toast, contact.platform, contactId, fetchTgMessages, fetchLiMessages, formatMessageTime, normalizeMediaUrl, bridgeId]);
 
 
   const renderStatus = (status?: string) => {
@@ -829,7 +1067,7 @@ export default function ChatDetail() {
     <div className="h-full flex flex-col relative" {...navSwipeHandlers}>
       {/* Header - Stays sticky within the flex container's scroll context if main overflows, or just static at the top */}
       <header className="sticky top-0 z-50 bg-card border-b border-border flex-shrink-0">
-        <div className="max-w-4xl mx-auto h-16 flex items-center justify-between px-4">
+        <div className="flex h-16 w-full min-w-0 items-center justify-between px-2 sm:px-4">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate('/inbox')}
@@ -919,7 +1157,7 @@ export default function ChatDetail() {
           messagesContainerRef.current = el;
         }}
       >
-        <div className="max-w-4xl mx-auto p-4 pb-[180px] md:pb-4 space-y-1">
+        <div className="w-full min-w-0 space-y-1 p-4 pb-[180px] md:pb-4">
           {/* Initial Loading State */}
           {isLoadingMessages && messages.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 animate-in fade-in duration-500">
@@ -1146,7 +1384,7 @@ export default function ChatDetail() {
       <div
         className="fixed bottom-[calc(64px+env(safe-area-inset-bottom,0px))] left-0 right-0 md:relative md:bottom-auto z-20 bg-card border-t border-border shadow-lg mt-auto"
       >
-        <div className="w-full max-w-3xl mx-auto px-4 py-3">
+        <div className="w-full min-w-0 px-4 py-3">
           {/* File Preview */}
           {/* Removed file preview */}
 

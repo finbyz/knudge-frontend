@@ -75,6 +75,6 @@ export const authApi = {
   },
 
   generateOnboardingDecks: async (): Promise<{ status: string; message: string }> => {
-    return ApiClient.post('/auth/generate-onboarding-decks');
+    return ApiClient.post('/auth/generate-onboarding-decks', {});
   },
 };

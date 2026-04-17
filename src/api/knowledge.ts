@@ -46,14 +46,14 @@ export const knowledgeApi = {
     if (productName) formData.append("product_name", productName);
     if (websiteUrl) formData.append("website_url", websiteUrl);
 
-    return ApiClient.postForm("/knowledge/upload", formData);
+    return ApiClient.postForm("/knowledge/upload/", formData);
   },
 
   /**
    * Get list of all user's knowledge documents
    */
   getDocuments: async (): Promise<DocumentListResponse> => {
-    return ApiClient.get("/knowledge/documents");
+    return ApiClient.get("/knowledge/documents/");
   },
 
   /**
@@ -67,7 +67,7 @@ export const knowledgeApi = {
     error_message?: string;
     chunk_count: number;
   }> => {
-    return ApiClient.get(`/knowledge/documents/${documentId}/status`);
+    return ApiClient.get(`/knowledge/documents/${documentId}/status/`);
   },
 
   /**
@@ -76,7 +76,7 @@ export const knowledgeApi = {
   deleteDocument: async (
     documentId: string
   ): Promise<{ status: string; message: string }> => {
-    return ApiClient.delete(`/knowledge/documents/${documentId}`);
+    return ApiClient.delete(`/knowledge/documents/${documentId}/`);
   },
 
   /**
@@ -86,6 +86,6 @@ export const knowledgeApi = {
     query: string,
     topK: number = 5
   ): Promise<SearchResponse> => {
-    return ApiClient.post("/knowledge/search", { query, top_k: topK });
+    return ApiClient.post("/knowledge/search/", { query, top_k: topK });
   },
 };

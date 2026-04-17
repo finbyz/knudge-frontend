@@ -8,6 +8,7 @@ interface AvatarProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
   isVIP?: boolean;
   isGroup?: boolean;
+  className?: string;
 }
 
 const sizeClasses = {
@@ -17,7 +18,7 @@ const sizeClasses = {
   xl: 'h-16 w-16 text-lg',
 };
 
-export function Avatar({ initials, src, size = 'md', isVIP = false, isGroup = false }: AvatarProps) {
+export function Avatar({ initials, src, size = 'md', isVIP = false, isGroup = false, className }: AvatarProps) {
   const [imgFailed, setImgFailed] = useState(false);
 
   // Only show image if src is a real URL (starts with http/https or /)
@@ -25,7 +26,7 @@ export function Avatar({ initials, src, size = 'md', isVIP = false, isGroup = fa
   const showImg = isValidUrl && !imgFailed;
 
   return (
-    <div className="relative">
+    <div className={cn("relative", className)}>
       <div
         className={cn(
           'rounded-full flex items-center justify-center font-semibold text-primary-foreground overflow-hidden',

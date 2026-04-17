@@ -2,17 +2,20 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, MessageCircle, MessageSquare, Linkedin, Mail, X, Check, Archive, MailOpen, Loader2, Instagram, Building2, Send } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TopBar } from '@/components/TopBar';
+import { PageShell } from '@/components/layout/PageShell';
 import { Avatar } from '@/components/Avatar';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useUnreadStore } from '@/stores/unreadStore';
 import { useAuthStore } from '@/stores/authStore';
-import { useInboxStore, type InboxMessage } from '@/stores/inboxStore';
-import { API_BASE_URL, API_HOST_URL } from '@/lib/api-client';
-import { formatPhone } from '@/lib/utils';
+import { useInboxStore, type InboxMessage, useShallow } from '@/stores/inboxStore';
+import { useInbox } from '@/hooks/useInbox';
 import { telegramWS } from '@/lib/telegramWebSocket';
 import { whatsappWS } from '@/lib/whatsappWebSocket';
+import { LoadingSpinner } from '@/components/ui/loading-spinner';
+import { ErrorBanner } from '@/components/ui/error-banner';
+import { EmptyInbox } from '@/components/inbox/EmptyInbox';
+import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 
 const decodeHTMLEntities = (text: string): string => {
   if (!text) return '';
@@ -58,38 +61,6 @@ const cleanPreview = (text: string) => {
   return clean;
 };
 
-const formatGmailDate = (date: Date | string | undefined, usePattern = false): string => {
-  if (!date) return '';
-  const d = typeof date === 'string' ? new Date(date) : date;
-
-  if (!d || isNaN(d.getTime())) return '';
-
-  const now = new Date();
-  const diffTime = now.getTime() - d.getTime();
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-
-  const isToday = d.toDateString() === now.toDateString();
-  if (isToday) {
-    if (usePattern) {
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  }
-
-  const yesterday = new Date(now);
-  yesterday.setDate(now.getDate() - 1);
-  const isYesterday = d.toDateString() === yesterday.toDateString();
-  if (isYesterday) {
-    return 'Yesterday';
-  }
-
-  if (diffDays < 7) {
-    return d.toLocaleDateString('en-US', { weekday: 'short' });
-  }
-
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-};
-
 const highlightText = (text: string, query: string): React.ReactNode => {
   if (!query.trim()) return text;
   const decodedText = decodeHTMLEntities(text);
@@ -128,10 +99,34 @@ interface SwipeState {
 export default function Inbox() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
-  const { messages, setMessages, addMessages, setLoading, markFetched, shouldRefetch, isLoading, updateOrAddMessage, markAsRead } = useInboxStore();
+  const { accessToken } = useAuthStore();
+  const { toast } = useToast();
+  const { clearUnreadInbox } = useUnreadStore();
+  
+  // Use specialized shallow selector to avoid re-renders when other state changes
+  const { 
+    messages, 
+    markAsRead, 
+    updateOrAddMessage, 
+    archiveMessage,
+    selectedPlatform,
+    setSelectedPlatform
+  } = useInboxStore(
+    useShallow((state) => ({
+      messages: state.messages,
+      markAsRead: state.markAsRead,
+      updateOrAddMessage: state.updateOrAddMessage,
+      archiveMessage: state.archiveMessage,
+      selectedPlatform: state.selectedPlatform,
+      setSelectedPlatform: state.setSelectedPlatform
+    }))
+  );
+
+  // Central React-Query data fetching
+  const { isLoading, isError, refetch } = useInbox();
+
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [localMessages, setLocalMessages] = useState<InboxMessage[]>([]);
   const [swipeState, setSwipeState] = useState<SwipeState>({
     messageId: null,
     offsetX: 0,
@@ -139,89 +134,8 @@ export default function Inbox() {
     isSwiping: false,
   });
   const [removingId, setRemovingId] = useState<string | null>(null);
-  const { accessToken } = useAuthStore();
-  const { toast } = useToast();
-  const { clearUnreadInbox } = useUnreadStore();
-  const [selectedPlatform, setSelectedPlatform] = useState<string>('all');
-
-  const [tgOffset, setTgOffset] = useState(0);
-  const [hasMoreTg, setHasMoreTg] = useState(true);
-  const [isFetchingTg, setIsFetchingTg] = useState(false);
-  const observerTarget = useRef<HTMLDivElement>(null);
+  const [showWizard, setShowWizard] = useState(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // ============================================================================
-  // Unified Inbox Data Fetching
-  // ============================================================================
-  const fetchAllData = useCallback(async () => {
-    if (!accessToken) return;
-
-    console.log('[Inbox] Fetching unified inbox data...');
-    setLoading(true);
-
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/inbox/`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Inbox fetch failed: ${response.status}`);
-      }
-
-      const json = await response.json();
-      const chats = json.chats || [];
-      console.log('[Inbox] Unified chats received:', chats.length);
-
-      // Convert to InboxMessage format
-      const inboxMessages: InboxMessage[] = chats.map((chat: any) => {
-        const msgDate = chat.timestamp ? new Date(chat.timestamp) : null;
-        const validDate = msgDate && !isNaN(msgDate.getTime());
-
-        return {
-          id: chat.id,
-          sender: {
-            name: chat.display_name,
-            avatar: chat.avatar || undefined,
-            initials: (chat.display_name?.[0] || chat.platform?.[0] || '?').toUpperCase(),
-            phone: chat.phone || undefined,
-          },
-          platform: chat.platform,
-          email_direction: chat.email_direction,
-          email_status: chat.email_status,
-          subject: chat.subject || undefined,
-          preview: chat.preview,
-          timestamp: validDate ? formatGmailDate(msgDate!, chat.platform !== 'whatsapp') : '',
-          sortDate: validDate ? msgDate! : new Date(0),
-          roomId: chat.room_id,
-          normalizedPhone: chat.normalized_phone || undefined,
-          identityKey: chat.identity_key || undefined,
-          isGroup: chat.is_group || false,
-          unread: (chat.unread_count || 0) > 0,
-          unreadCount: chat.unread_count || 0
-        };
-      });
-
-      setMessages(inboxMessages);
-      markFetched();
-      setTgOffset(20); // Reset for potential infinite scroll on TG if still used
-    } catch (error) {
-      console.error('[Inbox] Unified fetch error:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load messages. Please refresh.',
-        variant: 'destructive'
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [accessToken, setLoading, setMessages, markFetched, toast]);
-
-  useEffect(() => {
-    if (shouldRefetch() || messages.length === 0) {
-      fetchAllData();
-    }
-  }, [shouldRefetch, messages.length, fetchAllData]);
 
   // ============================================================================
   // Instagram Auto-refresh (fallback until IG WebSocket is ready)
@@ -229,13 +143,13 @@ export default function Inbox() {
   useEffect(() => {
     if (!accessToken) return;
 
-    const intervalId = setInterval(async () => {
-      console.log('[Inbox] Auto-refreshing inbox...');
-      fetchAllData();
-    }, 60000); // Increased to 1 min to be gentler
+    const intervalId = setInterval(() => {
+      console.log('[Inbox] Auto-refreshing inbox for IG...');
+      refetch();
+    }, 60000); // 1 min
 
     return () => clearInterval(intervalId);
-  }, [accessToken, fetchAllData]);
+  }, [accessToken, refetch]);
 
   // ============================================================================
   // WhatsApp Real-time Updates via WebSocket
@@ -271,14 +185,11 @@ export default function Inbox() {
   useEffect(() => {
     if (!accessToken) return;
 
-    // 1. Connect
     telegramWS.connect(accessToken);
-
     // 2. Subscribe
     const unsubscribe = telegramWS.onMessage((msg) => {
       console.log('[Inbox] Received real-time Telegram message:', msg);
 
-      // Update global store
       updateOrAddMessage(
         'telegram',
         msg.chat_id,
@@ -290,43 +201,14 @@ export default function Inbox() {
 
     return () => {
       unsubscribe();
-      // We don't necessarily want to disconnect here if the user just navigates away
-      // but stayed in the app. However, since this is a page-level effect:
-      // if we want it global, it should be in App.tsx. 
-      // For now, let's keep it here but maybe don't disconnect if we want background updates.
-      // But for correctness of "this page", unsubscribe is enough for UI.
     };
   }, [accessToken, updateOrAddMessage]);
-
-  // Telegram infinite scroll observer
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      async (entries) => {
-        if (entries[0].isIntersecting && hasMoreTg && !isFetchingTg) {
-          setIsFetchingTg(true);
-          // Fallback infinite scroll for TG if needed, but for now we rely on unified fetch
-          setIsFetchingTg(false);
-        }
-      },
-      { threshold: 1.0 }
-    );
-
-    if (observerTarget.current) {
-      observer.observe(observerTarget.current);
-    }
-
-    return () => observer.disconnect();
-  }, [hasMoreTg, isFetchingTg, tgOffset]);
-
-  useEffect(() => {
-    setLocalMessages(messages);
-  }, [messages]);
 
   useEffect(() => {
     clearUnreadInbox();
   }, [clearUnreadInbox]);
 
-  const filteredMessages = localMessages.filter((msg) => {
+  const filteredMessages = messages.filter((msg) => {
     const query = searchQuery.toLowerCase();
     const matchesSearch = !query ||
       msg.sender.name.toLowerCase().includes(query) ||
@@ -355,9 +237,9 @@ export default function Inbox() {
   });
 
   const getCount = (tab: 'all' | 'whatsapp' | 'email') => {
-    if (tab === 'all') return localMessages.length;
-    if (tab === 'whatsapp') return localMessages.filter(m => m.platform === 'whatsapp').length;
-    return localMessages.filter(m => ['email', 'gmail', 'outlook'].includes((m.platform || '').toLowerCase())).length;
+    if (tab === 'all') return messages.length;
+    if (tab === 'whatsapp') return messages.filter(m => m.platform === 'whatsapp').length;
+    return messages.filter(m => ['email', 'gmail', 'outlook'].includes((m.platform || '').toLowerCase())).length;
   };
 
   // Long press and swipe handlers (unchanged)
@@ -406,19 +288,20 @@ export default function Inbox() {
 
     const SWIPE_THRESHOLD = 100;
     if (swipeState.offsetX < -SWIPE_THRESHOLD) {
+      archiveMessage(swipeState.messageId);
       toast({ description: "Message archived" });
     } else if (swipeState.offsetX > SWIPE_THRESHOLD) {
       const msgId = swipeState.messageId;
-      const msg = localMessages.find(m => m.id === msgId);
+      const msg = messages.find(m => m.id === msgId);
       if (msg) {
-        setLocalMessages(prev =>
-          prev.map(m => m.id === msgId ? { ...m, unread: !m.unread } : m)
-        );
-        toast({ description: msg.unread ? "Marked as read" : "Marked as unread" });
+        if(msg.unread) {
+           markAsRead(msg.id, msg.roomId, msg.normalizedPhone, msg.identityKey);
+        }
+        toast({ description: msg.unread ? "Marked as read" : "Already read" });
       }
     }
     setSwipeState({ messageId: null, offsetX: 0, startX: 0, isSwiping: false });
-  }, [selectionMode, swipeState, localMessages, toast, handleLongPressEnd]);
+  }, [selectionMode, swipeState, messages, toast, handleLongPressEnd, archiveMessage, markAsRead]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent, messageId: string) => {
     if (selectionMode) return;
@@ -459,6 +342,11 @@ export default function Inbox() {
         navigate(`/inbox/chat/wa?room=${roomParam}&name=${encodeURIComponent(message.sender.name)}${phoneParam}`);
       } else if (message.platform === 'instagram' && message.roomId) {
         navigate(`/inbox/chat/ig?room=${encodeURIComponent(message.roomId)}&name=${encodeURIComponent(message.sender.name)}`);
+      } else if (message.platform === 'linkedin' && message.roomId) {
+        const avatarParam = message.sender.avatar ? `&avatar=${encodeURIComponent(message.sender.avatar)}` : '';
+        navigate(
+          `/inbox/chat/li?chat_id=${encodeURIComponent(message.roomId)}&name=${encodeURIComponent(message.sender.name)}${avatarParam}`
+        );
       } else if (message.platform === 'telegram' && message.roomId) {
         const avatarParam = message.sender.avatar ? `&avatar=${encodeURIComponent(message.sender.avatar)}` : '';
         navigate(`/inbox/chat/${message.id}?name=${encodeURIComponent(message.sender.name)}${avatarParam}`);
@@ -492,75 +380,79 @@ export default function Inbox() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-background pb-24 pt-0">
-      <TopBar title="Inbox" />
-      {/* Filter Bar - from api integrate but styled to fit under TopBar */}
-      <main className="max-w-5xl mx-auto px-6 pt-0 pb-8 space-y-6">
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4 }}
-          className="relative"
-        >
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search messages..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-9 pl-9 pr-4 rounded-lg bg-muted/50 border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
-          />
-        </motion.div>
+    <PageShell
+      title="Inbox"
+      toolbar={
+        <div className="w-full min-w-0 space-y-4">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="relative"
+          >
+            <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search messages..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-9 w-full rounded-lg border border-border bg-muted/50 pl-9 pr-4 text-sm transition-all focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50"
+            />
+          </motion.div>
 
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] font-bold text-muted-foreground/50 uppercase tracking-widest shrink-0">Connect</span>
-          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
-            {[
-              { id: 'all', label: 'All' },
-              { id: 'whatsapp', label: 'WhatsApp' },
-              { id: 'gmail', label: 'Gmail' },
-              { id: 'outlook', label: 'Outlook' },
-              { id: 'telegram', label: 'Telegram' },
-              { id: 'erpnext', label: 'ERPNext' },
-            ].map((filter) => {
-              const config = platformConfig[filter.id] || DEFAULT_PLATFORM;
-              const Icon = config.icon;
+          <div className="flex items-center gap-3">
+            <span className="shrink-0 text-[10px] font-bold tracking-widest text-muted-foreground/50 uppercase">Connect</span>
+            <div className="scrollbar-hide flex gap-1.5 overflow-x-auto">
+              {[
+                { id: 'all', label: 'All' },
+                { id: 'whatsapp', label: 'WhatsApp' },
+                { id: 'linkedin', label: 'LinkedIn' },
+                { id: 'instagram', label: 'Instagram' },
+                { id: 'gmail', label: 'Gmail' },
+                { id: 'outlook', label: 'Outlook' },
+                { id: 'telegram', label: 'Telegram' },
+                { id: 'erpnext', label: 'ERPNext' },
+              ].map((filter) => {
+                const config = platformConfig[filter.id] || DEFAULT_PLATFORM;
+                const Icon = config.icon;
 
-              const unreadCount = filter.id === 'all'
-                ? localMessages.filter(m => m.unread).length
-                : localMessages.filter(m => m.unread && m.platform === filter.id).length;
+                const unreadCount = filter.id === 'all'
+                  ? messages.filter(m => m.unread).length
+                  : messages.filter(m => m.unread && m.platform === filter.id).length;
 
-              return (
-                <button
-                  key={filter.id}
-                  onClick={() => setSelectedPlatform(filter.id)}
-                  className={cn(
-                    "flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all border relative",
-                    selectedPlatform === filter.id
-                      ? "bg-foreground text-background border-foreground shadow-sm"
-                      : "bg-muted/30 border-border text-muted-foreground hover:bg-muted hover:border-muted-foreground/30"
-                  )}
-                >
-                  {filter.id !== 'all' && <Icon className="h-3 w-3" />}
-                  {filter.label}
-                  {unreadCount > 0 && (
-                    <span className={cn(
-                      "ml-0.5 min-w-4 h-4 px-1 rounded-full text-[10px] font-bold flex items-center justify-center",
+                return (
+                  <button
+                    key={filter.id}
+                    type="button"
+                    onClick={() => setSelectedPlatform(filter.id)}
+                    className={cn(
+                      'relative flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-xs font-semibold whitespace-nowrap transition-all',
                       selectedPlatform === filter.id
-                        ? "bg-background text-foreground"
-                        : "bg-primary text-primary-foreground"
-                    )}>
-                      {unreadCount}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
+                        ? 'border-foreground bg-foreground text-background shadow-sm'
+                        : 'border-border bg-muted/30 text-muted-foreground hover:border-muted-foreground/30 hover:bg-muted'
+                    )}
+                  >
+                    {filter.id !== 'all' && <Icon className="h-3 w-3" />}
+                    {filter.label}
+                    {unreadCount > 0 && (
+                      <span className={cn(
+                        'ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-bold',
+                        selectedPlatform === filter.id
+                          ? 'bg-background text-foreground'
+                          : 'bg-primary text-primary-foreground'
+                      )}>
+                        {unreadCount}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
-
-        {/* Reverted Tabs UI to single list as per user request */}
-
+      }
+    >
+      <main className="w-full min-w-0 space-y-6 pb-8 pt-0">
         <AnimatePresence>
           {selectionMode && (
             <motion.div
@@ -589,214 +481,224 @@ export default function Inbox() {
           )}
         </AnimatePresence>
 
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.3, delay: 0.2 }}
-          className="bg-card rounded-2xl border border-border overflow-hidden"
-        >
-          <AnimatePresence>
-            {filteredMessages.map((message, index) => {
-              const platformKey = (message.platform || 'email').toLowerCase();
-              const platform = platformConfig[platformKey] || DEFAULT_PLATFORM;
-              const PlatformIcon = platform.icon;
-              const isSelected = selectedIds.has(message.id);
-              const isBeingSwiped = swipeState.messageId === message.id;
-              const swipeOffset = isBeingSwiped ? swipeState.offsetX : 0;
-              const isRemoving = removingId === message.id;
+        <AnimatePresence mode="wait">
+          {isLoading ? (
+            <motion.div 
+              key="loading"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="py-20"
+            >
+              <LoadingSpinner size="lg" label="Syncing your messages..." />
+            </motion.div>
+          ) : isError ? (
+            <motion.div
+              key="error"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+            >
+              <ErrorBanner 
+                message="We couldn't reach the server. Please check your connection." 
+                onRetry={refetch} 
+              />
+            </motion.div>
+          ) : messages.length === 0 ? (
+            <motion.div
+              key="empty"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+            >
+              {showWizard ? (
+                <div className="py-8">
+                  <OnboardingWizard onComplete={() => setShowWizard(false)} />
+                </div>
+              ) : (
+                <EmptyInbox 
+                  onAddService={() => setShowWizard(true)}
+                  onOpenSettings={() => navigate('/connections')}
+                />
+              )}
+            </motion.div>
+          ) : (
+            <motion.div
+              key="list"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm"
+            >
+              <AnimatePresence>
+                {filteredMessages.map((message, index) => {
+                  const platformKey = (message.platform || 'email').toLowerCase();
+                  const platform = platformConfig[platformKey] || DEFAULT_PLATFORM;
+                  const PlatformIcon = platform.icon;
+                  const isSelected = selectedIds.has(message.id);
+                  const isBeingSwiped = swipeState.messageId === message.id;
+                  const swipeOffset = isBeingSwiped ? swipeState.offsetX : 0;
+                  const isRemoving = removingId === message.id;
 
-              return (
-                <motion.div
-                  key={message.id}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{
-                    opacity: isRemoving ? 0 : 1,
-                    x: isRemoving ? -300 : 0,
-                    height: isRemoving ? 0 : 'auto'
-                  }}
-                  exit={{ opacity: 0, x: -300, height: 0 }}
-                  transition={{
-                    duration: 0.2,
-                    delay: isRemoving ? 0 : Math.min(index, 20) * 0.05
-                  }}
-                  className={cn(
-                    'relative overflow-hidden',
-                    index !== filteredMessages.length - 1 && 'border-b border-border'
-                  )}
-                >
-                  <div
-                    className="absolute inset-y-0 right-0 bg-destructive flex items-center justify-end px-6 transition-opacity"
-                    style={{ opacity: swipeOffset < -20 ? Math.min(1, Math.abs(swipeOffset) / 100) : 0 }}
-                  >
-                    <div className="flex items-center gap-2 text-destructive-foreground">
-                      <Archive className="h-5 w-5" />
-                      <span className="font-medium">Archive</span>
-                    </div>
-                  </div>
-
-                  <div
-                    className="absolute inset-y-0 left-0 bg-primary flex items-center justify-start px-6 transition-opacity"
-                    style={{ opacity: swipeOffset > 20 ? Math.min(1, swipeOffset / 100) : 0 }}
-                  >
-                    <div className="flex items-center gap-2 text-primary-foreground">
-                      <MailOpen className="h-5 w-5" />
-                      <span className="font-medium">{message.unread ? 'Read' : 'Unread'}</span>
-                    </div>
-                  </div>
-
-                  <div
-                    className={cn(
-                      'flex items-start gap-3 p-4 cursor-pointer transition-all bg-card relative',
-                      'hover:bg-muted/50',
-                      isSelected && 'bg-primary/10',
-                      selectionMode && 'select-none'
-                    )}
-                    style={{
-                      transform: `translateX(${swipeOffset}px)`,
-                      transition: swipeState.isSwiping ? 'none' : 'transform 0.2s ease-out'
-                    }}
-                    onClick={() => handleRowClick(message)}
-                    onTouchStart={(e) => handleTouchStart(e, message.id)}
-                    onTouchMove={handleTouchMove}
-                    onTouchEnd={handleTouchEnd}
-                    onMouseDown={(e) => handleMouseDown(e, message.id)}
-                    onMouseUp={handleMouseUp}
-                    onMouseLeave={handleMouseUp}
-                  >
-                    <AnimatePresence>
-                      {selectionMode && (
-                        <motion.div
-                          initial={{ opacity: 0, width: 0 }}
-                          animate={{ opacity: 1, width: 'auto' }}
-                          exit={{ opacity: 0, width: 0 }}
-                          transition={{ duration: 0.15 }}
-                          className="flex-shrink-0 self-center"
-                        >
-                          <div
-                            className={cn(
-                              'h-5 w-5 rounded border-2 flex items-center justify-center transition-all',
-                              isSelected ? 'bg-primary border-primary' : 'border-muted-foreground/40'
-                            )}
-                          >
-                            {isSelected && <Check className="h-3 w-3 text-primary-foreground" />}
-                          </div>
-                        </motion.div>
+                  return (
+                    <motion.div
+                      key={message.id}
+                      layout="position"
+                      initial={{ opacity: 0 }}
+                      animate={{
+                        opacity: isRemoving ? 0 : 1,
+                        x: isRemoving ? -300 : 0,
+                        height: isRemoving ? 0 : 'auto'
+                      }}
+                      exit={{ opacity: 0, x: -300, height: 0 }}
+                      transition={{
+                        duration: 0.2,
+                        layout: { duration: 0.2 }
+                      }}
+                      className={cn(
+                        'relative overflow-hidden group',
+                        index !== filteredMessages.length - 1 && 'border-b border-border/50'
                       )}
-                    </AnimatePresence>
+                    >
+                      {/* Swipe Backgrounds */}
+                      <div
+                        className="absolute inset-y-0 right-0 bg-destructive flex items-center justify-end px-6 transition-opacity"
+                        style={{ opacity: swipeOffset < -20 ? Math.min(1, Math.abs(swipeOffset) / 100) : 0 }}
+                      >
+                        <div className="flex items-center gap-2 text-destructive-foreground">
+                          <Archive className="h-5 w-5" />
+                          <span className="font-semibold text-sm">Archive</span>
+                        </div>
+                      </div>
 
-                    <div className="relative flex-shrink-0">
-                      <Avatar
-                        initials={message.sender.initials}
-                        src={message.sender.avatar}
-                        size="lg"
-                        isGroup={message.isGroup || false}
-                      />
+                      <div
+                        className="absolute inset-y-0 left-0 bg-primary flex items-center justify-start px-6 transition-opacity"
+                        style={{ opacity: swipeOffset > 20 ? Math.min(1, swipeOffset / 100) : 0 }}
+                      >
+                        <div className="flex items-center gap-2 text-primary-foreground">
+                          <MailOpen className="h-5 w-5" />
+                          <span className="font-semibold text-sm">{message.unread ? 'Mark Read' : 'Unread'}</span>
+                        </div>
+                      </div>
+
+                      {/* Content Row */}
                       <div
                         className={cn(
-                          'absolute -bottom-0.5 -right-0.5 h-5 w-5 rounded-full flex items-center justify-center border-2 border-card',
-                          platform.bgColor
+                          'flex items-start gap-4 p-5 cursor-pointer transition-all bg-card relative',
+                          'hover:bg-muted/30 active:scale-[0.99] transition-transform duration-100',
+                          isSelected && 'bg-primary/5',
+                          selectionMode && 'select-none'
                         )}
+                        style={{
+                          transform: `translateX(${swipeOffset}px)`,
+                          transition: swipeState.isSwiping ? 'none' : 'transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1)'
+                        }}
+                        onClick={() => handleRowClick(message)}
+                        onTouchStart={(e) => handleTouchStart(e, message.id)}
+                        onTouchMove={handleTouchMove}
+                        onTouchEnd={handleTouchEnd}
+                        onMouseDown={(e) => handleMouseDown(e, message.id)}
+                        onMouseUp={handleMouseUp}
+                        onMouseLeave={handleMouseUp}
                       >
-                        <PlatformIcon className="h-2.5 w-2.5 text-white" />
-                      </div>
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-1">
-                        <span
-                          className={cn(
-                            'truncate text-[17px]',
-                            message.unread ? 'text-foreground font-semibold' : 'text-foreground font-medium'
-                          )}
-                        >
-                          {highlightText(message.sender.name, searchQuery)}
-                        </span>
-                        <span
-                          className={cn(
-                            'text-[11px] flex-shrink-0 mt-1',
-                            message.unread ? 'text-primary font-bold' : 'text-muted-foreground'
-                          )}
-                        >
-                          {message.timestamp}
-                        </span>
-                      </div>
-
-                      {/* Unified Gmail-style Layout */}
-                      {['gmail', 'outlook', 'email'].includes(message.platform) ? (
-                        <div className="mt-0.5">
-                          {message.subject && (
-                            <p className={cn(
-                              "text-[14px] truncate leading-tight",
-                              message.unread ? "font-semibold text-foreground" : "font-medium text-muted-foreground"
+                        {/* Selector indicator */}
+                        {selectionMode && (
+                          <motion.div
+                            initial={{ opacity: 0, width: 0 }}
+                            animate={{ opacity: 1, width: 'auto' }}
+                            exit={{ opacity: 0, width: 0 }}
+                            className="flex-shrink-0 self-center pr-2"
+                          >
+                            <div className={cn(
+                              'h-6 w-6 rounded-full border-2 flex items-center justify-center transition-all',
+                              isSelected ? 'bg-primary border-primary' : 'border-muted-foreground/30'
                             )}>
-                              {highlightText(message.subject, searchQuery)}
-                            </p>
-                          )}
-                          {message.email_direction && (
-                            <span
-                              className={cn(
-                                "inline-flex items-center mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border",
-                                message.email_direction === 'OUTGOING'
-                                  ? "bg-success/10 text-success border-success/20"
-                                  : "bg-primary/10 text-primary border-primary/20"
-                              )}
-                            >
-                              {message.email_direction === 'OUTGOING' ? 'Sent' : 'Received'}
-                            </span>
-                          )}
-                          <p className="text-[14px] text-muted-foreground line-clamp-1 mt-0 font-normal leading-normal">
-                            {highlightText(cleanPreview(message.preview) || 'No preview available', searchQuery)}
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="mt-0.5">
-                          <p className={cn(
-                            "text-[14px] line-clamp-2 text-muted-foreground font-normal leading-snug"
-                          )}>
-                            {highlightText(cleanPreview(message.preview) || 'No messages yet', searchQuery)}
-                          </p>
-                        </div>
-                      )}
-                    </div>
+                              {isSelected && <Check className="h-4 w-4 text-primary-foreground" />}
+                            </div>
+                          </motion.div>
+                        )}
 
-                    <div className="flex flex-col items-end gap-1 flex-shrink-0 self-center">
-                      {message.unread && (
-                        message.unreadCount && message.unreadCount > 1 ? (
-                          <div className="h-5 min-w-5 px-1.5 rounded-full bg-[#25D366] flex items-center justify-center">
-                            <span className="text-[10px] font-bold text-white">
-                              {message.unreadCount}
+                        {/* Avatar Column */}
+                        <div className="relative flex-shrink-0">
+                          <Avatar
+                            initials={message.sender.initials}
+                            src={message.sender.avatar}
+                            size="lg"
+                            className="ring-2 ring-background border border-border/20 shadow-sm"
+                          />
+                          <div className={cn(
+                            'absolute -bottom-1 -right-1 h-6 w-6 rounded-full flex items-center justify-center border-2 border-background shadow-md backdrop-blur-sm',
+                            platform.bgColor
+                          )}>
+                            <PlatformIcon className="h-3 w-3 text-white" />
+                          </div>
+                        </div>
+
+                        {/* Text Detail Column */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline justify-between gap-2 mb-1">
+                            <h4 className={cn(
+                              'truncate text-[16px] tracking-tight',
+                              message.unread ? 'text-foreground font-bold' : 'text-foreground/80 font-semibold'
+                            )}>
+                              {highlightText(message.sender.name, searchQuery)}
+                            </h4>
+                            <span className={cn(
+                              'text-[12px] flex-shrink-0 font-medium',
+                              message.unread ? 'text-primary' : 'text-muted-foreground/70'
+                            )}>
+                              {message.timestamp}
                             </span>
                           </div>
-                        ) : (
-                          <div className="h-2.5 w-2.5 rounded-full bg-primary" />
-                        )
-                      )}
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
 
-          {filteredMessages.length === 0 && !isLoading && (
-            <div className="p-8 text-center text-muted-foreground">
-              <Mail className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p>No messages found</p>
-            </div>
+                          {/* Subject / Context */}
+                          {['gmail', 'outlook', 'email'].includes(message.platform) ? (
+                            <div className="space-y-0.5">
+                              {message.subject && (
+                                <p className={cn(
+                                  "text-[14px] truncate leading-tight",
+                                  message.unread ? "font-bold text-foreground" : "font-semibold text-muted-foreground/80"
+                                )}>
+                                  {highlightText(message.subject, searchQuery)}
+                                </p>
+                              )}
+                              <p className="text-[14px] text-muted-foreground/90 line-clamp-1 leading-normal font-medium">
+                                {highlightText(cleanPreview(message.preview) || 'No preview', searchQuery)}
+                              </p>
+                            </div>
+                          ) : (
+                            <p className={cn(
+                              "text-[14px] line-clamp-2 text-muted-foreground/90 leading-snug font-medium"
+                            )}>
+                              {highlightText(cleanPreview(message.preview) || 'No messages yet', searchQuery)}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Unread indicators */}
+                        <div className="flex flex-col items-end gap-2 flex-shrink-0 self-center">
+                          {message.unread && (
+                            <div className={cn(
+                              "rounded-full flex items-center justify-center shadow-sm",
+                              message.platform === 'whatsapp' ? "bg-[#25D366]" : "bg-blue-500",
+                              message.unreadCount && message.unreadCount > 1 ? "h-5 min-w-[20px] px-1.5" : "h-2.5 w-2.5"
+                            )}>
+                              {message.unreadCount && message.unreadCount > 1 && (
+                                <span className="text-[10px] font-black text-white">
+                                  {message.unreadCount}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+            </motion.div>
           )}
-
-          {isLoading && (
-            <div className="p-8 text-center">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-              <p className="mt-2 text-sm text-muted-foreground">Loading messages...</p>
-            </div>
-          )}
-
-          <div ref={observerTarget} className="h-4 w-full flex items-center justify-center p-4">
-            {isFetchingTg && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-          </div>
-        </motion.div>
+        </AnimatePresence>
       </main>
-    </div>
+    </PageShell>
   );
 }

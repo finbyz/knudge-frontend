@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { User, Users, Sparkles, Bell, Crown, LogOut, ChevronRight, Plus, Edit2, X, Phone, Mail, Linkedin as LinkedinIcon, MessageCircle, Send, Search, Check, UserCheck } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { TopBar } from '@/components/TopBar';
+import { PageShell } from '@/components/layout/PageShell';
 import { cn } from '@/lib/utils';
 import { authApi, UserResponse } from '@/api/auth';
 import { contactsApi, Circle, Contact } from '@/api/contacts';
@@ -459,10 +459,8 @@ export default function Settings() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-24 pt-0">
-      <TopBar title="Settings" />
-
-      <main className="max-w-5xl mx-auto px-6 pt-0 pb-12 space-y-10">
+    <PageShell title="Settings">
+      <main className="w-full min-w-0 space-y-10 pb-12 pt-0">
         {/* Profile Section */}
         <motion.section
           initial={{ opacity: 0, y: 20 }}
@@ -1255,6 +1253,6 @@ export default function Settings() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageShell>
   );
 }

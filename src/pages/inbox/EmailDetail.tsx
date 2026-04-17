@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, ChevronDown, ChevronUp, ChevronRight, MoreVertical, Reply, ReplyAll, Forward, Paperclip, Download, Mail } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -10,6 +10,7 @@ import { useSwipeable } from 'react-swipeable';
 import { useToast } from '@/hooks/use-toast';
 import { API_BASE_URL } from '@/lib/api-client';
 import { useInboxStore } from '@/stores/inboxStore';
+import { useInbox } from '@/hooks/useInbox';
 interface EmailAttachment {
     name: string;
     size: string;
@@ -141,23 +142,47 @@ David`,
 export default function EmailDetail() {
     const navigate = useNavigate();
     const { emailId } = useParams<{ emailId: string }>();
+    const hasMarkedAsRead = useRef<string | null>(null);
     const [expandedThreads, setExpandedThreads] = useState<Set<number>>(new Set([1]));
     const [showRecipients, setShowRecipients] = useState(false);
     const [composerOpen, setComposerOpen] = useState(false);
     const [composerMode, setComposerMode] = useState<'reply' | 'replyAll' | 'forward'>('reply');
     const [fetchedEmail, setFetchedEmail] = useState<EmailData | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
     const [viewMode, setViewMode] = useState<'threaded' | 'conversational'>('conversational');
     const { toast } = useToast();
 
 
-    const { messages } = useInboxStore();
-    const currentIndex = messages.findIndex(m =>
-        m.id === `email-${emailId}` ||
-        m.roomId === emailId ||
-        m.id.includes(emailId || '')
-    );
-    const prevMessage = currentIndex > 0 ? messages[currentIndex - 1] : null;
-    const nextMessage = currentIndex < messages.length - 1 ? messages[currentIndex + 1] : null;
+    // Ensure we have the latest inbox data for navigation, even on refresh
+    useInbox();
+
+    const { messages, selectedPlatform } = useInboxStore();
+    
+    // Filter messages to match the currently selected "section" (In the Inbox)
+    const filteredMessages = messages.filter(m => {
+        if (selectedPlatform === 'all') return true;
+        if (selectedPlatform === 'whatsapp') return m.platform === 'whatsapp';
+        if (selectedPlatform === 'gmail') return m.platform === 'gmail';
+        if (selectedPlatform === 'outlook') return m.platform === 'outlook';
+        if (selectedPlatform === 'telegram') return m.platform === 'telegram';
+        if (selectedPlatform === 'instagram') return m.platform === 'instagram';
+        if (selectedPlatform === 'linkedin') return m.platform === 'linkedin';
+        if (selectedPlatform === 'erpnext') return m.platform === 'erpnext';
+        return true;
+    });
+
+    const currentIndex = filteredMessages.findIndex(m => {
+        const targetId = emailId || '';
+        // Match UUID part, prefixed ID, or roomId
+        return m.id === targetId || 
+               m.id === `email-${targetId}` || 
+               targetId === `email-${m.id}` ||
+               m.roomId === targetId ||
+               (targetId.length > 20 && m.id.includes(targetId));
+    });
+
+    const prevMessage = currentIndex > 0 ? filteredMessages[currentIndex - 1] : null;
+    const nextMessage = currentIndex < filteredMessages.length - 1 ? filteredMessages[currentIndex + 1] : null;
 
     const markAsRead = useInboxStore((state) => state.markAsRead);
 
@@ -177,14 +202,27 @@ export default function EmailDetail() {
                 ? `&phone=${encodeURIComponent(message.sender.phone)}`
                 : '';
             navigate(`/inbox/chat/wa?room=${roomParam}&name=${encodeURIComponent(message.sender?.name || '')}${phoneParam}`);
+        } else if (message.platform === 'linkedin' && message.roomId) {
+            const avatarParam = message.sender?.avatar
+                ? `&avatar=${encodeURIComponent(message.sender.avatar)}`
+                : '';
+            navigate(
+                `/inbox/chat/li?chat_id=${encodeURIComponent(message.roomId)}&name=${encodeURIComponent(message.sender?.name || '')}${avatarParam}`
+            );
         } else if (message.platform === 'telegram' && message.roomId) {
             navigate(`/inbox/chat/${message.id}?name=${encodeURIComponent(message.sender?.name || '')}`);
         } else {
             navigate(`/inbox/chat/${message.id}`);
         }
     };
+    // Reset state on ID change to avoid "ghosting" previous conversation
+    useEffect(() => {
+        setFetchedEmail(null);
+        setIsLoading(true);
+    }, [emailId]);
+
     // Use sample if not fetched yet or if using demo IDs
-    const email = fetchedEmail || sampleEmails[emailId || '3'] || sampleEmails['3'];
+    const email = fetchedEmail || (emailId && (emailId.length < 10) ? (sampleEmails[emailId] || sampleEmails['3']) : null);
 
     // Fetch from API
     const { accessToken } = useAuthStore();
@@ -194,38 +232,82 @@ export default function EmailDetail() {
         const realId = emailId?.startsWith('email-') ? emailId.replace('email-', '') : emailId;
 
         if (realId && realId.length > 30) { // Assume UUID is long
+            setIsLoading(true);
             fetch(`${API_BASE_URL}/emails/${realId}`, {
                 headers: { Authorization: `Bearer ${accessToken}` }
             })
                 .then(res => res.json())
                 .then(data => {
-                    if (data && data.id) {
+                        const rawFrom = data.from_email || 'Unknown <unknown@email.com>';
                         const plainText = (data.body_text || 'No content').trim();
+                        const fromName = rawFrom.includes('<') 
+                            ? rawFrom.split('<')[0].replace(/"/g, '').trim() 
+                            : rawFrom.split('@')[0];
+                        
+                        const safeDate = data.sent_at ? new Date(data.sent_at) : new Date();
+                        const timestampStr = isNaN(safeDate.getTime()) 
+                            ? 'Recent' 
+                            : safeDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
                         setFetchedEmail({
                             id: data.id,
                             subject: data.subject || 'No Subject',
-                            to: [data.to_email],
-                            from: data.from_email.split('<')[0].replace(/"/g, '').trim(),
-                            fromEmail: data.from_email,
-                            direction: data.direction,
+                            to: data.to_email ? [data.to_email] : ['me'],
+                            from: fromName || 'Unknown',
+                            fromEmail: rawFrom,
+                            direction: data.direction || 'INCOMING',
                             threads: [
                                 {
                                     id: 1,
-                                    sender: data.from_email.split('<')[0].replace(/"/g, '').trim(),
-                                    email: data.from_email,
-                                    timestamp: new Date(data.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                                    sender: fromName || 'Unknown',
+                                    email: rawFrom,
+                                    timestamp: timestampStr,
                                     body: plainText,
                                     bodyHtml: data.body_html || undefined,
                                     attachments: []
                                 }
                             ]
                         });
-                    }
                 })
-                .catch(err => console.error(err));
+                .catch(err => {
+                    console.error(err);
+                    setIsLoading(false);
+                })
+                .finally(() => setIsLoading(false));
+        } else {
+            setIsLoading(false);
         }
     }, [emailId, accessToken]);
+    
+    // Mark as read when opened
+    useEffect(() => {
+        if (emailId && hasMarkedAsRead.current !== emailId) {
+            // Find current message in store (using getter to avoid dependency loop)
+            const currentMessages = useInboxStore.getState().messages;
+            const currentMsg = currentMessages.find(m => 
+                m.id === `email-${emailId}` || 
+                m.roomId === emailId || 
+                m.id === emailId
+            );
+            
+            if (currentMsg) {
+                markAsRead(currentMsg.id, currentMsg.roomId, currentMsg.normalizedPhone, currentMsg.identityKey);
+            } else {
+                markAsRead(`email-${emailId}`);
+            }
+            hasMarkedAsRead.current = emailId;
+        }
+    }, [emailId, markAsRead]);
+
+    // Swipe handlers for navigation
+    const navSwipeHandlers = useSwipeable({
+        onSwipedLeft: () => nextMessage && navigateToMessage(nextMessage),
+        onSwipedRight: () => prevMessage && navigateToMessage(prevMessage),
+        trackMouse: false,
+        trackTouch: true,
+        delta: 70,
+        preventScrollOnSwipe: false,
+    });
 
     const toggleThread = (threadId: number) => {
         setExpandedThreads(prev => {
@@ -248,8 +330,41 @@ export default function EmailDetail() {
         return name.split(' ').map(n => n[0]).join('').toUpperCase();
     };
 
+    if (!email && isLoading) {
+        return (
+            <div className="min-h-screen bg-background flex items-center justify-center p-4">
+                <div className="flex flex-col items-center gap-4">
+                    <div className="h-10 w-10 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                    <p className="text-muted-foreground animate-pulse">Loading conversation...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!email) {
+        return (
+            <div className="min-h-screen bg-background flex items-center justify-center p-4">
+                <div className="text-center">
+                    <p className="text-muted-foreground">Could not find this email.</p>
+                    <button onClick={() => navigate('/inbox')} className="mt-4 text-primary hover:underline">Back to Inbox</button>
+                </div>
+            </div>
+        );
+    }
+
     return (
-        <div className="min-h-screen bg-background flex flex-col">
+        <div className="min-h-screen bg-background flex flex-col relative" {...navSwipeHandlers}>
+            {/* Swipe indicators */}
+            <div className="fixed inset-y-0 left-0 w-1 pointer-events-none z-40">
+                {prevMessage && (
+                    <div className="absolute top-1/2 -translate-y-1/2 h-16 w-full bg-gradient-to-r from-primary/30 to-transparent rounded-r-full" />
+                )}
+            </div>
+            <div className="fixed inset-y-0 right-0 w-1 pointer-events-none z-40">
+                {nextMessage && (
+                    <div className="absolute top-1/2 -translate-y-1/2 h-16 w-full bg-gradient-to-l from-primary/30 to-transparent rounded-l-full" />
+                )}
+            </div>
             {/* Header */}
             <header className="sticky top-0 z-50 bg-card border-b border-border p-4">
                 <div className="flex items-center justify-between mb-2">
@@ -446,8 +561,8 @@ export default function EmailDetail() {
             </main>
 
             {/* Action Bar - positioned above BottomNav with proper spacing */}
-            <div className="fixed bottom-0 left-64 right-0 z-40 bg-card border-t border-border shadow-sm px-4 py-2">
-                <div className="max-w-lg mx-auto flex gap-2">
+            <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-card px-3 py-2 shadow-sm lg:left-64">
+                <div className="mx-auto flex w-full max-w-none gap-2 sm:px-1">
                     <button
                         onClick={() => openComposer('reply')}
                         className="flex-1 flex items-center justify-center gap-1 bg-gradient-to-r from-primary to-cyan-500 text-white rounded-lg py-2 text-xs font-medium hover:opacity-90 transition-opacity"

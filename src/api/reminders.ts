@@ -27,7 +27,7 @@ export const remindersApi = {
     if (statusFilter) params.set("status_filter", statusFilter);
     if (contactId) params.set("contact_id", contactId);
     const query = params.toString();
-    return ApiClient.get(`/reminders/${query ? `?${query}` : ""}`);
+    return ApiClient.get(`/reminders${query ? `?${query}` : ""}`);
   },
 
   getPending: async (): Promise<{ success: boolean; reminders: ReminderData[] }> => {

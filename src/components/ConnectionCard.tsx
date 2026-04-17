@@ -19,7 +19,8 @@ const platformNames = {
   outlook: 'Outlook',
   erpnext: 'ERPNext',
   telegram: 'Telegram',
-  instagram: 'Instagram'
+  instagram: 'Instagram',
+  linkedin: 'LinkedIn',
 };
 
 export function ConnectionCard({ connection, onConnect, onDisconnect, onSync, isSyncing = false }: ConnectionCardProps) {

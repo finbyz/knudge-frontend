@@ -41,9 +41,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       {/* Main Content Area */}
       <main
         className={cn(
-          'flex-1 min-h-screen w-full transition-all duration-300 overflow-x-hidden',
-          isDesktop && !sidebarCollapsed && 'lg:ml-64',
-          isDesktop && sidebarCollapsed && 'lg:ml-16',
+          'flex-1 min-h-screen min-w-0 w-full transition-all duration-300 overflow-x-hidden',
           !isDesktop && 'pb-16' // Space for bottom nav on mobile
         )}
       >

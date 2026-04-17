@@ -4,7 +4,7 @@ import { ChevronLeft, Clock, MessageSquare, Mail, Users, Layers, Bell } from 'lu
 import { Link } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { API_BASE_URL } from '@/lib/api-client';
-import { TopBar } from '@/components/TopBar';
+import { PageShell } from '@/components/layout/PageShell';
 import { useAuthStore } from '@/stores/authStore';
 
 interface DashboardActivity {
@@ -60,10 +60,8 @@ export default function Activities() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-20 pt-0">
-      <TopBar title="Activities" />
-
-      <main className="max-w-5xl mx-auto px-6 pt-0 pb-12 space-y-8">
+    <PageShell title="Activities" className="pb-20">
+      <main className="w-full min-w-0 space-y-8 pb-12 pt-0">
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -110,18 +108,18 @@ export default function Activities() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex flex-col items-center justify-center py-16 text-center"
+            className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/10 py-16 text-center"
           >
-            <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
               <Clock className="h-8 w-8 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-medium text-foreground mb-2">No Activities Yet</h3>
-            <p className="text-muted-foreground text-sm max-w-xs">
+            <h3 className="mb-2 text-lg font-semibold text-foreground">No activities yet</h3>
+            <p className="max-w-xs text-sm text-muted-foreground">
               Your message history and connection activities will appear here.
             </p>
           </motion.div>
         )}
       </main>
-    </div>
+    </PageShell>
   );
 }

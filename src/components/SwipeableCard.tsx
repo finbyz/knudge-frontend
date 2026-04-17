@@ -1,9 +1,10 @@
 import { motion, useMotionValue, useTransform } from 'framer-motion';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { Check, X, Calendar, RefreshCw } from 'lucide-react';
+import { Check, X, Calendar, RefreshCw, ArrowLeft, ArrowRight } from 'lucide-react';
 import { useSwipeable } from 'react-swipeable';
 import { ActionCard } from '@/types';
 import { deckApi } from '@/api/deck';
+import { toast } from 'sonner';
 import { Avatar } from './Avatar';
 import { PlatformBadge, getPlatformCardStyles } from './PlatformBadge';
 import { cn } from '@/lib/utils';
@@ -175,7 +176,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
       setRegenerateInstructions('');
     } catch (error) {
       console.error('Regeneration failed:', error);
-      // Ideally show toast here
+      toast.error('Could not regenerate. Try again.');
     } finally {
       setIsRegenerating(false);
     }
@@ -184,10 +185,10 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
   const platformStyles = getPlatformCardStyles(card.platform);
 
   // Stack effect calculations
-  const stackScale = 1 - (stackIndex * 0.04);
-  const stackTranslateY = stackIndex * 16;
-  const stackZIndex = 40 - (stackIndex * 10);
-  const stackOpacity = 1 - (stackIndex * 0.15);
+  const stackScale = 1 - stackIndex * 0.035;
+  const stackTranslateY = stackIndex * 12;
+  const stackZIndex = 40 - stackIndex * 10;
+  const stackOpacity = 1 - stackIndex * 0.12;
 
   return (
     <motion.div
@@ -203,10 +204,10 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         rotate: isTop ? rotate : 0,
         opacity: isTop ? opacity : stackOpacity,
         zIndex: stackZIndex,
-        top: 16,
-        left: `${2 + stackIndex * 0.5}%`,
-        right: `${2 + stackIndex * 0.5}%`,
-        height: 'calc(100% - 32px)',
+        top: 8,
+        left: `${1.5 + stackIndex * 0.45}%`,
+        right: `${1.5 + stackIndex * 0.45}%`,
+        height: 'calc(100% - 16px)',
         willChange: isTop ? 'transform, opacity' : 'auto',
         touchAction: isTop ? 'none' : 'none',
         WebkitTouchCallout: 'none',
@@ -225,59 +226,63 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
         opacity: stackOpacity,
       }}
       exit={{
-        x: exitDirection === 'right' ? 400 : exitDirection === 'left' ? -400 : 0,
+        x: exitDirection === 'right' ? 480 : exitDirection === 'left' ? -480 : 0,
+        rotate: exitDirection === 'right' ? 14 : exitDirection === 'left' ? -14 : 0,
         opacity: 0,
-        transition: { duration: 0.25 }
+        transition: { type: 'spring', stiffness: 400, damping: 32 },
       }}
-      transition={{ type: 'spring', stiffness: 350, damping: 30, duration: 0.4 }}
+      transition={{ type: 'spring', stiffness: 380, damping: 32 }}
     >
       {/* Swipe indicators - only on top card */}
       {isTop && (
         <>
           <motion.div
-            className="absolute inset-0 rounded-3xl gradient-danger flex items-center justify-center z-10 pointer-events-none"
+            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-3xl bg-gradient-to-br from-destructive/90 via-destructive/75 to-destructive/60"
             style={{ opacity: leftIndicatorOpacity }}
           >
-            <div className="bg-card/90 rounded-full p-4">
-              <X className="h-8 w-8 text-destructive" />
+            <div className="flex flex-col items-center gap-1 rounded-2xl bg-background/95 px-5 py-4 shadow-lg backdrop-blur-sm">
+              <X className="h-8 w-8 text-destructive" strokeWidth={2.25} />
+              <span className="text-xs font-bold uppercase tracking-wide text-destructive">Snooze</span>
             </div>
           </motion.div>
 
           <motion.div
-            className="absolute inset-0 rounded-3xl gradient-success flex items-center justify-center z-10 pointer-events-none"
+            className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-3xl bg-gradient-to-br from-emerald-600/90 via-emerald-500/80 to-teal-500/75"
             style={{ opacity: rightIndicatorOpacity }}
           >
-            <div className="bg-card/90 rounded-full p-4">
-              <Check className="h-8 w-8 text-success" />
+            <div className="flex flex-col items-center gap-1 rounded-2xl bg-background/95 px-5 py-4 shadow-lg backdrop-blur-sm">
+              <Check className="h-8 w-8 text-emerald-600" strokeWidth={2.25} />
+              <span className="text-xs font-bold uppercase tracking-wide text-emerald-700">Send</span>
             </div>
           </motion.div>
         </>
       )}
 
       {/* Card content with platform-specific background */}
-      <div className={cn(
-        'h-full rounded-3xl border overflow-y-auto flex flex-col bg-card',
-        stackIndex === 0 && 'shadow-2xl ring-1 ring-border/20',
-        stackIndex === 1 && 'shadow-xl',
-        stackIndex === 2 && 'shadow-lg',
-        stackIndex >= 3 && 'shadow-md',
-        platformStyles.borderClass,
-        platformStyles.leftBorder
-      )}
+      <div
+        className={cn(
+          'deck-scrollbar flex h-full flex-col overflow-y-auto rounded-3xl border bg-card',
+          stackIndex === 0 && 'shadow-[0_24px_48px_-12px_rgba(0,0,0,0.18)] ring-2 ring-primary/10 dark:shadow-[0_24px_48px_-12px_rgba(0,0,0,0.45)]',
+          stackIndex === 1 && 'shadow-xl',
+          stackIndex === 2 && 'shadow-lg',
+          stackIndex >= 3 && 'shadow-md',
+          platformStyles.borderClass,
+          platformStyles.leftBorder
+        )}
       >
         {/* Header - hide content for stacked cards using visibility for smoother animations */}
         <div style={{ visibility: isTop ? 'visible' : 'hidden' }}>
           {/* Header */}
-          <div className="p-3 sm:p-4 border-b border-border/50 bg-card/60 backdrop-blur-sm flex-shrink-0">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+          <div className="flex-shrink-0 border-b border-border/50 bg-gradient-to-b from-muted/30 to-card/80 px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 flex-1 items-center gap-3">
                 <Avatar
                   initials={card.contact.avatar || card.contact.name.substring(0, 2)}
                   size="lg"
                 />
                 <div className="min-w-0 flex-1">
-                  <h3 className="font-semibold text-foreground text-lg truncate">{card.contact.name}</h3>
-                  <p className="text-sm text-muted-foreground truncate">
+                  <h3 className="truncate text-lg font-bold tracking-tight text-foreground">{card.contact.name}</h3>
+                  <p className="truncate text-sm text-muted-foreground">
                     {card.contact.email || card.contact.phone || 'Contact'}
                   </p>
                 </div>
@@ -458,20 +463,15 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
             </div>
           </div>
 
-          {/* Swipe hint */}
-          <div className="px-3 sm:px-4 pb-3 sm:pb-4 flex-shrink-0">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
-              <div className="flex items-center gap-2">
-                <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-destructive/10 flex items-center justify-center">
-                  <X className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-destructive" />
-                </div>
-                <span>Skip</span>
+          <div className="flex-shrink-0 px-3 pb-3 sm:px-4 sm:pb-4">
+            <div className="grid grid-cols-2 overflow-hidden rounded-xl border border-border/60 bg-muted/20">
+              <div className="flex items-center justify-center gap-2 border-r border-border/50 py-3 text-xs font-semibold text-muted-foreground">
+                <ArrowLeft className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+                Snooze
               </div>
-              <div className="flex items-center gap-2">
-                <span>Send</span>
-                <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-success/10 flex items-center justify-center">
-                  <Check className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-success" />
-                </div>
+              <div className="flex items-center justify-center gap-2 py-3 text-xs font-semibold text-primary">
+                Send
+                <ArrowRight className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
               </div>
             </div>
           </div>

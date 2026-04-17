@@ -44,9 +44,10 @@ const formatGmailDate = (date: Date | string | undefined): string => {
 export function useWhatsAppMessages() {
   const { accessToken } = useAuthStore();
 
-  return useInfiniteQuery<ChatResponse, Error, { pages: ChatResponse[]; pageParams: number[] }, [string], number>({
+  return useInfiniteQuery<ChatResponse, Error, { pages: ChatResponse[]; pageParams: number[] }, string[], number>({
     queryKey: ['whatsapp', 'messages'],
-    queryFn: async ({ pageParam = 0 }) => {
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
       const response = await fetch(
         `${API_BASE_URL}/whatsapp/chats/?limit=20&offset=${pageParam}`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -68,9 +69,10 @@ export function useWhatsAppMessages() {
 export function useTelegramMessages() {
   const { accessToken } = useAuthStore();
 
-  return useInfiniteQuery<ChatResponse, Error, { pages: ChatResponse[]; pageParams: number[] }, [string], number>({
+  return useInfiniteQuery<ChatResponse, Error, { pages: ChatResponse[]; pageParams: number[] }, string[], number>({
     queryKey: ['telegram', 'messages'],
-    queryFn: async ({ pageParam = 0 }) => {
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
       const response = await fetch(
         `${API_BASE_URL}/telegram/messages?limit=20&offset=${pageParam}`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -92,14 +94,40 @@ export function useTelegramMessages() {
 export function useInstagramMessages() {
   const { accessToken } = useAuthStore();
 
-  return useInfiniteQuery<ChatResponse, Error, { pages: ChatResponse[]; pageParams: number[] }, [string], number>({
+  return useInfiniteQuery<ChatResponse, Error, { pages: ChatResponse[]; pageParams: number[] }, string[], number>({
     queryKey: ['instagram', 'messages'],
-    queryFn: async ({ pageParam = 0 }) => {
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
       const response = await fetch(
         `${API_BASE_URL}/instagram/chats/?limit=20&offset=${pageParam}`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       );
       if (!response.ok) throw new Error('Failed to fetch Instagram chats');
+      return response.json();
+    },
+    getNextPageParam: (lastPage) => {
+      if (!lastPage.has_more) return undefined;
+      return lastPage.next_offset ?? undefined;
+    },
+    staleTime: STALE_TIME,
+    gcTime: CACHE_TIME,
+    enabled: !!accessToken,
+  });
+}
+
+// LinkedIn hooks
+export function useLinkedInMessages() {
+  const { accessToken } = useAuthStore();
+
+  return useInfiniteQuery<ChatResponse, Error, { pages: ChatResponse[]; pageParams: number[] }, string[], number>({
+    queryKey: ['linkedin', 'messages'],
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
+      const response = await fetch(
+        `${API_BASE_URL}/linkedin/messaging/messages?limit=20&offset=${pageParam}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      if (!response.ok) throw new Error('Failed to fetch LinkedIn messages');
       return response.json();
     },
     getNextPageParam: (lastPage) => {
@@ -137,11 +165,12 @@ export function useUnifiedMessages() {
   const whatsapp = useWhatsAppMessages();
   const telegram = useTelegramMessages();
   const instagram = useInstagramMessages();
+  const linkedin = useLinkedInMessages();
   const emails = useEmails();
 
-  const isLoading = whatsapp.isLoading || telegram.isLoading || instagram.isLoading || emails.isLoading;
-  const isFetching = whatsapp.isFetching || telegram.isFetching || instagram.isFetching || emails.isFetching;
-  const hasNextPage = whatsapp.hasNextPage || telegram.hasNextPage || instagram.hasNextPage;
+  const isLoading = whatsapp.isLoading || telegram.isLoading || instagram.isLoading || linkedin.isLoading || emails.isLoading;
+  const isFetching = whatsapp.isFetching || telegram.isFetching || instagram.isFetching || linkedin.isFetching || emails.isFetching;
+  const hasNextPage = whatsapp.hasNextPage || telegram.hasNextPage || instagram.hasNextPage || linkedin.hasNextPage;
 
   // Flatten and combine all messages
   const allMessages: InboxMessage[] = [];
@@ -177,6 +206,7 @@ export function useUnifiedMessages() {
       const msgDate = new Date(msg.timestamp);
       allMessages.push({
         id: `telegram-${msg.chat_id}`,
+        contactId: msg.contact_id || undefined,
         sender: {
           name: msg.contact_name || 'Telegram User',
           initials: (msg.contact_name?.[0] || 'T').toUpperCase(),
@@ -199,12 +229,37 @@ export function useUnifiedMessages() {
       const validDate = msgDate && !isNaN(msgDate.getTime());
       allMessages.push({
         id: `ig-chat-${chat.id}`,
+        contactId: chat.contact_id || undefined,
         sender: {
           name: chat.display_name || chat.username || 'Instagram User',
           avatar: chat.profile_pic_url || undefined,
           initials: (chat.display_name?.[0] || chat.username?.[0] || 'I').toUpperCase(),
         },
         platform: 'instagram',
+        preview: chat.last_message_preview || 'No messages yet',
+        timestamp: validDate ? formatGmailDate(msgDate!) : '',
+        sortDate: validDate ? msgDate! : new Date(0),
+        roomId: chat.id,
+        unread: (chat.unread_count || 0) > 0,
+        unreadCount: chat.unread_count || 0,
+      });
+    });
+  });
+
+  // Process LinkedIn
+  linkedin.data?.pages.forEach((page: ChatResponse) => {
+    page.chats?.forEach((chat: any) => {
+      const msgDate = chat.last_message_time ? new Date(chat.last_message_time) : null;
+      const validDate = msgDate && !isNaN(msgDate.getTime());
+      allMessages.push({
+        id: `li-chat-${chat.id}`,
+        contactId: chat.contact_id || undefined,
+        sender: {
+          name: chat.display_name || 'LinkedIn User',
+          avatar: chat.profile_pic_url || undefined,
+          initials: (chat.display_name?.[0] || 'L').toUpperCase(),
+        },
+        platform: 'linkedin',
         preview: chat.last_message_preview || 'No messages yet',
         timestamp: validDate ? formatGmailDate(msgDate!) : '',
         sortDate: validDate ? msgDate! : new Date(0),
@@ -258,11 +313,13 @@ export function useUnifiedMessages() {
       whatsapp.fetchNextPage();
       telegram.fetchNextPage();
       instagram.fetchNextPage();
+      linkedin.fetchNextPage();
     },
     refetch: () => {
       whatsapp.refetch();
       telegram.refetch();
       instagram.refetch();
+      linkedin.refetch();
       emails.refetch();
     },
   };
@@ -273,9 +330,10 @@ export function useChatMessages(platform: string, roomId: string | null) {
   const { accessToken } = useAuthStore();
   const queryClient = useQueryClient();
 
-  return useInfiniteQuery({
+  return useInfiniteQuery<ChatResponse>({
     queryKey: ['messages', platform, roomId],
-    queryFn: async ({ pageParam = 0 }) => {
+    initialPageParam: 0,
+    queryFn: async ({ pageParam }) => {
       if (!roomId) return { messages: [], has_more: false };
       const response = await fetch(
         `${API_BASE_URL}/${platform}/messages/${encodeURIComponent(roomId)}?limit=50&offset=${pageParam}`,
@@ -306,6 +364,8 @@ export function useInvalidateMessages() {
         queryClient.invalidateQueries({ queryKey: ['telegram', 'messages'] }),
       invalidateInstagram: () =>
         queryClient.invalidateQueries({ queryKey: ['instagram', 'messages'] }),
+      invalidateLinkedIn: () =>
+        queryClient.invalidateQueries({ queryKey: ['linkedin', 'messages'] }),
       invalidateEmails: () => queryClient.invalidateQueries({ queryKey: ['emails'] }),
       invalidateChat: (platform: string, roomId: string) =>
         queryClient.invalidateQueries({ queryKey: ['messages', platform, roomId] }),

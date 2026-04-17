@@ -90,7 +90,7 @@ export default function MySources() {
     <div className="min-h-screen bg-background pb-40"> {/* Fixed: Increased padding to prevent cutting off */}
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 bg-card border-b border-border shadow-sm h-16">
-        <div className="flex items-center justify-between px-4 h-full max-w-lg mx-auto">
+        <div className="mx-auto flex h-full w-full max-w-none items-center justify-between px-3 sm:px-4">
           <div className="flex items-center gap-3">
             <Link
               to="/feed"

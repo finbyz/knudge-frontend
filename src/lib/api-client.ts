@@ -1,14 +1,16 @@
 const envApiUrl = import.meta.env.VITE_API_URL;
 const envApiBasePath = import.meta.env.VITE_API_BASE_PATH || '/api/v1';
 
-let baseUrl = envApiUrl || 'https://knudge-api-dev.finbyz.com';
+let baseUrl = envApiUrl || '';
 
-if (!baseUrl.startsWith('http')) {
+if (baseUrl && !baseUrl.startsWith('http')) {
   baseUrl = `https://${baseUrl}`;
 }
 
-// Remove trailing slash from baseUrl
-baseUrl = baseUrl.replace(/\/$/, '');
+if (baseUrl) {
+  // Remove trailing slash from baseUrl
+  baseUrl = baseUrl.replace(/\/$/, '');
+}
 
 // Ensure basePath starts with slash
 const path = envApiBasePath.startsWith('/') ? envApiBasePath : `/${envApiBasePath}`;

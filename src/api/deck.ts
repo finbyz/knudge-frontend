@@ -33,12 +33,12 @@ export const deckApi = {
   },
 
   regenerate: async (itemId: string, instructions: string) => {
-    return ApiClient.post(`/deck/${itemId}/regenerate`, {
+    return ApiClient.post(`/deck/${itemId}/regenerate/`, {
       instructions
     });
   },
 
   generateOnboardingCards: async () => {
-    return ApiClient.post("/deck/onboarding");
+    return ApiClient.post("/deck/onboarding/", {});
   },
 };

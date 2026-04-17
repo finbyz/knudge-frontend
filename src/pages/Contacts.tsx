@@ -1,16 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Plus, X, Calendar, Sparkles, MessageSquare, Rss, Camera, User, Loader2, RotateCw, Mail, Building2, Send, Trash2 } from 'lucide-react';
+import { Search, Plus, X, Calendar, Sparkles, MessageSquare, Rss, Camera, User, Loader2, RotateCw, Mail, Building2, Send, Trash2, RefreshCw, Linkedin } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { ContactItem } from '@/components/ContactItem';
 import { Avatar } from '@/components/Avatar';
 import { PlatformBadge } from '@/components/PlatformBadge';
 import { Button } from '@/components/ui/button';
-import { TopBar } from '@/components/TopBar';
+import { PageShell } from '@/components/layout/PageShell';
 // Resolved imports calling real API
 import { contactsApi, Contact, Circle } from '@/api/contacts';
+import { bridgesApi } from '@/api/bridges';
 import { toast } from 'sonner';
-import { formatPhone } from '@/lib/utils';
+import { cn, formatPhone } from '@/lib/utils';
 import { remindersApi } from '@/api/reminders';
 
 // Platform options for new contacts
@@ -41,6 +42,8 @@ export default function Contacts() {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [circles, setCircles] = useState<Circle[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncingIntegrations, setSyncingIntegrations] = useState(false);
+  const lastVisibilityRefetchRef = useRef(0);
 
   // Conversation state
   const [conversations, setConversations] = useState<any[]>([]);
@@ -57,9 +60,75 @@ export default function Contacts() {
     loadCircles();
   }, []);
 
+  const loadContacts = useCallback(async () => {
+    setLoading(true);
+    try {
+      const contactsData = await contactsApi.getContacts(selectedCircleId || undefined);
+      setContacts(contactsData);
+    } catch (error) {
+      console.error('Failed to load contacts:', error);
+      toast.error('Failed to load contacts.');
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedCircleId]);
+
   useEffect(() => {
     loadContacts();
-  }, [selectedCircleId]);
+  }, [loadContacts]);
+
+  /** Pull fresh rows from connected bridges (WhatsApp, Gmail, …) then reload list. */
+  const syncIntegrationsAndReload = useCallback(async () => {
+    setSyncingIntegrations(true);
+    try {
+      const status = await bridgesApi.getStatus();
+      const jobs: Promise<unknown>[] = [];
+
+      if (status.whatsapp?.connected) jobs.push(bridgesApi.sync('whatsapp'));
+      if (status.gmail?.connected) jobs.push(bridgesApi.sync('gmail'));
+      if (status.outlook?.connected) jobs.push(bridgesApi.sync('outlook'));
+      if (status.erpnext?.connected) jobs.push(bridgesApi.syncERPNext());
+      if (status.telegram?.connected) jobs.push(bridgesApi.syncTelegram());
+      if (status.instagram?.connected) jobs.push(bridgesApi.syncInstagram());
+
+      if (jobs.length === 0) {
+        toast.message('No connected sources', {
+          description:
+            'Open Connections to link WhatsApp, Gmail, or Telegram, or import LinkedIn connections (CSV), then tap Sync again.',
+        });
+        await loadContacts();
+        return;
+      }
+
+      const settled = await Promise.allSettled(jobs);
+      const failed = settled.filter((s) => s.status === 'rejected').length;
+      if (failed > 0) {
+        toast.warning('Some syncs failed', {
+          description: `${settled.length - failed} source(s) synced. Check Connections for errors.`,
+        });
+      } else {
+        toast.success('Synced from your connections');
+      }
+      await loadContacts();
+    } catch {
+      toast.error('Could not reach the server to sync.');
+      await loadContacts();
+    } finally {
+      setSyncingIntegrations(false);
+    }
+  }, [loadContacts]);
+
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState !== 'visible') return;
+      const now = Date.now();
+      if (now - lastVisibilityRefetchRef.current < 12_000) return;
+      lastVisibilityRefetchRef.current = now;
+      loadContacts();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [loadContacts]);
 
   useEffect(() => {
     if (selectedContact) {
@@ -129,19 +198,6 @@ export default function Contacts() {
     }
   };
 
-  const loadContacts = async () => {
-    setLoading(true);
-    try {
-      const contactsData = await contactsApi.getContacts(selectedCircleId || undefined);
-      setContacts(contactsData);
-    } catch (error) {
-      console.error("Failed to load contacts:", error);
-      toast.error("Failed to load contacts.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const loadContactReminders = async (contactId: string) => {
     setLoadingReminders(true);
     try {
@@ -183,6 +239,7 @@ export default function Contacts() {
       case 'outlook': return <Mail className="h-3 w-3" />;
       case 'telegram': return <Send className="h-3 w-3" />;
       case 'erpnext': return <Building2 className="h-3 w-3" />;
+      case 'linkedin': return <Linkedin className="h-3 w-3" />;
       default: return null;
     }
   };
@@ -194,6 +251,7 @@ export default function Contacts() {
     { id: 'outlook', label: 'Outlook' },
     { id: 'telegram', label: 'Telegram' },
     { id: 'erpnext', label: 'ERPNext' },
+    { id: 'linkedin', label: 'LinkedIn' },
   ];
 
   // Client-side filtering for search and platform
@@ -212,6 +270,8 @@ export default function Contacts() {
         if (contact.provider !== 'telegram') return false;
       } else if (selectedPlatform === 'erpnext') {
         if (contact.provider !== 'erpnext') return false;
+      } else if (selectedPlatform === 'linkedin') {
+        if (!contact.linkedin_url) return false;
       }
     }
     return true;
@@ -226,62 +286,77 @@ export default function Contacts() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-24 pt-0">
-      <TopBar title="Contacts" />
+    <PageShell
+      title="Contacts"
+      toolbar={
+        <div className="w-full min-w-0 space-y-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search contacts..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
 
-      {/* Filter Bar - from api integrate but styled to fit under TopBar */}
-      <div className="max-w-5xl mx-auto px-6 pt-0 pb-4 space-y-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Search contacts..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-9 pl-9 pr-4 rounded-lg bg-card border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-          />
-        </div>
+          <div className="flex items-center gap-3">
+            <span className="shrink-0 text-[10px] font-bold tracking-widest text-muted-foreground/50 uppercase">Circles</span>
+            <div className="scrollbar-hide flex gap-1.5 overflow-x-auto">
+              {filterOptions.map((filter) => (
+                <button
+                  key={filter.id || 'all'}
+                  type="button"
+                  onClick={() => setSelectedCircleId(filter.id)}
+                  className={`rounded-full px-3 py-1 text-[11px] font-semibold whitespace-nowrap transition-all ${selectedCircleId === filter.id
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                    }`}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] font-bold text-muted-foreground/50 uppercase tracking-widest shrink-0">Circles</span>
-          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
-            {filterOptions.map((filter) => (
-              <button
-                key={filter.id || 'all'}
-                onClick={() => setSelectedCircleId(filter.id)}
-                className={`px-3 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap transition-all ${selectedCircleId === filter.id
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-                  }`}
-              >
-                {filter.label}
-              </button>
-            ))}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="shrink-0 text-[10px] font-bold tracking-widest text-muted-foreground/50 uppercase">Connect</span>
+              <div className="scrollbar-hide flex gap-1.5 overflow-x-auto">
+                {platformFilters.map((filter) => (
+                  <button
+                    key={filter.id}
+                    type="button"
+                    onClick={() => setSelectedPlatform(filter.id)}
+                    className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-0.5 text-[10px] font-bold tracking-wider whitespace-nowrap uppercase transition-all ${selectedPlatform === filter.id
+                      ? 'border-foreground bg-foreground text-background shadow-sm'
+                      : 'border-border bg-transparent text-muted-foreground hover:border-muted-foreground/50'
+                      }`}
+                  >
+                    {getPlatformIcon(filter.id)}
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={syncingIntegrations || loading}
+              onClick={() => void syncIntegrationsAndReload()}
+              className="h-9 shrink-0 gap-2 border-primary/25 bg-primary/5 text-primary hover:bg-primary/10"
+            >
+              <RefreshCw className={cn('h-4 w-4', syncingIntegrations && 'animate-spin')} aria-hidden />
+              {syncingIntegrations ? 'Syncing…' : 'Sync from connections'}
+            </Button>
           </div>
         </div>
-
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] font-bold text-muted-foreground/50 uppercase tracking-widest shrink-0">Connect</span>
-          <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
-            {platformFilters.map((filter) => (
-              <button
-                key={filter.id}
-                onClick={() => setSelectedPlatform(filter.id)}
-                className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-all border ${selectedPlatform === filter.id
-                  ? 'bg-foreground text-background border-foreground shadow-sm'
-                  : 'bg-transparent border-border text-muted-foreground hover:border-muted-foreground/50'
-                  }`}
-              >
-                {getPlatformIcon(filter.id)}
-                {filter.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
+      }
+    >
       {/* Contact List */}
-      <main className="max-w-5xl mx-auto px-6 pb-20">
+      <main className="w-full min-w-0 pb-20">
         <div className="divide-y divide-border/50">
           {filteredContacts.length > 0 ? (
             filteredContacts.map((contact) => (
@@ -292,9 +367,34 @@ export default function Contacts() {
               />
             ))
           ) : (
-            <div className="flex flex-col items-center justify-center py-12 text-center px-4">
-              <p className="text-muted-foreground">No contacts found.</p>
-              {selectedCircleId !== null && <Button variant="link" onClick={() => setSelectedCircleId(null)}>Clear filter</Button>}
+            <div className="flex flex-col items-center justify-center gap-3 py-12 px-4 text-center">
+              <p className="text-muted-foreground">No contacts match your filters.</p>
+              {!searchQuery && selectedCircleId === null && (
+                <div className="flex max-w-sm flex-col gap-2 text-sm text-muted-foreground">
+                  <p>Pull in people from WhatsApp, Gmail, and other linked sources.</p>
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="default"
+                      className="gradient-primary border-0 text-primary-foreground"
+                      disabled={syncingIntegrations}
+                      onClick={() => void syncIntegrationsAndReload()}
+                    >
+                      <RefreshCw className={cn('mr-2 h-4 w-4', syncingIntegrations && 'animate-spin')} aria-hidden />
+                      Sync now
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" asChild>
+                      <Link to="/connections">Connections</Link>
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {selectedCircleId !== null && (
+                <Button variant="link" onClick={() => setSelectedCircleId(null)}>
+                  Clear circle filter
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -757,6 +857,6 @@ export default function Contacts() {
         </div>
       )}
 
-    </div>
+    </PageShell>
   );
 }

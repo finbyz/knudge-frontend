@@ -12,6 +12,24 @@ export interface BridgeStatus {
   erpnext: PlatformStatus;
   telegram: PlatformStatus;
   instagram: PlatformStatus;
+  linkedin: PlatformStatus;
+}
+
+export interface LinkedInStatus {
+  connected: boolean;
+  contact_count: number;
+  last_import_at?: string | null;
+  messaging_connected?: boolean;
+  linkedin_chat_count?: number;
+  status?: string | null;
+  last_error?: string | null;
+}
+
+export interface LinkedInImportResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  total_rows: number;
 }
 
 export interface LoginResponse {
@@ -42,6 +60,15 @@ export const bridgesApi = {
 
   // Initiate login/connection
   login: async (protocol: string, phone?: string, params?: any): Promise<LoginResponse> => {
+    if (protocol === 'whatsapp' && phone) {
+      // Phone number se pairing code
+      const result = await ApiClient.post(`/whatsapp/auth/pair`, { phone });
+      return {
+        status: result.success ? 'success' : 'error',
+        pairing_code: result.code,
+        message: result.message,
+      };
+    }
     return ApiClient.post(`/bridges/${protocol}/login`, { phone, params });
   },
 
@@ -165,5 +192,54 @@ export const bridgesApi = {
 
   syncInstagram: async (): Promise<{ synced_count: number }> => {
     return ApiClient.post('/instagram/sync', {});
-  }
+  },
+
+  getInstagramChatMessages: async (roomId: string): Promise<any[]> => {
+    const messages = await ApiClient.get(`/instagram/messages/${roomId}`);
+    return Array.isArray(messages) ? messages : [];
+  },
+
+  sendInstagram: async (roomId: string, message: string): Promise<any> => {
+    return ApiClient.post('/instagram/send', { room_id: roomId, message });
+  },
+
+  getLinkedInStatus: async (): Promise<LinkedInStatus> => {
+    return ApiClient.get('/linkedin/status');
+  },
+
+  importLinkedInConnections: async (formData: FormData): Promise<LinkedInImportResult> => {
+    return ApiClient.postForm('/linkedin/import-connections', formData);
+  },
+
+  disconnectLinkedIn: async (): Promise<{ status: string }> => {
+    return ApiClient.post('/linkedin/disconnect', {});
+  },
+
+  connectLinkedIn: async (username: string, password: string, verification_code?: string): Promise<{ status: string, requires_mfa?: boolean, message?: string, challenge_url?: string }> => {
+    return ApiClient.post('/linkedin/native/connect', { username, password, verification_code });
+  },
+
+  syncLinkedIn: async (): Promise<{ success: boolean; chats?: number; messages_new?: number }> => {
+    return ApiClient.post('/linkedin/native/sync', {});
+  },
+
+  sendLinkedIn: async (
+    chat_id: string,
+    text: string
+  ): Promise<{ status: string; message_id?: string | null }> => {
+    return ApiClient.post('/linkedin/native/send', { chat_id, text });
+  },
+
+  getLinkedInChatMessages: async (
+    chatId: string
+  ): Promise<Array<{ id: string; direction: string; text: string; timestamp: string }>> => {
+    const resp = await ApiClient.get(`/linkedin/messages/${chatId}`);
+    const messages = (resp.messages || []) as any[];
+    return messages.map(m => ({
+      id: m.id,
+      direction: m.direction,
+      text: m.content,
+      timestamp: m.timestamp
+    }));
+  },
 };

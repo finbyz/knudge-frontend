@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Radar, Plus } from 'lucide-react';
+import { Radar } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { FeedItemCard } from '@/components/FeedItemCard';
-import { TopBar } from '@/components/TopBar';
+import { PageShell } from '@/components/layout/PageShell';
 import { toast } from '@/hooks/use-toast';
 import { Inbox } from 'lucide-react';
 import { FeedItem } from '@/types';
@@ -21,7 +21,6 @@ export default function Feed() {
   const [items, setItems] = useState<FeedItem[]>([]);
   const { clearUnreadFeed } = useUnreadStore();
 
-  // Clear unread count when page mounts
   useEffect(() => {
     clearUnreadFeed();
   }, [clearUnreadFeed]);
@@ -42,46 +41,45 @@ export default function Feed() {
   };
 
   return (
-    <div className="h-full bg-background pb-24">
-      <TopBar title="Feed" />
-
-      {/* Desktop: Manage Sources Button - Top right */}
+    <PageShell
+      title="Feed"
+      toolbar={
+        <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto no-scrollbar">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className={`shrink-0 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap transition-all ${activeTab === tab.id
+                  ? 'gradient-primary text-primary-foreground shadow-sm'
+                  : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                  }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <Link
+            to="/feed/sources"
+            className="hidden h-10 shrink-0 items-center justify-center gap-2 rounded-full px-4 text-sm font-semibold text-primary-foreground shadow-md gradient-primary transition-transform hover:scale-[1.02] sm:inline-flex"
+          >
+            <Radar className="h-4 w-4 shrink-0" />
+            <span className="hidden md:inline">Manage Sources</span>
+            <span className="md:hidden">Sources</span>
+          </Link>
+        </div>
+      }
+    >
       <Link
         to="/feed/sources"
-        className="fixed top-20 right-4 z-40 h-10 px-4 rounded-full gradient-primary text-primary-foreground items-center gap-2 text-sm font-medium shadow-lg hover:scale-105 transition-transform hidden sm:flex"
-      >
-        <Radar className="h-4 w-4" />
-        <span>Manage Sources</span>
-      </Link>
-
-      {/* Mobile: Floating Action Button - Bottom right above nav */}
-      <Link
-        to="/feed/sources"
-        className="fixed bottom-20 right-4 z-40 h-14 w-14 rounded-full gradient-primary text-primary-foreground flex items-center justify-center shadow-lg hover:scale-110 transition-transform sm:hidden"
+        className="fixed bottom-20 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full text-primary-foreground shadow-lg gradient-primary transition-transform hover:scale-105 sm:hidden"
         aria-label="Manage Sources"
       >
         <Radar className="h-6 w-6" />
       </Link>
 
-      {/* Tabs - positioned below fixed header */}
-      <div className="sticky top-[88px] z-30 bg-background/80 backdrop-blur-xl border-b border-border">
-        <div className="flex items-center gap-1 px-4 py-3 overflow-x-auto no-scrollbar">
-          {tabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all ${activeTab === tab.id
-                ? 'gradient-primary text-primary-foreground'
-                : 'bg-muted/50 text-muted-foreground hover:bg-muted'
-                }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <main className="px-4 py-4 space-y-4">
+      <main className="space-y-4 py-4">
         {filteredItems.length > 0 ? (
           filteredItems.map((item, index) => (
             <motion.div
@@ -101,18 +99,18 @@ export default function Feed() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex flex-col items-center justify-center py-16 text-center"
+            className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/80 bg-muted/10 py-16 text-center"
           >
-            <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
               <Inbox className="h-8 w-8 text-muted-foreground" />
             </div>
-            <h3 className="text-lg font-medium text-foreground mb-2">No Feed Items</h3>
-            <p className="text-muted-foreground text-sm max-w-xs">
+            <h3 className="mb-2 text-lg font-semibold text-foreground">No feed items</h3>
+            <p className="max-w-xs text-sm text-muted-foreground">
               Add monitoring targets to see content from YouTube, LinkedIn, and RSS feeds.
             </p>
           </motion.div>
         )}
       </main>
-    </div>
+    </PageShell>
   );
 }

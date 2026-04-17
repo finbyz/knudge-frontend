@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { remindersApi, ReminderData } from '@/api/reminders';
+import { useAuthStore } from '@/stores/authStore';
 
 export interface AppNotification {
   id: string;
@@ -17,6 +18,7 @@ interface NotificationStore {
   unreadCount: number;
   pollingInterval: ReturnType<typeof setInterval> | null;
   permissionGranted: boolean;
+  wsConnection: WebSocket | null;
 
   // Actions
   startPolling: () => void;
@@ -28,6 +30,8 @@ interface NotificationStore {
   requestBrowserPermission: () => Promise<void>;
   playNotificationSound: () => void;
   showBrowserNotification: (title: string, body: string) => void;
+  connectWebSocket: () => void;
+  disconnectWebSocket: () => void;
 }
 
 // Synthesize a pleasant notification chime using Web Audio API
@@ -72,11 +76,12 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
   unreadCount: 0,
   pollingInterval: null,
   permissionGranted: typeof Notification !== 'undefined' && Notification.permission === 'granted',
+  wsConnection: null,
 
   startPolling: () => {
     const state = get();
     // Don't double-start
-    if (state.pollingInterval) return;
+
 
     // Request browser notification permission
     get().requestBrowserPermission();
@@ -87,7 +92,7 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
     // Poll every 15 seconds for newly due reminders
     const interval = setInterval(() => {
       get().pollPendingReminders();
-    }, 15000);
+    }, 3000);
 
     // Also do an immediate poll
     get().pollPendingReminders();
@@ -240,6 +245,88 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
       };
     } catch (e) {
       console.warn('Failed to show browser notification:', e);
+    }
+  },
+
+  connectWebSocket: () => {
+    const user = useAuthStore.getState().user;
+    const token = useAuthStore.getState().accessToken;
+    if (!user || !token) return;
+
+    // Already connected check
+    const existing = get().wsConnection;
+    if (existing && existing.readyState === WebSocket.OPEN) return;
+
+    const wsUrl = `wss://knudge-dev.finbyz.com/ws/notifications?token=${token}`;
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      console.log('✅ Notification WebSocket connected');
+      // Heartbeat — connection alive rakhne ke liye
+      const ping = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send('ping');
+        } else {
+          clearInterval(ping);
+        }
+      }, 30000);
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data === 'pong') return;
+
+      if (data.type === 'deck_notification') {
+        const newNotification: AppNotification = {
+          id: data.id,
+          type: 'reminder',
+          title: `Reminder: ${data.contact_name}`,
+          description: data.note,
+          timestamp: data.remind_at,
+          isNew: true,
+          contactId: null,
+          reminderId: data.id,
+        };
+
+        set((state) => {
+          const existingIds = new Set(state.notifications.map(n => n.id));
+          if (existingIds.has(newNotification.id)) return state;
+          const allNotifications = [newNotification, ...state.notifications];
+          return {
+            notifications: allNotifications,
+            unreadCount: allNotifications.filter(n => n.isNew).length,
+          };
+        });
+
+        // Sound + Browser notification
+        get().playNotificationSound();
+        get().showBrowserNotification(
+          `Reminder: ${data.contact_name}`,
+          data.note
+        );
+      }
+    };
+
+    ws.onclose = () => {
+      console.log('WebSocket closed — 5s mein reconnect karega');
+      set({ wsConnection: null });
+      // Auto reconnect
+      setTimeout(() => get().connectWebSocket(), 5000);
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+      ws.close();
+    };
+
+    set({ wsConnection: ws });
+  },
+
+  disconnectWebSocket: () => {
+    const { wsConnection } = get();
+    if (wsConnection) {
+      wsConnection.close();
+      set({ wsConnection: null });
     }
   },
 }));

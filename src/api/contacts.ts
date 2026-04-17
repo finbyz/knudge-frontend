@@ -62,7 +62,7 @@ export const contactsApi = {
   },
   // Circles
   getCircles: async (): Promise<Circle[]> => {
-    return ApiClient.get('/contacts/circles');
+    return ApiClient.get('/contacts/circles/');
   },
 
   createCircle: async (data: CreateCircleRequest): Promise<Circle> => {

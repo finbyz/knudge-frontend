@@ -74,6 +74,14 @@
     --sidebar-accent-foreground: 240 5.9% 10%;
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* Scrollbars — gradient thumb only; track stays transparent (no grey gutter) */
+    --scrollbar-thumb-shadow: 0 0 16px hsl(var(--primary) / 0.35), 0 0 6px hsl(var(--secondary) / 0.2),
+      inset 0 1px 0 hsl(0 0% 100% / 0.45);
+    --scrollbar-thumb-shadow-hover: 0 0 22px hsl(var(--primary) / 0.5), 0 0 10px hsl(var(--secondary) / 0.35),
+      inset 0 1px 0 hsl(0 0% 100% / 0.55);
+    --scrollbar-firefox-thumb: hsl(var(--primary) / 0.88);
+    --scrollbar-firefox-track: transparent;
   }
 
   .dark {
@@ -120,6 +128,13 @@
     --sidebar-border: 220 20% 18%;
     --sidebar-ring: 239 84% 67%;
 
+    --scrollbar-thumb-shadow: 0 0 18px hsl(var(--primary) / 0.45), 0 0 8px hsl(var(--secondary) / 0.25),
+      inset 0 1px 0 hsl(0 0% 100% / 0.12);
+    --scrollbar-thumb-shadow-hover: 0 0 26px hsl(var(--primary) / 0.55), 0 0 12px hsl(var(--secondary) / 0.35),
+      inset 0 1px 0 hsl(0 0% 100% / 0.18);
+    --scrollbar-firefox-thumb: hsl(var(--primary) / 0.85);
+    --scrollbar-firefox-track: transparent;
+
     /* Glassmorphism Dark */
     --glass-background: rgba(14, 18, 27, 0.6);
     --glass-border: rgba(255, 255, 255, 0.08);
@@ -139,6 +154,68 @@
     font-family: 'Inter', system-ui, sans-serif;
     background-image: var(--gradient-mesh);
     background-attachment: fixed;
+  }
+
+  /*
+   * Brand scrollbars: gradient thumb, transparent track (no grey rail).
+   * WebKit: kill arrow buttons explicitly (Windows/Edge classic UI).
+   */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-firefox-thumb) var(--scrollbar-firefox-track);
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-track {
+    margin: 4px 0;
+    border-radius: 100px;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    border-radius: 100px;
+    border: 2px solid transparent;
+    background: var(--gradient-primary);
+    background-clip: padding-box;
+    box-shadow: var(--scrollbar-thumb-shadow);
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, hsl(239 84% 72%) 0%, hsl(187 94% 50%) 100%);
+    box-shadow: var(--scrollbar-thumb-shadow-hover);
+  }
+
+  *::-webkit-scrollbar-thumb:active {
+    background: linear-gradient(135deg, hsl(239 84% 62%) 0%, hsl(187 94% 40%) 100%);
+  }
+
+  *::-webkit-scrollbar-button,
+  *::-webkit-scrollbar-button:single-button,
+  *::-webkit-scrollbar-button:double-button {
+    display: none !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    appearance: none;
+  }
+
+  *::-webkit-scrollbar-button:vertical:start:decrement,
+  *::-webkit-scrollbar-button:vertical:end:increment,
+  *::-webkit-scrollbar-button:horizontal:start:decrement,
+  *::-webkit-scrollbar-button:horizontal:end:increment {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
   }
 }
 
@@ -212,13 +289,62 @@
     padding-bottom: max(env(safe-area-inset-bottom), 1rem);
   }
 
-  /* Hide scrollbar */
-  .no-scrollbar::-webkit-scrollbar {
+  /* Hide scrollbar (horizontal chips, side nav, etc.) */
+  .no-scrollbar::-webkit-scrollbar,
+  .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
-  .no-scrollbar {
+  .no-scrollbar,
+  .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+
+  /*
+   * Deck cards: slimmer bar, same brand gradient, track blends into card chrome.
+   */
+  .deck-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-firefox-thumb) transparent;
+  }
+
+  .deck-scrollbar::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+  }
+
+  .deck-scrollbar::-webkit-scrollbar-track {
+    margin: 10px 0;
+    border-radius: 100px;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .deck-scrollbar::-webkit-scrollbar-thumb {
+    border-radius: 100px;
+    border: 2px solid transparent;
+    background: var(--gradient-primary);
+    background-clip: padding-box;
+    box-shadow: 0 0 12px hsl(var(--primary) / 0.4), inset 0 1px 0 hsl(0 0% 100% / 0.4);
+  }
+
+  .deck-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, hsl(239 84% 72%) 0%, hsl(187 94% 50%) 100%);
+    box-shadow: 0 0 16px hsl(var(--primary) / 0.5), inset 0 1px 0 hsl(0 0% 100% / 0.5);
+  }
+
+  .deck-scrollbar::-webkit-scrollbar-thumb:active {
+    background: linear-gradient(135deg, hsl(239 84% 60%) 0%, hsl(187 94% 38%) 100%);
+  }
+
+  .deck-scrollbar::-webkit-scrollbar-button,
+  .deck-scrollbar::-webkit-scrollbar-button:vertical:start:decrement,
+  .deck-scrollbar::-webkit-scrollbar-button:vertical:end:increment,
+  .deck-scrollbar::-webkit-scrollbar-button:horizontal:start:decrement,
+  .deck-scrollbar::-webkit-scrollbar-button:horizontal:end:increment {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
   }
 }
 

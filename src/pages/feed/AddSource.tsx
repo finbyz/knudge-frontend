@@ -218,7 +218,7 @@ export default function AddSource() {
     <div className="min-h-screen bg-background pb-24">
       {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 bg-card border-b border-border shadow-sm h-16">
-        <div className="flex items-center justify-between px-4 h-full max-w-lg mx-auto">
+        <div className="mx-auto flex h-full w-full max-w-none items-center justify-between px-3 sm:px-4">
           <button
             onClick={() => navigate(-1)}
             className="h-10 w-10 rounded-full bg-muted hover:bg-muted/80 flex items-center justify-center transition-colors"

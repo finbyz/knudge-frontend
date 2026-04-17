@@ -35,7 +35,6 @@ import OutlookCallback from "./pages/OutlookCallback";
 import { DesktopSidebar } from "./components/layout/DesktopSidebar";
 import { cn } from "./lib/utils";
 import GmailCallback from "./pages/GmailCallback";
-
 const queryClient = new QueryClient();
 
 const getStepPath = (step: number) => {
@@ -71,7 +70,12 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-background">
+    <div
+      className={cn(
+        'flex h-screen w-full overflow-hidden bg-background',
+        isDesktop && 'gap-2 p-2 sm:gap-3 sm:p-3 lg:gap-3 lg:p-3'
+      )}
+    >
       {/* Desktop Sidebar */}
       {isDesktop && (
         <DesktopSidebar
@@ -80,12 +84,14 @@ function AppLayout({ children }: { children: React.ReactNode }) {
         />
       )}
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col h-full overflow-hidden relative transition-all duration-300">
-        <div className={cn(
-          'w-full h-full overflow-y-auto',
-          isDesktop ? 'max-w-5xl mx-auto px-4 lg:px-8' : 'mx-auto max-w-lg'
-        )}>
+      {/* Main Content — full width; no max-width cap on desktop */}
+      <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden transition-all duration-300">
+        <div
+          className={cn(
+            'h-full min-w-0 w-full max-w-none overflow-y-auto',
+            isDesktop ? 'px-2 sm:px-3 md:px-4 lg:px-5' : 'mx-auto max-w-lg px-4'
+          )}
+        >
           {children}
         </div>
       </main>
@@ -100,11 +106,12 @@ function AppRoutes() {
   const location = useLocation();
   const { completed, currentStep } = useOnboardingStore();
   const { accessToken, setUser } = useAuthStore();
+  const token = accessToken || JSON.parse(localStorage.getItem('knudge-auth') || '{}')?.state?.accessToken;
   const isOnboardingRoute = location.pathname.startsWith('/onboarding');
-  const { startPolling, stopPolling } = useNotificationStore();
+  const { startPolling, stopPolling, connectWebSocket, disconnectWebSocket } = useNotificationStore();
 
   useEffect(() => {
-    if (accessToken) {
+    if (token) {
       authApi.getMe().then(user => {
         setUser(user);
         // Sync onboarding state from backend user data
@@ -116,13 +123,18 @@ function AppRoutes() {
 
       // Start notification polling for reminders
       startPolling();
+      connectWebSocket();
     } else {
       stopPolling();
+      disconnectWebSocket();
     }
-    
+
     // Clean up on unmount
-    return () => stopPolling();
-  }, [accessToken, setUser, startPolling, stopPolling]);
+    return () => {
+      stopPolling();
+      disconnectWebSocket();
+    }
+  }, [token, setUser, startPolling, stopPolling]);
 
   // Case 1: Not authenticated - only allow login
   if (!accessToken) {
@@ -161,7 +173,6 @@ function AppRoutes() {
         <Route path="/onboarding/profile" element={<OnboardingProfile />} />
         <Route path="/onboarding/voice" element={<OnboardingVoice />} />
         <Route path="/onboarding/knowledge" element={<OnboardingKnowledge />} />
-
         <Route path="/onboarding/trial" element={<OnboardingTrial />} />
         <Route path="/onboarding/complete" element={<OnboardingComplete />} />
 

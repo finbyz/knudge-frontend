@@ -1,29 +1,64 @@
 import { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronDown, Check, PartyPopper, Loader2 } from 'lucide-react';
+import { Check, PartyPopper, Loader2, Sparkles, Inbox } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { SwipeableCard } from '@/components/SwipeableCard';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { TopBar } from '@/components/TopBar';
+import { PageShell } from '@/components/layout/PageShell';
 import { deckApi, DeckItem } from '@/api/deck';
 import { ActionCard } from '@/types';
+
+function DeckQueueToolbar({ current, total }: { current: number; total: number }) {
+  const pct = total > 0 ? Math.min(100, Math.round((current / total) * 100)) : 0;
+
+  return (
+    <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
+      <div className="flex shrink-0 items-center gap-3">
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <Sparkles className="h-5 w-5" aria-hidden />
+        </div>
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Queue</p>
+          <p className="text-sm font-semibold tabular-nums text-foreground">
+            {current}
+            <span className="font-medium text-muted-foreground"> / {total}</span>
+          </p>
+        </div>
+      </div>
+      <div className="min-w-0 flex-1 space-y-1.5">
+        <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+          <span>Progress</span>
+          <span className="tabular-nums">{pct}%</span>
+        </div>
+        <div className="relative h-2.5 overflow-hidden rounded-full bg-muted shadow-inner">
+          <motion.div
+            className="h-full rounded-full gradient-primary shadow-sm"
+            initial={false}
+            animate={{ width: `${pct}%` }}
+            transition={{ type: 'spring', stiffness: 420, damping: 38 }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Helper to map API data to UI format
 const mapDeckItemToCard = (item: DeckItem): ActionCard => ({
   id: item.id,
   contact: item.contact
     ? {
-      id: item.contact.id,
-      name: item.contact.name,
-      phone: item.contact.phone,
-      email: item.contact.email,
-      avatar: item.contact.avatar,
-    }
+        id: item.contact.id,
+        name: item.contact.name,
+        phone: item.contact.phone,
+        email: item.contact.email,
+        avatar: item.contact.avatar,
+      }
     : {
-      id: item.id,
-      name: item.ui_title.replace('Reconnect with ', '') || 'Unknown Contact',
-    },
+        id: item.id,
+        name: item.ui_title.replace('Reconnect with ', '') || 'Unknown Contact',
+      },
   context: item.ui_subtitle,
   draft: item.content_payload.draft_text || '',
   platform: item.platform as ActionCard['platform'],
@@ -50,32 +85,29 @@ export default function Deck() {
     try {
       const items = await deckApi.getDeck();
 
-      // If no cards, trigger onboarding once
       if (items.length === 0 && !hasTriggeredOnboarding) {
         setHasTriggeredOnboarding(true);
         try {
           await deckApi.generateOnboardingCards();
-          // Reload deck after generation
           const freshItems = await deckApi.getDeck();
           setCards(freshItems.map(mapDeckItemToCard));
           setLoading(false);
           return;
         } catch (e) {
-          console.error("Failed to generate onboarding cards", e);
+          console.error('Failed to generate onboarding cards', e);
         }
       }
 
       setCards(items.map(mapDeckItemToCard));
     } catch (error) {
-      console.error("Failed to load deck:", error);
-      toast.error("Failed to load action cards.");
+      console.error('Failed to load deck:', error);
+      toast.error('Failed to load action cards.');
     } finally {
       setLoading(false);
     }
   };
 
   const handleSwipeRight = async (cardId: string, data?: { draft: string; subject?: string } | string) => {
-    // Optimistic UI update
     const card = cards.find((c) => c.id === cardId);
     setCards((prev) => prev.filter((c) => c.id !== cardId));
 
@@ -84,7 +116,7 @@ export default function Deck() {
       setCompletedCount((prev) => prev + 1);
 
       try {
-        let payload: any = {};
+        let payload: Record<string, string> = {};
         if (typeof data === 'string') {
           if (data) payload.draft_text = data;
         } else if (data) {
@@ -92,12 +124,10 @@ export default function Deck() {
           if (data.subject) payload.subject = data.subject;
         }
 
-        // Send EXECUTE action with updated payload if edited
         await deckApi.swipe(cardId, 'EXECUTE', Object.keys(payload).length > 0 ? payload : undefined);
       } catch (error) {
-        console.error("Failed to execute card:", error);
-        toast.error("Failed to process action. Please try again.");
-        // Revert optimistic update? For now, we assume success or reload.
+        console.error('Failed to execute card:', error);
+        toast.error('Failed to process action. Please try again.');
       }
     }
   };
@@ -107,84 +137,84 @@ export default function Deck() {
     try {
       await deckApi.swipe(cardId, 'SNOOZE');
     } catch (error) {
-      console.error("Failed to snooze card:", error);
+      console.error('Failed to snooze card:', error);
     }
   };
 
   const isEmpty = cards.length === 0;
-  const totalCards = cards.length + completedCount; // Approx total
+  const totalCards = cards.length + completedCount;
   const currentIndex = totalCards - cards.length + 1;
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+      <PageShell title="Deck">
+        <div className="flex min-h-[50vh] flex-col items-center justify-center gap-5 py-16">
+          <div className="relative">
+            <div className="absolute inset-0 animate-ping rounded-full bg-primary/20" style={{ animationDuration: '1.5s' }} />
+            <Loader2 className="relative h-11 w-11 animate-spin text-primary" aria-hidden />
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-medium text-foreground">Loading your deck</p>
+            <p className="mt-1 text-xs text-muted-foreground">Fetching AI suggestions…</p>
+          </div>
+        </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background pb-20 pt-0">
-      <TopBar title="Deck" />
-
-      {/* Progress bar - below TopBar */}
-      {!isEmpty && (
-        <div className="sticky top-[88px] z-40 h-1 bg-muted">
-          <motion.div
-            className="h-full gradient-primary"
-            initial={{ width: 0 }}
-            animate={{ width: `${(currentIndex / totalCards) * 100}%` }}
-            transition={{ duration: 0.3 }}
-          />
-          <div className="absolute right-4 top-2 text-xs text-muted-foreground">
-            {currentIndex} of {totalCards}
-          </div>
-        </div>
-      )}
-
-      {/* Card Stack */}
-      <main className="max-w-5xl mx-auto px-6 pt-4 pb-2 space-y-4">
+    <PageShell
+      title="Deck"
+      className="pb-20"
+      toolbar={!isEmpty ? <DeckQueueToolbar current={currentIndex} total={totalCards} /> : undefined}
+    >
+      <main className="flex w-full min-w-0 flex-col">
         {isEmpty ? (
           <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="flex flex-col items-center justify-center px-8 text-center py-20"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+            className="mx-auto flex w-full max-w-md flex-col items-center rounded-3xl border border-dashed border-border/70 bg-gradient-to-b from-muted/40 to-background px-8 py-16 text-center shadow-sm"
           >
             <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
-              className="h-20 w-20 rounded-full gradient-success flex items-center justify-center mb-6"
+              initial={{ scale: 0.85, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.08, type: 'spring', stiffness: 260, damping: 22 }}
+              className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl gradient-success shadow-lg shadow-success/20"
             >
               {completedCount > 0 ? (
-                <PartyPopper className="h-10 w-10 text-success-foreground" />
+                <PartyPopper className="h-10 w-10 text-success-foreground" aria-hidden />
               ) : (
-                <Check className="h-10 w-10 text-success-foreground" />
+                <Inbox className="h-9 w-9 text-success-foreground" aria-hidden />
               )}
             </motion.div>
-            <h2 className="text-2xl font-bold text-foreground mb-2">
-              {completedCount > 0 ? 'All Done!' : 'No Pending Messages'}
+            <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+              {completedCount > 0 ? "You're all caught up" : 'Nothing in your deck'}
             </h2>
-            <p className="text-muted-foreground mb-8">
+            <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
               {completedCount > 0
-                ? `You've sent ${completedCount} message${completedCount > 1 ? 's' : ''} today. Great job staying connected!`
-                : 'Check back later for AI-generated message suggestions.'}
+                ? `You sent ${completedCount} message${completedCount > 1 ? 's' : ''} from this session. New suggestions will land here when they're ready.`
+                : 'When Knudge drafts outreach for you, cards appear here. Swipe or tap to send or snooze.'}
             </p>
-            <Link to="/">
-              <Button className="gradient-primary text-primary-foreground border-0">
-                Back to Dashboard
+            <div className="mt-8 flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
+              <Button asChild className="gradient-primary border-0 text-primary-foreground shadow-md">
+                <Link to="/">Back to overview</Link>
               </Button>
-            </Link>
+              <Button asChild variant="outline" className="border-border/80 bg-background">
+                <Link to="/inbox">Open inbox</Link>
+              </Button>
+            </div>
           </motion.div>
         ) : (
-          <div className="relative" style={{ height: 'calc(100vh - 160px)' }}>
-            {/* Cards stack container */}
-            <div className="relative w-full h-full">
+          <div className="relative flex min-h-[min(72dvh,calc(100dvh-14rem))] w-full flex-1 flex-col">
+            <p className="mb-3 text-center text-[11px] font-medium uppercase tracking-wider text-muted-foreground sm:text-left">
+              Drag the card · Snooze left · Send right
+            </p>
+            <div className="relative min-h-0 flex-1">
               <AnimatePresence mode="popLayout">
                 {cards.slice(0, 4).reverse().map((card, index, arr) => {
                   const isTop = index === arr.length - 1;
                   const stackIndex = arr.length - 1 - index;
-                  // Use unique key with card.id and stack position to force Brave mobile remount
                   const uniqueKey = `card-${card.id}-${cards.length}-${isTop ? 'top' : stackIndex}`;
 
                   return (
@@ -203,6 +233,6 @@ export default function Deck() {
           </div>
         )}
       </main>
-    </div>
+    </PageShell>
   );
 }

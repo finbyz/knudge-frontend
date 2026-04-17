@@ -139,6 +139,11 @@ export default function InboxOptimized() {
         }
       } else if (message.platform === 'instagram' && message.roomId) {
         navigate(`/inbox/chat/ig?room=${encodeURIComponent(message.roomId)}&name=${encodeURIComponent(message.sender.name)}`);
+      } else if (message.platform === 'linkedin' && message.roomId) {
+        const avatarParam = message.sender.avatar ? `&avatar=${encodeURIComponent(message.sender.avatar)}` : '';
+        navigate(
+          `/inbox/chat/li?chat_id=${encodeURIComponent(message.roomId)}&name=${encodeURIComponent(message.sender.name)}${avatarParam}`
+        );
       } else if (message.platform === 'telegram' && message.roomId) {
         const avatarParam = message.sender.avatar ? `&avatar=${encodeURIComponent(message.sender.avatar)}` : '';
         navigate(`/inbox/chat/${message.id}?name=${encodeURIComponent(message.sender.name)}${avatarParam}`);

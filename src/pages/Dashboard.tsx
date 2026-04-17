@@ -7,7 +7,7 @@ import { StatsCard } from '@/components/StatsCard';
 import { ActivityItem } from '@/components/ActivityItem';
 import { PlatformBadge } from '@/components/PlatformBadge';
 import { Button } from '@/components/ui/button';
-import { TopBar } from '@/components/TopBar';
+import { PageShell } from '@/components/layout/PageShell';
 import { NotificationPanel } from '@/components/NotificationPanel';
 import { bridgesApi, BridgeStatus } from '@/api/bridges';
 import { deckApi } from '@/api/deck';
@@ -115,14 +115,12 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="h-full bg-transparent overflow-y-auto no-scrollbar pb-24">
-      <TopBar title="Overview" />
-
+    <PageShell title="Overview">
       <motion.main
         variants={containerVariants}
         initial="hidden"
         animate="visible"
-        className="max-w-5xl mx-auto px-6 py-8 space-y-10"
+        className="w-full min-w-0 space-y-10 py-6 sm:py-8"
       >
         {/* Hero Section / Stats */}
         <motion.section variants={itemVariants}>
@@ -257,6 +255,6 @@ export default function Dashboard() {
           </div>
         </motion.section>
       </motion.main>
-    </div>
+    </PageShell>
   );
 }

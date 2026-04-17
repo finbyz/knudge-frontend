@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, QrCode, Loader2 } from 'lucide-react';
 import { ConnectionCard } from '@/components/ConnectionCard';
-import { TopBar } from '@/components/TopBar';
+import { PageShell } from '@/components/layout/PageShell';
 import { toast } from 'sonner';
 import { bridgesApi } from '@/api/bridges';
 import { useAuthStore } from '@/stores/authStore';
@@ -26,10 +26,11 @@ const platformNames = {
   erpnext: 'ERPNext',
   telegram: 'Telegram',
   instagram: 'Instagram',
+  linkedin: 'LinkedIn',
 };
 
 interface ConnectionState {
-  platform: 'whatsapp' | 'email' | 'gmail' | 'outlook' | 'erpnext' | 'telegram' | 'instagram';
+  platform: 'whatsapp' | 'email' | 'gmail' | 'outlook' | 'erpnext' | 'telegram' | 'instagram' | 'linkedin';
   status: 'connected' | 'disconnected' | 'syncing';
   lastSync: string | null;
   contactCount: number;
@@ -42,7 +43,8 @@ export default function Connections() {
     { platform: 'outlook', status: 'disconnected', lastSync: null, contactCount: 0 },
     { platform: 'erpnext', status: 'disconnected', lastSync: null, contactCount: 0 },
     { platform: 'telegram', status: 'disconnected', lastSync: null, contactCount: 0 },
-    { platform: 'instagram', status: 'disconnected', lastSync: null, contactCount: 0 }
+    { platform: 'instagram', status: 'disconnected', lastSync: null, contactCount: 0 },
+    { platform: 'linkedin', status: 'disconnected', lastSync: null, contactCount: 0 },
   ]);
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
   const [qrCodeData, setQrCodeData] = useState<string | null>(null);
@@ -67,6 +69,13 @@ export default function Connections() {
   const [igVerificationCode, setIgVerificationCode] = useState('');
   const [requiresIgMfa, setRequiresIgMfa] = useState(false);
 
+  const linkedinFileRef = useRef<HTMLInputElement>(null);
+  const [liUsername, setLiUsername] = useState('');
+  const [liPassword, setLiPassword] = useState('');
+  const [liVerificationCode, setLiVerificationCode] = useState('');
+  const [requiresLiMfa, setRequiresLiMfa] = useState(false);
+  const [liChallengeUrl, setLiChallengeUrl] = useState<string | null>(null);
+
   // Disconnect confirmation state
   const [disconnectPlatform, setDisconnectPlatform] = useState<string | null>(null);
 
@@ -78,72 +87,131 @@ export default function Connections() {
     return () => clearInterval(interval);
   }, []);
 
-  // ✅ FIX: Promise.all se sab ek saath fetch karo, ek hi setConnections call
   const fetchStatus = async () => {
     try {
-      const [status, gmailStatus, outlookStatus, erpnextStatus, telegramStatus, instagramStatus] =
-        await Promise.all([
-          bridgesApi.getStatus(),
-          bridgesApi.getGmailStatus(),
-          bridgesApi.getOutlookStatus(),
-          bridgesApi.getERPNextStatus(),
-          bridgesApi.getTelegramStatus(),
-          bridgesApi.getInstagramStatus(),
-        ]);
+      const results = await Promise.allSettled([
+        bridgesApi.getStatus(),
+        bridgesApi.getGmailStatus(),
+        bridgesApi.getOutlookStatus(),
+        bridgesApi.getERPNextStatus(),
+        bridgesApi.getTelegramStatus(),
+        bridgesApi.getInstagramStatus(),
+        bridgesApi.getLinkedInStatus(),
+      ]);
+
+      const [
+        resStatus,
+        resGmail,
+        resOutlook,
+        resErpnext,
+        resTelegram,
+        resInstagram,
+        resLinkedin
+      ] = results;
 
       setConnections(prev => prev.map(c => {
         if (c.platform === 'whatsapp') {
+          const data = resStatus.status === 'fulfilled' ? resStatus.value : null;
           return {
             ...c,
-            status: status.whatsapp?.connected ? 'connected' : 'disconnected',
-            contactCount: status.whatsapp?.contact_count || 0,
+            status: data?.whatsapp?.connected ? 'connected' : 'disconnected',
+            contactCount: data?.whatsapp?.contact_count || 0,
           };
         }
         if (c.platform === 'gmail') {
+          const data = resGmail.status === 'fulfilled' ? resGmail.value : null;
           return {
             ...c,
-            status: gmailStatus.is_connected ? 'connected' : 'disconnected',
-            lastSync: gmailStatus.is_connected ? 'Active' : null,
-            contactCount: (gmailStatus as any).contact_count || 0,
+            status: data?.is_connected ? 'connected' : 'disconnected',
+            lastSync: data?.is_connected ? 'Active' : null,
+            contactCount: (data as any)?.contact_count || 0,
           };
         }
         if (c.platform === 'outlook') {
+          const data = resOutlook.status === 'fulfilled' ? resOutlook.value : null;
           return {
             ...c,
-            status: outlookStatus.is_connected ? 'connected' : 'disconnected',
-            lastSync: outlookStatus.is_connected ? 'Active' : null,
-            contactCount: (outlookStatus as any).contact_count || 0,
+            status: data?.is_connected ? 'connected' : 'disconnected',
+            lastSync: data?.is_connected ? 'Active' : null,
+            contactCount: (data as any)?.contact_count || 0,
           };
         }
         if (c.platform === 'erpnext') {
+          const data = resErpnext.status === 'fulfilled' ? resErpnext.value : null;
           return {
             ...c,
-            status: erpnextStatus.is_connected ? 'connected' : 'disconnected',
-            lastSync: erpnextStatus.is_connected ? 'Active' : null,
-            contactCount: erpnextStatus.contact_count || 0,
+            status: data?.is_connected ? 'connected' : 'disconnected',
+            lastSync: data?.is_connected ? 'Active' : null,
+            contactCount: data?.contact_count || 0,
           };
         }
         if (c.platform === 'telegram') {
+          const data = resTelegram.status === 'fulfilled' ? resTelegram.value : null;
           return {
             ...c,
-            status: telegramStatus.connected ? 'connected' : 'disconnected',
-            lastSync: telegramStatus.connected ? 'Active' : null,
-            contactCount: telegramStatus.contact_count || 0,
+            status: data?.connected ? 'connected' : 'disconnected',
+            lastSync: data?.connected ? 'Active' : null,
+            contactCount: data?.contact_count || 0,
           };
         }
         if (c.platform === 'instagram') {
+          const data = resInstagram.status === 'fulfilled' ? resInstagram.value : null;
           return {
             ...c,
-            status: instagramStatus.is_connected ? 'connected' : 'disconnected',
-            lastSync: instagramStatus.is_connected ? 'Active' : null,
-            contactCount: instagramStatus.contact_count || 0,
+            status: data?.is_connected ? 'connected' : 'disconnected',
+            lastSync: data?.is_connected ? 'Active' : null,
+            contactCount: data?.contact_count || 0,
+          };
+        }
+        if (c.platform === 'linkedin') {
+          const data = resLinkedin.status === 'fulfilled' ? resLinkedin.value : null;
+          const csv = data?.connected || false;
+          const msg = data?.messaging_connected || false;
+          const needsMfa = data?.status === 'requires_mfa';
+          
+          if (needsMfa && !requiresLiMfa) {
+            toast.error("LinkedIn requires re-authentication (MFA required)", {
+              description: "Please visit the Connections page to provide your verification code."
+            });
+            setRequiresLiMfa(true);
+          }
+
+          return {
+            ...c,
+            status: needsMfa ? 'disconnected' : (csv || msg ? 'connected' : 'disconnected'),
+            lastSync: needsMfa ? 'Action Required' : (csv || msg ? 'Active' : null),
+            contactCount: Math.max(
+              data?.contact_count || 0,
+              data?.linkedin_chat_count || 0
+            ),
           };
         }
         return c;
       }));
+    } catch (e: unknown) {
+      console.error('Fetch status failed:', e);
+    }
+  };
 
-    } catch (error) {
-      console.error("Failed to fetch connection status", error);
+  const handleLinkedInFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setIsLoading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const r = await bridgesApi.importLinkedInConnections(fd);
+      toast.success(
+        `LinkedIn: ${r.created} new, ${r.updated} updated${r.skipped ? `, ${r.skipped} skipped` : ''} (${r.total_rows} rows).`
+      );
+      handleCloseModal();
+      await fetchStatus();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Import failed';
+      toast.error(msg);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -189,6 +257,28 @@ export default function Connections() {
             ? { ...c, contactCount: gmailResp.synced_count, lastSync: 'Just now' }
             : c
         ));
+        setSyncingPlatform(null);
+        return;
+      } else if (platform === 'linkedin') {
+        try {
+          const li = await bridgesApi.getLinkedInStatus();
+          if (li.messaging_connected) {
+            const r = await bridgesApi.syncLinkedIn();
+            toast.success(
+              `LinkedIn chats synced (${r.messages_new ?? 0} new messages, ${r.chats ?? 0} chats).`
+            );
+            await fetchStatus();
+            setSyncingPlatform(null);
+            return;
+          }
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : 'Messaging sync failed';
+          toast.error(msg);
+        }
+        toast.message('Re-import LinkedIn connections', {
+          description: 'Choose an updated Connections.csv from your LinkedIn data export.',
+        });
+        linkedinFileRef.current?.click();
         setSyncingPlatform(null);
         return;
       } else {
@@ -294,6 +384,10 @@ export default function Connections() {
     if (platform === 'telegram') { setShowTelegramModal(true); return; }
     if (platform === 'gmail') { handleConnectGmail(); return; }
     if (platform === 'outlook') { handleConnectOutlook(); return; }
+    if (platform === 'linkedin') {
+      setConnectingPlatform('linkedin');
+      return;
+    }
 
     if (connectingPlatform !== platform) {
       setConnectingPlatform(platform);
@@ -352,6 +446,9 @@ export default function Connections() {
     setIgPassword('');
     setIgVerificationCode('');
     setRequiresIgMfa(false);
+    setLiVerificationCode('');
+    setRequiresLiMfa(false);
+    setLiChallengeUrl(null);
   };
 
   const handleScanComplete = async (platform?: string) => {
@@ -390,6 +487,9 @@ export default function Connections() {
       else if (platform === 'erpnext') await bridgesApi.disconnectERPNext();
       else if (platform === 'telegram') await bridgesApi.disconnectTelegram();
       else if (platform === 'instagram') await bridgesApi.disconnectInstagram();
+      else if (platform === 'linkedin') {
+        await bridgesApi.disconnectLinkedIn();
+      }
       else await bridgesApi.logout(platform);
 
       setConnections(prev => prev.map(c =>
@@ -487,15 +587,74 @@ export default function Connections() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-background pb-20 pt-0">
-      <TopBar title="Connections" />
+  const connectLinkedInNow = async () => {
+    if (!liUsername.trim() || !liPassword.trim()) {
+      toast.error('Enter your LinkedIn username and password');
+      return;
+    }
+    setIsLoading(true);
+    try {
+      const response = await bridgesApi.connectLinkedIn(
+        liUsername.trim(), 
+        liPassword.trim(), 
+        requiresLiMfa ? liVerificationCode : undefined
+      );
 
-      <main className="max-w-5xl mx-auto px-6 pt-0 pb-12 space-y-8">
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
-          <p className="text-muted-foreground mb-4">
-            Connect your messaging platforms to let Knudge sync your conversations and draft personalized messages.
-          </p>
+      if (response.status === 'requires_mfa') {
+        setRequiresLiMfa(true);
+        if (response.challenge_url) {
+          setLiChallengeUrl(response.challenge_url);
+        }
+        toast.info(response.message || "Verification required. A code has been sent to your email.");
+        return;
+      }
+
+      toast.success('LinkedIn account connected! Syncing chats...');
+      setRequiresLiMfa(false);
+      setLiVerificationCode('');
+      handleCloseModal();
+      
+      // Auto sync after connection
+      await syncLinkedInNow();
+      await fetchStatus();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to connect');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const syncLinkedInNow = async () => {
+    setIsLoading(true);
+    try {
+      const r = await bridgesApi.syncLinkedIn();
+      toast.success(`LinkedIn DMs synced (${r.messages_new ?? 0} new messages).`);
+      await fetchStatus();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Sync failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <PageShell title="Connections" className="pb-20">
+      <input
+        ref={linkedinFileRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        aria-hidden
+        onChange={handleLinkedInFileChange}
+      />
+      <main className="w-full min-w-0 space-y-8 pb-12 pt-0">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="rounded-2xl border border-border/60 bg-muted/15 p-4 text-sm leading-relaxed text-muted-foreground sm:p-5"
+        >
+          Connect your messaging platforms so Knudge can sync conversations and draft personalized messages.
         </motion.div>
 
         {connections.map((connection, index) => (
@@ -533,11 +692,132 @@ export default function Connections() {
                 </button>
               </div>
 
+              {connectingPlatform === 'linkedin' && (
+                <div className="flex flex-col space-y-5 mb-6 text-sm">
+                  <div className="rounded-2xl border border-border/60 bg-muted/10 p-3 space-y-2">
+                    <p className="text-xs font-semibold text-foreground flex items-center gap-2">
+                       <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                       Native Sync Connection
+                    </p>
+                    <p className="text-[11px] text-muted-foreground leading-relaxed">
+                      Connect your account directly using a secure browser bridge. This enables real-time message synchronization.
+                    </p>
+                  </div>
+
+                  {!requiresLiMfa ? (
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-medium text-muted-foreground ml-1 uppercase tracking-wider">LinkedIn Username</label>
+                        <input
+                          type="text"
+                          placeholder="Email or Phone"
+                          value={liUsername}
+                          onChange={(e) => setLiUsername(e.target.value)}
+                          className="w-full h-11 px-4 rounded-xl bg-muted/30 border border-border focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all text-foreground text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-medium text-muted-foreground ml-1 uppercase tracking-wider">LinkedIn Password</label>
+                        <input
+                          type="password"
+                          placeholder="••••••••"
+                          value={liPassword}
+                          onChange={(e) => setLiPassword(e.target.value)}
+                          className="w-full h-11 px-4 rounded-xl bg-muted/30 border border-border focus:border-primary/50 focus:ring-2 focus:ring-primary/10 transition-all text-foreground text-sm"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="space-y-4"
+                    >
+                      <div className="bg-primary/5 border border-primary/10 rounded-2xl p-4">
+                        <p className="text-primary text-sm font-semibold mb-1 flex items-center gap-2">
+                          <QrCode className="h-4 w-4" />
+                          Security Verification
+                        </p>
+                        <p className="text-muted-foreground text-[11px] leading-relaxed">
+                          LinkedIn has sent a 6-digit verification code to your email. Please enter it below to authorize this session.
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-[11px] font-medium text-muted-foreground text-center block uppercase tracking-wider">Verification PIN</label>
+                        <input
+                          type="text"
+                          placeholder="000000"
+                          value={liVerificationCode}
+                          onChange={(e) => setLiVerificationCode(e.target.value)}
+                          className="w-full h-14 px-4 rounded-xl bg-muted/40 border-2 border-primary/20 text-foreground text-xl text-center font-mono tracking-[0.5em] focus:border-primary focus:ring-4 focus:ring-primary/5 transition-all"
+                          maxLength={6}
+                        />
+                      </div>
+                    </motion.div>
+                  )}
+
+                  <div className="space-y-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => void connectLinkedInNow()}
+                      disabled={isLoading}
+                      className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm shadow-lg shadow-primary/20 active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          {requiresLiMfa ? 'Verifying...' : 'Initializing Bridge...'}
+                        </>
+                      ) : requiresLiMfa ? (
+                        'Verify & Complete Setup'
+                      ) : (
+                        'Securely Connect LinkedIn'
+                      )}
+                    </button>
+
+                    <div className="flex flex-col items-center gap-3 py-2">
+                      <div className="flex items-center gap-2 w-full">
+                        <div className="h-[1px] bg-border/50 flex-1" />
+                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground/60 font-bold whitespace-nowrap">or use offline import</span>
+                        <div className="h-[1px] bg-border/50 flex-1" />
+                      </div>
+                      
+                      <button
+                        type="button"
+                        onClick={() => linkedinFileRef.current?.click()}
+                        disabled={isLoading}
+                        className="text-xs font-medium text-primary hover:underline transition-all"
+                      >
+                         Choose Connections.csv
+                      </button>
+                    </div>
+
+                    <div className="rounded-xl border border-border/50 bg-muted/5 p-3">
+                      <p className="text-[10px] text-muted-foreground leading-relaxed text-center">
+                        <span className="text-foreground font-semibold">Privacy Policy:</span> Knudge uses a self-hosted browser bridge. Your credentials are used once for authentication and are never shared with third parties.
+                      </p>
+                    </div>
+
+                    {requiresLiMfa && (
+                      <button
+                        type="button"
+                        onClick={() => setRequiresLiMfa(false)}
+                        className="text-xs text-muted-foreground hover:text-foreground transition-all mx-auto w-full text-center"
+                      >
+                        Back to Login
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {connectingPlatform !== 'linkedin' && (
               <div className="flex flex-col items-center justify-center mb-6">
-                {isLoading ? (
+                {(isLoading && !pairingCode && !qrCodeData && !showPhoneInput) ? (
                   <div className="flex flex-col items-center space-y-2">
-                    <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Generating code...</span>
+                    <Loader2 className="h-12 w-12 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground">Initializing secure connection...</p>
                   </div>
                 ) : pairingCode ? (
                   <div className="flex flex-col items-center space-y-4">
@@ -572,6 +852,7 @@ export default function Connections() {
                   </div>
                 )}
               </div>
+              )}
 
               {connectingPlatform === 'gmail' && (
                 <div className="flex flex-col space-y-4">
@@ -659,7 +940,7 @@ export default function Connections() {
                 </div>
               )}
 
-              {!showPhoneInput && !pairingCode && connectingPlatform !== 'gmail' && connectingPlatform !== 'outlook' && connectingPlatform !== 'erpnext' && connectingPlatform !== 'instagram' && (
+              {!showPhoneInput && !pairingCode && connectingPlatform !== 'gmail' && connectingPlatform !== 'outlook' && connectingPlatform !== 'erpnext' && connectingPlatform !== 'instagram' && connectingPlatform !== 'linkedin' && (
                 <p className="text-sm text-muted-foreground text-center mb-6">Scan this QR code with {platformNames[connectingPlatform as keyof typeof platformNames]} on your phone. The connection will complete automatically.</p>
               )}
 
@@ -689,6 +970,6 @@ export default function Connections() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </PageShell>
   );
 }
