@@ -13,6 +13,8 @@ import { bridgesApi } from '@/api/bridges';
 import { Avatar } from '@/components/Avatar';
 import { whatsappWS } from '@/lib/whatsappWebSocket';
 import { telegramWS } from '@/lib/telegramWebSocket';
+import { useQueryClient } from '@tanstack/react-query';
+import { patchInboxInfiniteCache } from '@/hooks/useInbox';
 
 interface ChatMessage {
   id: number | string;
@@ -114,6 +116,7 @@ const mockInboxChats = ['1', '2', '4', '5'];
 export default function ChatDetail() {
   const navigate = useNavigate();
   const { contactId } = useParams<{ contactId: string }>();
+  const queryClient = useQueryClient();
   const parseRoomId = useCallback((room: string) => {
     const s = (room || '').trim();
     if (!s) return { provider: '', actualId: '' };
@@ -228,6 +231,32 @@ export default function ChatDetail() {
     } else if (isTelegram && parsedActualId) {
       markAsRead(contactId || `telegram-${parsedActualId}`);
       markAsRead(parsedActualId);
+      // Persist on backend so Telegram unread_count is no longer "incoming => unread forever".
+      if (accessToken) {
+        void fetch(`${API_BASE_URL}/telegram/chat/${encodeURIComponent(parsedActualId)}/read`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${accessToken}` },
+        }).catch(() => {
+          /* ignore */
+        });
+      }
+
+      // Optimistically clear unread dot in cached inbox pages.
+      const threadId = contactId || `telegram-${parsedActualId}`;
+      patchInboxInfiniteCache(
+        queryClient,
+        'all',
+        '',
+        (c) => String(c.id) === String(threadId),
+        (c) => ({ ...c, unread_count: 0 })
+      );
+      patchInboxInfiniteCache(
+        queryClient,
+        'telegram',
+        '',
+        (c) => String(c.id) === String(threadId),
+        (c) => ({ ...c, unread_count: 0 })
+      );
     } else if (contactId === 'ig' && roomId) {
       markAsRead(`ig-chat-${roomId}`, roomId);
     } else if (isLinkedIn) {
@@ -245,7 +274,7 @@ export default function ChatDetail() {
     if (currentMsg) {
       markAsRead(currentMsg.id, currentMsg.roomId, currentMsg.normalizedPhone, currentMsg.identityKey);
     }
-  }, [contactId, roomId, linkedInChatId, parsedProvider, parsedActualId, markAsRead, inboxMessages]);
+  }, [contactId, roomId, linkedInChatId, parsedProvider, parsedActualId, accessToken, markAsRead, inboxMessages, queryClient]);
 
   // Dynamic contact based on params or sample
   const [dynamicContact, setDynamicContact] = useState<ContactInfo | null>(null);
@@ -1296,7 +1325,7 @@ export default function ChatDetail() {
 
               return (
                 <motion.div
-                  key={message.id}
+                  key={`${String(message.id)}-${String((message as any).timestamp_raw ?? message.timestamp ?? '')}-${idx}`}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
