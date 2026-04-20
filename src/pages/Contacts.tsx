@@ -8,10 +8,10 @@ import { PlatformBadge } from '@/components/PlatformBadge';
 import { Button } from '@/components/ui/button';
 import { PageShell } from '@/components/layout/PageShell';
 // Resolved imports calling real API
-import { contactsApi, Contact, Circle } from '@/api/contacts';
+import { contactsApi, Contact, Circle, ContactStats } from '@/api/contacts';
 import { bridgesApi } from '@/api/bridges';
 import { toast } from 'sonner';
-import { cn, formatPhone } from '@/lib/utils';
+import { cn, formatPhone, formatSenderName } from '@/lib/utils';
 import { remindersApi } from '@/api/reminders';
 
 // Platform options for new contacts
@@ -55,27 +55,107 @@ export default function Contacts() {
   const [scheduleNote, setScheduleNote] = useState('');
   const [contactReminders, setContactReminders] = useState<any[]>([]);
   const [loadingReminders, setLoadingReminders] = useState(false);
+  const [stats, setStats] = useState<ContactStats | null>(null);
+  const [listMeta, setListMeta] = useState<{
+    total: number;
+    truncated: boolean;
+    hasMore: boolean;
+  } | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [loadError, setLoadError] = useState(false);
+  const contactsRef = useRef<Contact[]>([]);
+  const nextCursorRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    contactsRef.current = contacts;
+  }, [contacts]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 350);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  const PAGE_SIZE = 100;
+
+  const loadStats = useCallback(async () => {
+    try {
+      const statsData = await contactsApi.getStats();
+      setStats(statsData);
+    } catch (error) {
+      console.error('Failed to load stats:', error);
+    }
+  }, []);
 
   useEffect(() => {
     loadCircles();
-  }, []);
+    loadStats();
+  }, [loadStats]);
 
-  const loadContacts = useCallback(async () => {
-    setLoading(true);
-    try {
-      const contactsData = await contactsApi.getContacts(selectedCircleId || undefined);
-      setContacts(contactsData);
-    } catch (error) {
-      console.error('Failed to load contacts:', error);
-      toast.error('Failed to load contacts.');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedCircleId]);
+  const fetchContactsPage = useCallback(
+    async (append: boolean) => {
+      if (!append) {
+        setLoading(true);
+        setLoadError(false);
+        nextCursorRef.current = null;
+      } else {
+        setLoadingMore(true);
+      }
+      try {
+        const platform = selectedPlatform === 'all' ? 'all' : selectedPlatform;
+        const page = await contactsApi.getContactsPage({
+          platform,
+          limit: PAGE_SIZE,
+          ...(append && nextCursorRef.current
+            ? { cursor: nextCursorRef.current }
+            : { offset: 0 }),
+          circleId: selectedCircleId || undefined,
+          search: debouncedSearch || undefined,
+          validate: Boolean((import.meta as any).env?.VITE_CONTACTS_VALIDATE_SQL),
+        });
+        nextCursorRef.current = page.next_cursor ?? null;
+        if (append) {
+          setContacts((prev) => {
+            const ids = new Set(prev.map((c) => c.id));
+            const extra = page.items.filter((c) => !ids.has(c.id));
+            return [...prev, ...extra];
+          });
+        } else {
+          setContacts(page.items);
+        }
+        setListMeta({
+          total: page.total,
+          truncated: page.truncated,
+          hasMore: page.has_more,
+        });
+        if (!append) {
+          void loadStats();
+        }
+        if (import.meta.env.DEV && page.consistency) {
+          const c = page.consistency as Record<string, unknown>;
+          if (c.whatsapp_aligned === false || c.gmail_aligned === false) {
+            console.warn('[contacts] SQL vs merge check (enable VITE_CONTACTS_VALIDATE_SQL)', page.consistency);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load contacts:', error);
+        if (!append) {
+          setLoadError(true);
+          setContacts([]);
+          setListMeta(null);
+        }
+        toast.error('Could not load contacts. Check your connection and try again.');
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    },
+    [selectedCircleId, selectedPlatform, debouncedSearch, loadStats]
+  );
 
   useEffect(() => {
-    loadContacts();
-  }, [loadContacts]);
+    void fetchContactsPage(false);
+  }, [fetchContactsPage]);
 
   /** Pull fresh rows from connected bridges (WhatsApp, Gmail, …) then reload list. */
   const syncIntegrationsAndReload = useCallback(async () => {
@@ -85,7 +165,11 @@ export default function Contacts() {
       const jobs: Promise<unknown>[] = [];
 
       if (status.whatsapp?.connected) jobs.push(bridgesApi.sync('whatsapp'));
-      if (status.gmail?.connected) jobs.push(bridgesApi.sync('gmail'));
+      if (status.gmail?.connected) {
+        jobs.push(
+          bridgesApi.sync('gmail').then(() => bridgesApi.syncGmailInbox())
+        );
+      }
       if (status.outlook?.connected) jobs.push(bridgesApi.sync('outlook'));
       if (status.erpnext?.connected) jobs.push(bridgesApi.syncERPNext());
       if (status.telegram?.connected) jobs.push(bridgesApi.syncTelegram());
@@ -94,9 +178,9 @@ export default function Contacts() {
       if (jobs.length === 0) {
         toast.message('No connected sources', {
           description:
-            'Open Connections to link WhatsApp, Gmail, or Telegram, or import LinkedIn connections (CSV), then tap Sync again.',
+            'Open Sync settings to link WhatsApp, Gmail, or Telegram, or import LinkedIn connections (CSV), then tap Sync again.',
         });
-        await loadContacts();
+        await fetchContactsPage(false);
         return;
       }
 
@@ -104,19 +188,19 @@ export default function Contacts() {
       const failed = settled.filter((s) => s.status === 'rejected').length;
       if (failed > 0) {
         toast.warning('Some syncs failed', {
-          description: `${settled.length - failed} source(s) synced. Check Connections for errors.`,
+          description: `${settled.length - failed} source(s) synced. Check Sync page for errors.`,
         });
       } else {
-        toast.success('Synced from your connections');
+        toast.success('Synced from your sources');
       }
-      await loadContacts();
+      await Promise.all([fetchContactsPage(false), loadStats(), loadCircles()]);
     } catch {
       toast.error('Could not reach the server to sync.');
-      await loadContacts();
+      await fetchContactsPage(false);
     } finally {
       setSyncingIntegrations(false);
     }
-  }, [loadContacts]);
+  }, [fetchContactsPage]);
 
   useEffect(() => {
     const onVisibility = () => {
@@ -124,11 +208,11 @@ export default function Contacts() {
       const now = Date.now();
       if (now - lastVisibilityRefetchRef.current < 12_000) return;
       lastVisibilityRefetchRef.current = now;
-      loadContacts();
+      void fetchContactsPage(false);
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, [loadContacts]);
+  }, [fetchContactsPage]);
 
   useEffect(() => {
     if (selectedContact) {
@@ -227,15 +311,17 @@ export default function Contacts() {
   };
 
   const filterOptions = [
-    { id: null, label: 'All Circles' },
-    ...circles.map(c => ({ id: c.id, label: c.name }))
+    { id: null, label: 'All Circles', count: stats?.total_contacts },
+    ...circles.map(c => ({ id: c.id, label: c.name, count: c.contacts_count }))
   ];
 
   // Helper for platform icons in filters
   const getPlatformIcon = (id: string) => {
     switch (id) {
       case 'whatsapp': return <MessageSquare className="h-3 w-3" />;
-      case 'gmail': return <Mail className="h-3 w-3" />;
+      case 'gmail':
+      case 'google_contacts':
+        return <Mail className="h-3 w-3" />;
       case 'outlook': return <Mail className="h-3 w-3" />;
       case 'telegram': return <Send className="h-3 w-3" />;
       case 'erpnext': return <Building2 className="h-3 w-3" />;
@@ -244,38 +330,37 @@ export default function Contacts() {
     }
   };
 
+  const activeProviders = new Set(
+    contacts.map((c) => (c.provider || '').toLowerCase()).filter(Boolean)
+  );
+  if (activeProviders.has('google_contacts')) {
+    activeProviders.add('gmail');
+  }
+  if ((stats?.platform_counts?.gmail ?? 0) > 0) {
+    activeProviders.add('gmail');
+  }
+  if ((stats?.platform_counts?.whatsapp ?? 0) > 0) {
+    activeProviders.add('whatsapp');
+  }
+  // Providers may not appear on the first loaded page (sorted by name),
+  // so use server stats to decide which chips to show.
+  if ((stats?.platform_counts?.outlook ?? 0) > 0) activeProviders.add('outlook');
+  if ((stats?.platform_counts?.telegram ?? 0) > 0) activeProviders.add('telegram');
+  if ((stats?.platform_counts?.erpnext ?? 0) > 0) activeProviders.add('erpnext');
+  if ((stats?.platform_counts?.linkedin ?? 0) > 0) activeProviders.add('linkedin');
   const platformFilters = [
     { id: 'all', label: 'All' },
-    { id: 'whatsapp', label: 'WhatsApp' },
-    { id: 'gmail', label: 'Gmail' },
-    { id: 'outlook', label: 'Outlook' },
-    { id: 'telegram', label: 'Telegram' },
-    { id: 'erpnext', label: 'ERPNext' },
-    { id: 'linkedin', label: 'LinkedIn' },
+    ...(activeProviders.has('whatsapp') ? [{ id: 'whatsapp', label: 'WhatsApp' }] : []),
+    ...(activeProviders.has('gmail') ? [{ id: 'gmail', label: 'Gmail' }] : []),
+    ...(activeProviders.has('outlook') ? [{ id: 'outlook', label: 'Outlook' }] : []),
+    ...(activeProviders.has('telegram') ? [{ id: 'telegram', label: 'Telegram' }] : []),
+    ...(activeProviders.has('erpnext') ? [{ id: 'erpnext', label: 'ERPNext' }] : []),
+    ...(activeProviders.has('linkedin') || activeProviders.has('linkedin_native') 
+          ? [{ id: 'linkedin', label: 'LinkedIn' }] : []),
   ];
 
-  // Client-side filtering for search and platform
-  const filteredContacts = contacts.filter((contact) => {
-    const matchesSearch = contact.name.toLowerCase().includes(searchQuery.toLowerCase());
-    if (!matchesSearch) return false;
-
-    if (selectedPlatform !== 'all') {
-      if (selectedPlatform === 'whatsapp') {
-        if (!contact.phone && contact.provider !== 'whatsapp') return false;
-      } else if (selectedPlatform === 'gmail') {
-        if (contact.provider !== 'gmail') return false;
-      } else if (selectedPlatform === 'outlook') {
-        if (contact.provider !== 'outlook') return false;
-      } else if (selectedPlatform === 'telegram') {
-        if (contact.provider !== 'telegram') return false;
-      } else if (selectedPlatform === 'erpnext') {
-        if (contact.provider !== 'erpnext') return false;
-      } else if (selectedPlatform === 'linkedin') {
-        if (!contact.linkedin_url) return false;
-      }
-    }
-    return true;
-  });
+  const showSyncingPlaceholder =
+    !loading && !loadingMore && contacts.length === 0 && loadError;
 
   if (loading && contacts.length === 0 && circles.length === 0) {
     return (
@@ -290,15 +375,28 @@ export default function Contacts() {
       title="Contacts"
       toolbar={
         <div className="w-full min-w-0 space-y-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <input
-              type="text"
-              placeholder="Search contacts..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <input
+                type="text"
+                placeholder="Search contacts..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={syncingIntegrations || loading}
+              onClick={syncIntegrationsAndReload}
+              className="h-9 shrink-0 gap-2 border-primary/20 bg-primary/5 font-bold text-primary hover:bg-primary/10 hover:text-primary"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", syncingIntegrations && "animate-spin")} />
+              Sync
+            </Button>
           </div>
 
           <div className="flex items-center gap-3">
@@ -315,6 +413,9 @@ export default function Contacts() {
                     }`}
                 >
                   {filter.label}
+                  {filter.count !== undefined && (
+                    <span className="ml-1 opacity-60 text-[9px]">({filter.count})</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -324,33 +425,32 @@ export default function Contacts() {
             <div className="flex min-w-0 items-center gap-3">
               <span className="shrink-0 text-[10px] font-bold tracking-widest text-muted-foreground/50 uppercase">Connect</span>
               <div className="scrollbar-hide flex gap-1.5 overflow-x-auto">
-                {platformFilters.map((filter) => (
-                  <button
-                    key={filter.id}
-                    type="button"
-                    onClick={() => setSelectedPlatform(filter.id)}
-                    className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-0.5 text-[10px] font-bold tracking-wider whitespace-nowrap uppercase transition-all ${selectedPlatform === filter.id
-                      ? 'border-foreground bg-foreground text-background shadow-sm'
-                      : 'border-border bg-transparent text-muted-foreground hover:border-muted-foreground/50'
-                      }`}
-                  >
-                    {getPlatformIcon(filter.id)}
-                    {filter.label}
-                  </button>
-                ))}
+                {platformFilters.map((filter) => {
+                  const count = filter.id === 'all'
+                    ? stats?.total_contacts
+                    : stats?.platform_counts?.[filter.id];
+
+                  return (
+                    <button
+                      key={filter.id}
+                      type="button"
+                      onClick={() => setSelectedPlatform(filter.id)}
+                      className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-0.5 text-[10px] font-bold tracking-wider whitespace-nowrap uppercase transition-all ${selectedPlatform === filter.id
+                        ? 'border-foreground bg-foreground text-background shadow-sm'
+                        : 'border-border bg-transparent text-muted-foreground hover:border-muted-foreground/50'
+                        }`}
+                    >
+                      {getPlatformIcon(filter.id)}
+                      {filter.label}
+                      {count !== undefined && (
+                        <span className="ml-1 opacity-60 text-[9px]">({count})</span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={syncingIntegrations || loading}
-              onClick={() => void syncIntegrationsAndReload()}
-              className="h-9 shrink-0 gap-2 border-primary/25 bg-primary/5 text-primary hover:bg-primary/10"
-            >
-              <RefreshCw className={cn('h-4 w-4', syncingIntegrations && 'animate-spin')} aria-hidden />
-              {syncingIntegrations ? 'Syncing…' : 'Sync from connections'}
-            </Button>
+
           </div>
         </div>
       }
@@ -358,8 +458,24 @@ export default function Contacts() {
       {/* Contact List */}
       <main className="w-full min-w-0 pb-20">
         <div className="divide-y divide-border/50">
-          {filteredContacts.length > 0 ? (
-            filteredContacts.map((contact) => (
+          {showSyncingPlaceholder ? (
+            <div className="flex flex-col items-center justify-center gap-3 py-14 px-4 text-center">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden />
+              <p className="text-sm font-medium text-foreground">Contacts are syncing…</p>
+              <p className="max-w-sm text-xs text-muted-foreground">
+                Your sources are still merging, or the network hiccuped. Try Sync or pull to refresh in a moment.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void fetchContactsPage(false)}
+              >
+                Retry
+              </Button>
+            </div>
+          ) : contacts.length > 0 ? (
+            contacts.map((contact) => (
               <ContactItem
                 key={contact.id}
                 contact={contact as any} // Cast because UI might expect slightly diff shape, but ContactItem handles Contact type
@@ -385,7 +501,7 @@ export default function Contacts() {
                       Sync now
                     </Button>
                     <Button type="button" size="sm" variant="outline" asChild>
-                      <Link to="/connections">Connections</Link>
+                      <Link to="/connections">Sync</Link>
                     </Button>
                   </div>
                 </div>
@@ -398,6 +514,39 @@ export default function Contacts() {
             </div>
           )}
         </div>
+        {listMeta?.truncated && (
+          <p className="border-t border-border/50 px-4 py-2 text-center text-[11px] text-amber-800 dark:text-amber-200/90 bg-amber-500/10">
+            Your address book is very large; this view shows the first portion. Counts in the header
+            still reflect your full merged list.
+          </p>
+        )}
+        {listMeta && listMeta.total > 0 && contacts.length > 0 && (
+          <p className="border-t border-border/50 px-4 py-1.5 text-center text-[10px] text-muted-foreground">
+            Showing {contacts.length} of {listMeta.total}
+            {selectedPlatform !== 'all' ? ` · ${selectedPlatform}` : ''}
+          </p>
+        )}
+        {listMeta?.hasMore && (
+          <div className="flex justify-center border-t border-border/50 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={loadingMore}
+              onClick={() => void fetchContactsPage(true)}
+              className="min-w-[8rem]"
+            >
+              {loadingMore ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden />
+                  Loading…
+                </>
+              ) : (
+                'Load more'
+              )}
+            </Button>
+          </div>
+        )}
       </main>
 
       {/* Add Contact FAB */}
@@ -565,7 +714,7 @@ export default function Contacts() {
                       toast.success(`${newContact.name} added to contacts!`);
                       setNewContact({ name: '', phone: '', email: '', title: '', company: '', platforms: [] });
                       setShowCreateModal(false);
-                      loadContacts();
+                      void fetchContactsPage(false);
                     } catch (error) {
                       toast.error("Failed to create contact");
                     }
@@ -610,7 +759,7 @@ export default function Contacts() {
                     src={selectedContact.avatar}
                     size="xl"
                   />
-                  <h2 className="text-xl font-bold text-foreground mt-4">{selectedContact.name}</h2>
+                  <h2 className="text-xl font-bold text-foreground mt-4">{formatSenderName(selectedContact.name)}</h2>
                   <p className="text-muted-foreground">
                     {selectedContact.linkedin_url && `via LinkedIn`}
                     {selectedContact.instagram_username && ` @${selectedContact.instagram_username}`}
@@ -619,16 +768,34 @@ export default function Contacts() {
 
                   <div className="flex items-center gap-2 mt-4">
                     {(() => {
-                      const platforms = [];
-                      if (selectedContact.email) platforms.push('email');
-                      if (selectedContact.phone) platforms.push('whatsapp');
-                      if (selectedContact.linkedin_url) platforms.push('linkedin');
-                      if (selectedContact.instagram_username) platforms.push('instagram');
+                      const platforms: string[] = [];
+
+                      // 1. Check explicit providers
+                      if (selectedContact.provider) {
+                        const providers = selectedContact.provider.split(',');
+                        platforms.push(...providers);
+                      }
+
+                      // 2. Fallbacks
+                      if (selectedContact.email && !platforms.some(p => ['gmail', 'outlook', 'email'].includes(p))) {
+                        platforms.push('email');
+                      }
+                      if (selectedContact.phone && !platforms.includes('whatsapp')) {
+                        platforms.push('whatsapp');
+                      }
+                      if (selectedContact.linkedin_url && !platforms.includes('linkedin')) {
+                        platforms.push('linkedin');
+                      }
+                      if (selectedContact.instagram_username && !platforms.includes('instagram')) {
+                        platforms.push('instagram');
+                      }
 
                       return platforms.length > 0 ? (
-                        platforms.map(p => (
-                          <PlatformBadge key={p} platform={p as any} size="md" showLabel />
-                        ))
+                        <div className="flex flex-wrap items-center justify-center gap-2">
+                          {platforms.map(p => (
+                            <PlatformBadge key={p} platform={p as any} size="md" showLabel />
+                          ))}
+                        </div>
                       ) : (
                         <span className="text-xs text-muted-foreground">No connected platforms</span>
                       );

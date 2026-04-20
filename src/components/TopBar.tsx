@@ -19,8 +19,8 @@ export function TopBar({ title, showNotifications = true }: TopBarProps) {
   return (
     <>
       {/* Single flow root so PageShell spacing isn't broken by fragment + fixed overlays */}
-      <div className="relative z-40 mb-4 w-full shrink-0 sm:mb-5">
-        <header className="sticky top-4 h-16 w-full rounded-2xl glass-panel shadow-elevated sm:top-6">
+      <div className="relative z-40 w-full shrink-0">
+        <header className="h-16 w-full rounded-2xl glass-panel shadow-elevated">
           <div className="flex h-full w-full min-w-0 items-center justify-between gap-3 px-4 sm:px-6">
             {/* Page Title */}
             <div className="min-w-0 flex-1">

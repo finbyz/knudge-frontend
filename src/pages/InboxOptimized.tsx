@@ -1,13 +1,19 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Mail, X, Check, Archive, MailOpen, Loader2 } from 'lucide-react';
+import { Search, Mail, X, Check, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useQueryClient } from '@tanstack/react-query';
 import { TopBar } from '@/components/TopBar';
 import { useToast } from '@/hooks/use-toast';
 import { useUnreadStore } from '@/stores/unreadStore';
 import { useAuthStore } from '@/stores/authStore';
-import { useInboxStore, type InboxMessage } from '@/stores/inboxStore';
-import { useUnifiedMessages, useInvalidateMessages } from '@/hooks/useMessages';
+import { useInboxStore, type InboxMessage, scheduleInboxTabsMetaRefresh } from '@/stores/inboxStore';
+import {
+  useInboxList,
+  patchInboxInfiniteCache,
+  pruneThreadFromInboxPageCaches,
+  useDebouncedSearch,
+} from '@/hooks/useInbox';
 import { VirtualizedInboxList } from '@/components/VirtualizedInboxList';
 import { telegramWS } from '@/lib/telegramWebSocket';
 import { whatsappWS } from '@/lib/whatsappWebSocket';
@@ -22,8 +28,12 @@ interface SwipeState {
 export default function InboxOptimized() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
-  // Only subscribe to the action we need (avoid re-render loops on store state updates).
+  const debouncedSearch = useDebouncedSearch(searchQuery);
+  const queryClient = useQueryClient();
   const updateOrAddMessage = useInboxStore((s) => s.updateOrAddMessage);
+  const archiveMessage = useInboxStore((s) => s.archiveMessage);
+  const markAsRead = useInboxStore((s) => s.markAsRead);
+
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -38,27 +48,38 @@ export default function InboxOptimized() {
   const { toast } = useToast();
   const { clearUnreadInbox } = useUnreadStore();
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
 
-  // Use React Query for data fetching
+  const inboxQuery = useInboxList('all', debouncedSearch);
   const {
-    messages,
-    isLoading,
+    flatMessages,
+    isPending,
     isFetching,
     hasNextPage,
     fetchNextPage,
-  } = useUnifiedMessages();
+    isFetchingNextPage,
+    debouncedSearch: inboxDebouncedSearch,
+  } = inboxQuery;
 
-  const invalidate = useInvalidateMessages();
+  useEffect(() => {
+    const el = loadMoreSentinelRef.current;
+    if (!el || !hasNextPage) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (first?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          void fetchNextPage();
+        }
+      },
+      { root: null, rootMargin: '160px', threshold: 0 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage, flatMessages.length]);
 
-  // Update local store when query data changes
-  // Note: we intentionally do NOT sync hook messages into Zustand here.
-  // `useUnifiedMessages` rebuilds a new array reference frequently, which can cause an update loop.
-
-  // WebSocket connections for real-time updates
   useEffect(() => {
     if (!accessToken) return;
 
-    // WhatsApp WebSocket
     whatsappWS.connect(accessToken);
     const unsubscribeWA = whatsappWS.onMessage((msg) => {
       updateOrAddMessage(
@@ -67,12 +88,34 @@ export default function InboxOptimized() {
         msg.sender_name || 'WhatsApp User',
         msg.text,
         new Date(msg.timestamp),
-        msg.avatar
+        msg.avatar,
+        msg.normalized_phone,
+        msg.identity_key
       );
-      invalidate.invalidateWhatsApp();
+      const ts =
+        typeof msg.timestamp === 'string'
+          ? msg.timestamp
+          : new Date(msg.timestamp).toISOString();
+      patchInboxInfiniteCache(
+        queryClient,
+        'all',
+        inboxDebouncedSearch,
+        (c) =>
+          String(c.platform) === 'whatsapp' &&
+          (String(c.room_id) === String(msg.room_id) ||
+            (msg.identity_key && String(c.identity_key) === String(msg.identity_key)) ||
+            (msg.normalized_phone &&
+              String(c.normalized_phone) === String(msg.normalized_phone))),
+        (c) => ({
+          ...c,
+          preview: msg.text ?? c.preview,
+          timestamp: ts,
+          unread_count: Math.max(Number(c.unread_count) || 0, 1),
+        })
+      );
+      scheduleInboxTabsMetaRefresh();
     });
 
-    // Telegram WebSocket
     telegramWS.connect(accessToken);
     const unsubscribeTG = telegramWS.onMessage((msg) => {
       updateOrAddMessage(
@@ -82,97 +125,109 @@ export default function InboxOptimized() {
         msg.text,
         new Date(msg.timestamp)
       );
-      invalidate.invalidateTelegram();
+      const ts =
+        typeof msg.timestamp === 'string'
+          ? msg.timestamp
+          : new Date(msg.timestamp).toISOString();
+      patchInboxInfiniteCache(
+        queryClient,
+        'all',
+        inboxDebouncedSearch,
+        (c) =>
+          String(c.platform) === 'telegram' &&
+          (String(c.room_id) === String(msg.chat_id) ||
+            String(c.id) === `telegram-${msg.chat_id}`),
+        (c) => ({
+          ...c,
+          preview: msg.text ?? c.preview,
+          timestamp: ts,
+          unread_count: Math.max(Number(c.unread_count) || 0, 1),
+        })
+      );
+      scheduleInboxTabsMetaRefresh();
     });
 
     return () => {
       unsubscribeWA();
       unsubscribeTG();
     };
-  }, [accessToken, updateOrAddMessage, invalidate]);
+  }, [accessToken, updateOrAddMessage, queryClient, inboxDebouncedSearch]);
 
-  // Clear unread count on mount
   useEffect(() => {
     clearUnreadInbox();
   }, [clearUnreadInbox]);
 
-  // Filter messages based on search query
-  const filteredMessages = useMemo(() => {
-    if (!searchQuery.trim()) return messages;
-    const query = searchQuery.toLowerCase();
-    return messages.filter((msg) =>
-      (msg.sender?.name ?? '').toLowerCase().includes(query) ||
-      (msg.preview ?? '').toLowerCase().includes(query) ||
-      ((msg.subject ?? '').toLowerCase().includes(query))
-    );
-  }, [messages, searchQuery]);
-
-  // Handlers
-  const handleRowClick = useCallback((message: InboxMessage) => {
-    if (selectionMode) {
-      toggleSelection(message.id);
-    } else if (!swipeState.isSwiping) {
-      if (message.unread) {
-        // Optimistic update
-        updateOrAddMessage(
-          message.platform,
-          message.roomId || message.id,
-          message.sender.name,
-          message.preview,
-          message.sortDate || new Date()
-        );
-      }
-
-      // Navigate based on platform
-      if (['email', 'outlook', 'gmail'].includes(message.platform)) {
-        navigate(`/inbox/email/${message.id}`);
-      } else if (message.platform === 'whatsapp') {
-        if (message.contactId) {
-          navigate(`/inbox/chat/${message.contactId}?name=${encodeURIComponent(message.sender.name)}`);
-        } else if (message.roomId) {
-          // Temporary fallback for cases where we can't resolve a UUID contact id yet.
-          const roomParam = encodeURIComponent(message.roomId);
-          const phoneParam = message.sender.phone
-            ? `&phone=${encodeURIComponent(message.sender.phone)}`
+  const handleRowClick = useCallback(
+    (message: InboxMessage) => {
+      if (selectionMode) {
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          if (next.has(message.id)) next.delete(message.id);
+          else next.add(message.id);
+          return next;
+        });
+      } else if (!swipeState.isSwiping) {
+        if (['email', 'outlook', 'gmail'].includes(message.platform)) {
+          navigate(`/inbox/email/${message.id}`);
+        } else if (message.platform === 'whatsapp') {
+          if (message.contactId) {
+            navigate(
+              `/inbox/chat/${message.contactId}?name=${encodeURIComponent(message.sender.name)}`
+            );
+          } else if (message.roomId) {
+            const roomParam = encodeURIComponent(message.roomId);
+            const phoneParam = message.sender.phone
+              ? `&phone=${encodeURIComponent(message.sender.phone)}`
+              : '';
+            navigate(
+              `/inbox/chat/wa?room=${roomParam}&name=${encodeURIComponent(message.sender.name)}${phoneParam}`
+            );
+          }
+        } else if (message.platform === 'instagram' && message.roomId) {
+          navigate(
+            `/inbox/chat/ig?room=${encodeURIComponent(message.roomId)}&name=${encodeURIComponent(message.sender.name)}`
+          );
+        } else if (message.platform === 'linkedin' && message.roomId) {
+          const avatarParam = message.sender.avatar
+            ? `&avatar=${encodeURIComponent(message.sender.avatar)}`
             : '';
-          navigate(`/inbox/chat/wa?room=${roomParam}&name=${encodeURIComponent(message.sender.name)}${phoneParam}`);
+          navigate(
+            `/inbox/chat/li?chat_id=${encodeURIComponent(message.roomId)}&name=${encodeURIComponent(message.sender.name)}${avatarParam}`
+          );
+        } else if (message.platform === 'telegram' && message.roomId) {
+          const avatarParam = message.sender.avatar
+            ? `&avatar=${encodeURIComponent(message.sender.avatar)}`
+            : '';
+          navigate(
+            `/inbox/chat/${message.id}?name=${encodeURIComponent(message.sender.name)}${avatarParam}`
+          );
+        } else {
+          navigate(`/inbox/chat/${message.id}?name=${encodeURIComponent(message.sender.name)}`);
         }
-      } else if (message.platform === 'instagram' && message.roomId) {
-        navigate(`/inbox/chat/ig?room=${encodeURIComponent(message.roomId)}&name=${encodeURIComponent(message.sender.name)}`);
-      } else if (message.platform === 'linkedin' && message.roomId) {
-        const avatarParam = message.sender.avatar ? `&avatar=${encodeURIComponent(message.sender.avatar)}` : '';
-        navigate(
-          `/inbox/chat/li?chat_id=${encodeURIComponent(message.roomId)}&name=${encodeURIComponent(message.sender.name)}${avatarParam}`
-        );
-      } else if (message.platform === 'telegram' && message.roomId) {
-        const avatarParam = message.sender.avatar ? `&avatar=${encodeURIComponent(message.sender.avatar)}` : '';
-        navigate(`/inbox/chat/${message.id}?name=${encodeURIComponent(message.sender.name)}${avatarParam}`);
-      } else {
-        navigate(`/inbox/chat/${message.id}?name=${encodeURIComponent(message.sender.name)}`);
       }
-    }
-  }, [selectionMode, swipeState.isSwiping, navigate, updateOrAddMessage]);
+    },
+    [selectionMode, swipeState.isSwiping, navigate]
+  );
 
   const toggleSelection = useCallback((messageId: string) => {
     setSelectedIds((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(messageId)) {
-        newSet.delete(messageId);
-      } else {
-        newSet.add(messageId);
-      }
-      return newSet;
+      const next = new Set(prev);
+      if (next.has(messageId)) next.delete(messageId);
+      else next.add(messageId);
+      return next;
     });
   }, []);
 
-  // Long press handlers
-  const handleLongPressStart = useCallback((messageId: string) => {
-    if (selectionMode) return;
-    longPressTimerRef.current = setTimeout(() => {
-      setSelectionMode(true);
-      setSelectedIds(new Set([messageId]));
-    }, 500);
-  }, [selectionMode]);
+  const handleLongPressStart = useCallback(
+    (messageId: string) => {
+      if (selectionMode) return;
+      longPressTimerRef.current = setTimeout(() => {
+        setSelectionMode(true);
+        setSelectedIds(new Set([messageId]));
+      }, 500);
+    },
+    [selectionMode]
+  );
 
   const handleLongPressEnd = useCallback(() => {
     if (longPressTimerRef.current) {
@@ -181,27 +236,32 @@ export default function InboxOptimized() {
     }
   }, []);
 
-  // Touch handlers for swipe and long press
-  const handleTouchStart = useCallback((e: React.TouchEvent, messageId: string) => {
-    if (selectionMode) return;
-    handleLongPressStart(messageId);
-    setSwipeState({
-      messageId,
-      offsetX: 0,
-      startX: e.touches[0].clientX,
-      isSwiping: false,
-    });
-  }, [selectionMode, handleLongPressStart]);
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent, messageId: string) => {
+      if (selectionMode) return;
+      handleLongPressStart(messageId);
+      setSwipeState({
+        messageId,
+        offsetX: 0,
+        startX: e.touches[0].clientX,
+        isSwiping: false,
+      });
+    },
+    [selectionMode, handleLongPressStart]
+  );
 
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (selectionMode || !swipeState.messageId) return;
-    const currentX = e.touches[0].clientX;
-    const diff = currentX - swipeState.startX;
-    if (Math.abs(diff) > 10) {
-      handleLongPressEnd();
-      setSwipeState((prev) => ({ ...prev, offsetX: diff, isSwiping: true }));
-    }
-  }, [selectionMode, swipeState.messageId, swipeState.startX, handleLongPressEnd]);
+  const handleTouchMove = useCallback(
+    (e: React.TouchEvent) => {
+      if (selectionMode || !swipeState.messageId) return;
+      const currentX = e.touches[0].clientX;
+      const diff = currentX - swipeState.startX;
+      if (Math.abs(diff) > 10) {
+        handleLongPressEnd();
+        setSwipeState((prev) => ({ ...prev, offsetX: diff, isSwiping: true }));
+      }
+    },
+    [selectionMode, swipeState.messageId, swipeState.startX, handleLongPressEnd]
+  );
 
   const handleTouchEnd = useCallback(() => {
     handleLongPressEnd();
@@ -209,20 +269,40 @@ export default function InboxOptimized() {
       setSwipeState({ messageId: null, offsetX: 0, startX: 0, isSwiping: false });
       return;
     }
-
     const SWIPE_THRESHOLD = 100;
-    if (swipeState.offsetX < -SWIPE_THRESHOLD) {
+    if (swipeState.offsetX < -SWIPE_THRESHOLD && swipeState.messageId) {
+      archiveMessage(swipeState.messageId);
+      pruneThreadFromInboxPageCaches(queryClient, swipeState.messageId);
       toast({ description: 'Message archived' });
     } else if (swipeState.offsetX > SWIPE_THRESHOLD) {
-      toast({ description: 'Marked as read' });
+      const msgId = swipeState.messageId;
+      const msg = flatMessages.find((m) => m.id === msgId);
+      if (msg) {
+        if (msg.unread) {
+          markAsRead(msg.id, msg.roomId, msg.normalizedPhone, msg.identityKey);
+        }
+        toast({ description: msg.unread ? 'Marked as read' : 'Already read' });
+      }
     }
     setSwipeState({ messageId: null, offsetX: 0, startX: 0, isSwiping: false });
-  }, [selectionMode, swipeState, toast, handleLongPressEnd]);
+  }, [
+    selectionMode,
+    swipeState,
+    flatMessages,
+    toast,
+    handleLongPressEnd,
+    archiveMessage,
+    markAsRead,
+    queryClient,
+  ]);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent, messageId: string) => {
-    if (selectionMode) return;
-    handleLongPressStart(messageId);
-  }, [selectionMode, handleLongPressStart]);
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent, messageId: string) => {
+      if (selectionMode) return;
+      handleLongPressStart(messageId);
+    },
+    [selectionMode, handleLongPressStart]
+  );
 
   const handleMouseUp = useCallback(() => {
     handleLongPressEnd();
@@ -233,12 +313,9 @@ export default function InboxOptimized() {
     setSelectedIds(new Set());
   }, []);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (longPressTimerRef.current) {
-        clearTimeout(longPressTimerRef.current);
-      }
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     };
   }, []);
 
@@ -247,7 +324,6 @@ export default function InboxOptimized() {
       <TopBar title="Inbox" />
 
       <main className="px-4 pt-0 pb-4 space-y-4">
-        {/* Search */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -257,14 +333,17 @@ export default function InboxOptimized() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search messages..."
+            placeholder="Search messages…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full h-11 pl-10 pr-4 rounded-xl bg-muted/50 border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary transition-all"
           />
         </motion.div>
 
-        {/* Selection mode bar */}
+        {isFetching && flatMessages.length > 0 && (
+          <p className="text-center text-xs text-muted-foreground">Messages are syncing…</p>
+        )}
+
         <AnimatePresence>
           {selectionMode && (
             <motion.div
@@ -280,18 +359,24 @@ export default function InboxOptimized() {
               </div>
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   onClick={() => toast({ description: `${selectedIds.size} message(s) marked as read` })}
                   className="px-3 py-1.5 text-sm bg-primary-foreground/20 hover:bg-primary-foreground/30 rounded-lg transition-colors"
                 >
                   Mark Read
                 </button>
                 <button
+                  type="button"
                   onClick={() => toast({ description: `${selectedIds.size} message(s) archived` })}
                   className="px-3 py-1.5 text-sm bg-primary-foreground/20 hover:bg-primary-foreground/30 rounded-lg transition-colors"
                 >
                   Archive
                 </button>
-                <button onClick={exitSelectionMode} className="p-1.5 hover:bg-primary-foreground/20 rounded-lg transition-colors">
+                <button
+                  type="button"
+                  onClick={exitSelectionMode}
+                  className="p-1.5 hover:bg-primary-foreground/20 rounded-lg transition-colors"
+                >
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -299,41 +384,48 @@ export default function InboxOptimized() {
           )}
         </AnimatePresence>
 
-        {/* Virtualized message list */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.3, delay: 0.2 }}
-        >
-          {isLoading && filteredMessages.length === 0 ? (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3, delay: 0.1 }}>
+          {isPending && flatMessages.length === 0 ? (
             <div className="p-8 text-center">
               <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-              <p className="mt-2 text-sm text-muted-foreground">Loading messages...</p>
+              <p className="mt-2 text-sm text-muted-foreground">Messages are syncing…</p>
             </div>
-          ) : filteredMessages.length === 0 ? (
+          ) : flatMessages.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">
               <Mail className="h-12 w-12 mx-auto mb-3 opacity-50" />
               <p>No messages found</p>
             </div>
           ) : (
-            <VirtualizedInboxList
-              messages={filteredMessages}
-              selectionMode={selectionMode}
-              selectedIds={selectedIds}
-              searchQuery={searchQuery}
-              swipeState={swipeState}
-              removingId={removingId}
-              onRowClick={handleRowClick}
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
-              onMouseDown={handleMouseDown}
-              onMouseUp={handleMouseUp}
-              toggleSelection={toggleSelection}
-              onEndReached={fetchNextPage}
-              hasMore={hasNextPage}
-              isLoading={isFetching}
-            />
+            <>
+              <VirtualizedInboxList
+                messages={flatMessages}
+                selectionMode={selectionMode}
+                selectedIds={selectedIds}
+                searchQuery={searchQuery}
+                swipeState={swipeState}
+                removingId={removingId}
+                onRowClick={handleRowClick}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                onMouseDown={handleMouseDown}
+                onMouseUp={handleMouseUp}
+                toggleSelection={toggleSelection}
+                onEndReached={() => {
+                  if (hasNextPage && !isFetchingNextPage) void fetchNextPage();
+                }}
+                hasMore={Boolean(hasNextPage)}
+                isLoading={isFetchingNextPage}
+              />
+              {hasNextPage && (
+                <div
+                  ref={loadMoreSentinelRef}
+                  className="py-3 flex justify-center text-xs text-muted-foreground min-h-[40px]"
+                >
+                  {isFetchingNextPage ? 'Loading more…' : '\u00a0'}
+                </div>
+              )}
+            </>
           )}
         </motion.div>
       </main>

@@ -38,9 +38,46 @@ interface Contact {
   canonicalId?: string;
 }
 
+/** Server-derived tab counts (same merge pipeline as GET /inbox/). */
+export type InboxTabMetaBlock = {
+  total_threads: number;
+  unread_threads_total: number;
+  platform_counts: Record<string, number>;
+  unread_threads_by_platform: Record<string, number>;
+};
+
+export type InboxTabsMeta = Record<string, InboxTabMetaBlock>;
+
+let inboxTabsRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Debounced fetch of `/inbox/tabs` so badges stay aligned after realtime or read. */
+export function scheduleInboxTabsMetaRefresh() {
+  if (inboxTabsRefreshTimer) clearTimeout(inboxTabsRefreshTimer);
+  inboxTabsRefreshTimer = setTimeout(async () => {
+    inboxTabsRefreshTimer = null;
+    try {
+      const { accessToken } = useAuthStore.getState();
+      if (!accessToken) return;
+      const r = await fetch(`${API_BASE_URL}/inbox/tabs`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!r.ok) return;
+      const j = await r.json();
+      const tm = j.tabs_meta as InboxTabsMeta | null;
+      if (tm && Object.keys(tm).length) {
+        useInboxStore.setState({ tabsMeta: tm });
+      }
+    } catch {
+      /* silent */
+    }
+  }, 400);
+}
+
 interface InboxState {
   // State
   messages: InboxMessage[];
+  /** When set, tab badges use these counts so they match the merged thread list. */
+  tabsMeta: InboxTabsMeta | null;
   contacts: Record<string, Contact>;
   lastFetched: number | null;
   isLoading: boolean;
@@ -49,6 +86,7 @@ interface InboxState {
 
   // Actions
   setMessages: (messagesOrFn: InboxMessage[] | ((prev: InboxMessage[]) => InboxMessage[])) => void;
+  setInboxFromServer: (messages: InboxMessage[], tabsMeta: InboxTabsMeta | null) => void;
   addMessages: (messages: InboxMessage[]) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -121,6 +159,7 @@ function persistReadKeys(id: string, roomId?: string, normalizedPhone?: string, 
 
 export const useInboxStore = create<InboxState>()((set, get) => ({
   messages: [],
+  tabsMeta: null,
   contacts: {},
   lastFetched: null,
   isLoading: false,
@@ -129,8 +168,14 @@ export const useInboxStore = create<InboxState>()((set, get) => ({
 
   setMessages: (messagesOrFn) => set((state) => {
     const newMessages = typeof messagesOrFn === 'function' ? messagesOrFn(state.messages) : messagesOrFn;
-    return { messages: applyReadState(newMessages) };
+    return { messages: applyReadState(newMessages), tabsMeta: state.tabsMeta };
   }),
+
+  setInboxFromServer: (messages, tabsMeta) =>
+    set({
+      messages: applyReadState(messages),
+      tabsMeta: tabsMeta && Object.keys(tabsMeta).length ? tabsMeta : null,
+    }),
 
   addMessages: (newMessages) => set((state) => {
     const existingIds = new Set(state.messages.map(m => m.id));
@@ -142,7 +187,7 @@ export const useInboxStore = create<InboxState>()((set, get) => ({
       const dateB = b.sortDate ? new Date(b.sortDate).getTime() : 0;
       return dateB - dateA;
     });
-    return { messages: applyReadState(combined) };
+    return { messages: applyReadState(combined), tabsMeta: state.tabsMeta };
   }),
 
   setLoading: (isLoading) => set({ isLoading }),
@@ -202,6 +247,7 @@ export const useInboxStore = create<InboxState>()((set, get) => ({
         console.error('Failed to sync mark-as-read with backend:', err);
       }
     }
+    scheduleInboxTabsMetaRefresh();
   },
 
   updateOrAddMessage: (
@@ -236,12 +282,14 @@ export const useInboxStore = create<InboxState>()((set, get) => ({
     const updatedMessages = [...state.messages];
 
     if (existingIndex >= 0) {
+      const prevU = updatedMessages[existingIndex].unreadCount || 0;
       updatedMessages[existingIndex] = {
         ...updatedMessages[existingIndex],
         preview,
         timestamp: timestamp.toLocaleDateString(),
         sortDate: timestamp,
         unread: true,
+        unreadCount: prevU + 1,
         roomId: chatId,
         normalizedPhone: normalizedPhone || updatedMessages[existingIndex].normalizedPhone,
         identityKey: identityKey || updatedMessages[existingIndex].identityKey,
@@ -263,6 +311,7 @@ export const useInboxStore = create<InboxState>()((set, get) => ({
         normalizedPhone,
         identityKey,
         unread: true,
+        unreadCount: 1,
       };
       updatedMessages.push(newMessage);
     }
@@ -273,6 +322,7 @@ export const useInboxStore = create<InboxState>()((set, get) => ({
       return dateB - dateA;
     });
 
+    scheduleInboxTabsMetaRefresh();
     return { messages: updatedMessages };
   }),
 
@@ -300,6 +350,7 @@ export const useInboxStore = create<InboxState>()((set, get) => ({
     try { localStorage.removeItem(READ_IDS_KEY); } catch { /* silent */ }
     set({
       messages: [],
+      tabsMeta: null,
       contacts: {},
       lastFetched: null,
       isLoading: false,
@@ -311,5 +362,5 @@ export const useInboxStore = create<InboxState>()((set, get) => ({
 // Export helper for shallow selection
 export { useShallow };
 
-export type { InboxMessage, Contact };
+export type { InboxMessage, Contact, InboxTabsMeta, InboxTabMetaBlock };
 

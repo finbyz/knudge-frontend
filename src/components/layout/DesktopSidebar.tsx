@@ -39,7 +39,7 @@ const navItems = [
   { path: '/contacts', icon: Users, label: 'Contacts' },
   { path: '/feed', icon: Rss, label: 'Feed', unreadKey: 'feed' as const },
   { path: '/inbox', icon: Inbox, label: 'Inbox', unreadKey: 'inbox' as const },
-  { path: '/connections', icon: Link2, label: 'Connections' },
+  { path: '/connections', icon: Link2, label: 'Sync' },
   { path: '/settings', icon: Settings, label: 'Settings' },
 ];
 

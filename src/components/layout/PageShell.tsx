@@ -6,8 +6,7 @@ import { cn } from '@/lib/utils';
  * Sticky stack offset: TopBar (top-4 / sm:top-6) + h-16 + small gap so the toolbar never
  * tucks under the glass header or scrolls behind it.
  */
-export const PAGE_STICKY_UNDER_HEADER_CLASS =
-  'top-[calc(theme(spacing.4)+theme(spacing.16)+theme(spacing.2))] sm:top-[calc(theme(spacing.6)+theme(spacing.16)+theme(spacing.2))]';
+
 
 type PageShellProps = {
   title: string;
@@ -39,20 +38,19 @@ export function PageShell({
         className
       )}
     >
-      <TopBar title={title} showNotifications={showNotifications} />
+      <div className="sticky top-0 z-30 -mx-4 flex shrink-0 flex-col bg-background/95 px-4 pb-4 pt-4 shadow-sm backdrop-blur-md transition-all sm:-mx-6 sm:px-6 sm:pb-5 sm:pt-6">
+        <TopBar title={title} showNotifications={showNotifications} />
 
-      {toolbar != null && (
-        <div
-          className={cn(
-            'sticky z-30 mb-4 shrink-0 rounded-2xl border border-border/60 bg-muted/30 p-3 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-muted/25 sm:mb-5 sm:p-4',
-            PAGE_STICKY_UNDER_HEADER_CLASS
-          )}
-        >
-          {toolbar}
-        </div>
-      )}
+        {toolbar != null && (
+          <div
+            className="mt-4 rounded-2xl border border-border/80 bg-background p-3 shadow-sm sm:mt-5 sm:p-4"
+          >
+            {toolbar}
+          </div>
+        )}
+      </div>
 
-      <div className="min-h-0 min-w-0 w-full flex-1">{children}</div>
+      <div className="min-h-0 min-w-0 w-full flex-1 pt-4 sm:pt-5">{children}</div>
     </div>
   );
 }

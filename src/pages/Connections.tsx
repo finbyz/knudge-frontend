@@ -252,6 +252,14 @@ export default function Connections() {
         return;
       } else if (platform === 'gmail') {
         const gmailResp = await bridgesApi.sync('gmail');
+        try {
+          const inboxR = await bridgesApi.syncGmailInbox();
+          toast.success(
+            `Synced ${gmailResp.synced_count} contacts; fetched ${inboxR.synced_count} inbox messages.`
+          );
+        } catch {
+          toast.success(`Synced ${gmailResp.synced_count} Gmail contacts.`);
+        }
         setConnections(prev => prev.map(c =>
           c.platform === 'gmail'
             ? { ...c, contactCount: gmailResp.synced_count, lastSync: 'Just now' }
@@ -293,7 +301,11 @@ export default function Connections() {
       await fetchStatus();
     } catch (error) {
       console.error(`Sync failed for ${platform}:`, error);
-      toast.error(`Failed to sync contacts from ${platformNames[platform as keyof typeof platformNames]}`);
+      const msg =
+        error instanceof Error
+          ? error.message
+          : `Failed to sync contacts from ${platformNames[platform as keyof typeof platformNames]}`;
+      toast.error(msg);
     } finally {
       setSyncingPlatform(null);
     }
@@ -307,11 +319,21 @@ export default function Connections() {
     let active = true;
 
     const poll = async () => {
+      let sawDisconnected = false;
+      let iterations = 0;
       while (active) {
         try {
           const status = await bridgesApi.getStatus();
-          const waStatus = status?.whatsapp;
-          if (waStatus?.connected) {
+          const waStatus = status?.whatsapp as
+            | { connected?: boolean; authenticated?: boolean; contact_count?: number }
+            | undefined;
+          const conn = !!(waStatus?.connected || waStatus?.authenticated);
+          // Require a "not connected" observation before accepting "connected", otherwise a stale
+          // bridge session makes the wizard complete without scanning the new QR.
+          if (!conn) {
+            sawDisconnected = true;
+          }
+          if (conn && sawDisconnected) {
             setConnectingPlatform(null);
             setQrCodeData(null);
             setPairingCode(null);
@@ -328,10 +350,17 @@ export default function Connections() {
               .catch(() => { fetchStatus(); });
             return;
           }
+          iterations += 1;
+          if (conn && !sawDisconnected && iterations >= 20) {
+            toast.error(
+              "WhatsApp still looks linked from before. Tap Disconnect, wait a few seconds, then Connect again."
+            );
+            return;
+          }
         } catch (e) {
           console.error("Poll error:", e);
         }
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise(resolve => setTimeout(resolve, 2500));
       }
     };
 
@@ -403,6 +432,7 @@ export default function Connections() {
           setQrCodeData(response.qr_code);
           setPairingCode(null);
           setShowPhoneInput(false);
+          void fetchStatus();
           const newLoginId = response.login_id;
           const newStepId = response.step_id;
           if (newLoginId) setLoginId(newLoginId);

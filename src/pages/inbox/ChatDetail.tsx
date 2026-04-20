@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, MoreVertical, Plus, Sparkles, Send, MessageCircle, Linkedin, Check, CheckCheck, Clock, Camera, FileText, MapPin, User, Mic, X, Loader2, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn, formatPhone } from '@/lib/utils';
+import { cn, formatPhone, formatSenderName } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { useSwipeable } from 'react-swipeable';
@@ -114,6 +114,33 @@ const mockInboxChats = ['1', '2', '4', '5'];
 export default function ChatDetail() {
   const navigate = useNavigate();
   const { contactId } = useParams<{ contactId: string }>();
+  const parseRoomId = useCallback((room: string) => {
+    const s = (room || '').trim();
+    if (!s) return { provider: '', actualId: '' };
+    if (s.includes('--')) {
+      const [provider, ...rest] = s.split('--');
+      const p = provider.trim().toLowerCase();
+      // NOTE: Telegram group/channel ids are negative. In our URL scheme we encode the
+      // leading '-' as the second dash in `telegram--100...`.
+      let actual = rest.join('--');
+      if (p === 'telegram' && actual && !actual.startsWith('-')) {
+        actual = `-${actual}`;
+      }
+      return { provider: p, actualId: actual };
+    }
+    const [provider, ...rest] = s.split('-');
+    return { provider: provider.trim().toLowerCase(), actualId: rest.join('-') };
+  }, []);
+
+  const parsed = parseRoomId(contactId || '');
+  const parsedProvider = parsed.provider;
+  const parsedActualId = parsed.actualId;
+
+  if (import.meta.env.DEV) {
+    // Temporary debug to validate parsing for ids like "telegram--100..."
+    // eslint-disable-next-line no-console
+    console.log('roomId:', contactId, 'provider:', parsedProvider, 'actualId:', parsedActualId);
+  }
   // ✅ Robust Room ID extraction from URL
   const [searchParams] = useSearchParams();
   const roomId = searchParams.get('room');
@@ -126,6 +153,8 @@ export default function ChatDetail() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const attemptedSyncRef = useRef(false);
   const [chatIdentity, setChatIdentity] = useState<{ normalized_phone?: string; identity_key?: string }>({});
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [showUndo, setShowUndo] = useState(false);
@@ -184,20 +213,21 @@ export default function ChatDetail() {
     // We don't reset dynamicContact to null here IF we have enough info to keep it
     // But setting isLoadingMessages is correct as we are starting a new load
     setIsLoadingMessages(true);
+    setLoadError(null);
+    attemptedSyncRef.current = false;
   }, [contactId, roomId, linkedInChatId]);
 
   useEffect(() => {
-    const isTelegram = Boolean(contactId?.startsWith('telegram-'));
+    const isTelegram = parsedProvider === 'telegram';
     const isLinkedIn = contactId === 'li' && linkedInChatId;
 
     if (contactId === 'wa' && roomId) {
       const chatJid = decodeURIComponent(roomId);
       markAsRead(`wa-chat-${chatJid}`, chatJid);
       markAsRead(chatJid, chatJid);
-    } else if (isTelegram && contactId) {
-      markAsRead(contactId);
-      const plainId = contactId.replace('telegram-', '');
-      markAsRead(plainId);
+    } else if (isTelegram && parsedActualId) {
+      markAsRead(contactId || `telegram-${parsedActualId}`);
+      markAsRead(parsedActualId);
     } else if (contactId === 'ig' && roomId) {
       markAsRead(`ig-chat-${roomId}`, roomId);
     } else if (isLinkedIn) {
@@ -215,13 +245,28 @@ export default function ChatDetail() {
     if (currentMsg) {
       markAsRead(currentMsg.id, currentMsg.roomId, currentMsg.normalizedPhone, currentMsg.identityKey);
     }
-  }, [contactId, roomId, linkedInChatId, markAsRead, inboxMessages]);
+  }, [contactId, roomId, linkedInChatId, parsedProvider, parsedActualId, markAsRead, inboxMessages]);
 
   // Dynamic contact based on params or sample
   const [dynamicContact, setDynamicContact] = useState<ContactInfo | null>(null);
 
-  // Use dynamic contact if available, otherwise fall back to sample
-  const contact = dynamicContact || (contactId && contactId.length < 5 ? (sampleContacts[contactId] || sampleContacts['1']) : null);
+  // Use dynamic contact if available; otherwise build from URL params for provider routes.
+  const inferredTelegramContact: ContactInfo | null =
+    parsedProvider === 'telegram'
+      ? {
+          id: contactId || 'telegram',
+          name: contactNameFromParams || 'Telegram',
+          initials: ((contactNameFromParams || 'T')[0] || 'T').toUpperCase(),
+          platform: 'telegram',
+          lastSeen: 'Telegram',
+          avatar: avatarFromParams || undefined,
+        }
+      : null;
+
+  const contact =
+    dynamicContact ||
+    inferredTelegramContact ||
+    (contactId && contactId.length < 5 ? (sampleContacts[contactId] || sampleContacts['1']) : null);
   
   if (!contact && isLoadingMessages) {
     return (
@@ -243,6 +288,36 @@ export default function ChatDetail() {
               </div>
           </div>
       );
+  }
+
+  if (loadError) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4 text-center">
+        <div className="max-w-md">
+          <p className="text-muted-foreground text-lg">Failed to load chat</p>
+          <p className="text-sm text-muted-foreground/80 mt-1">{loadError}</p>
+          <div className="mt-4 flex justify-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setLoadError(null);
+                setIsLoadingMessages(true);
+                if (parsedProvider === 'telegram') void fetchTgMessages(false);
+                else if (contactId === 'wa' && roomId) void fetchWaMessages();
+                else if (contactId === 'li' && linkedInChatId) void fetchLiMessages();
+                else if (contactId === 'ig' && roomId) void fetchIgMessages();
+              }}
+            >
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Retry
+            </Button>
+            <Button variant="ghost" onClick={() => navigate('/inbox')}>
+              Back
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const platform = platformConfig[contact.platform];
@@ -308,20 +383,29 @@ export default function ChatDetail() {
   // No messages.length — uses ref instead
 
   const fetchTgMessages = useCallback(async (isLoadMore = false) => {
-    if (!contactId || !contactId.startsWith('telegram-') || !accessToken) return;
-    const tgChatId = contactId.replace('telegram-', '');
+    if (parsedProvider !== 'telegram' || !parsedActualId || !accessToken) return;
+    const tgChatId = parsedActualId;
 
     setIsLoadingMessages(true);
     try {
       const limit = 20;
+      // eslint-disable-next-line no-console
+      console.log('Fetching Telegram messages for:', tgChatId);
       // const currentOffset = isLoadMore ? msgOffset : 0; // msgOffset is not defined, removing for now
 
+      const controller = new AbortController();
+      const t = setTimeout(() => controller.abort(), 8000);
       const response = await fetch(
-        `${API_BASE_URL}/telegram/messages/${tgChatId}?limit=${limit}`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
-      );
-      if (response.ok) {
-        const data = await response.json();
+        `${API_BASE_URL}/telegram/messages/${encodeURIComponent(tgChatId)}?limit=${limit}`,
+        { headers: { Authorization: `Bearer ${accessToken}` }, signal: controller.signal }
+      ).finally(() => clearTimeout(t));
+      if (!response.ok) {
+        const msg = `Failed to load Telegram chat (${response.status})`;
+        setLoadError(msg);
+        return;
+      }
+
+      const data = await response.json();
         // Handle both simple array and object results
         const rows = Array.isArray(data) ? data : (data.messages || []);
         
@@ -342,21 +426,49 @@ export default function ChatDetail() {
         //   setHasMoreMessages(false);
         // }
 
-        if (isLoadMore) {
-          setMessages(prev => [...chatMessages, ...prev]);
-          // setMsgOffset(prev => prev + limit); // Removed msgOffset state
-        } else {
-          setMessages(chatMessages);
-          // setMsgOffset(limit); // Removed msgOffset state
-          // setHasMoreMessages(data.length === limit); // Removed hasMoreMessages state
+      if (rows.length === 0 && !attemptedSyncRef.current) {
+        attemptedSyncRef.current = true;
+        try {
+          await bridgesApi.syncTelegram();
+          // try again after sync
+          const r2 = await fetch(
+            `${API_BASE_URL}/telegram/messages/${encodeURIComponent(tgChatId)}?limit=${limit}`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+          );
+          if (r2.ok) {
+            const j2 = await r2.json();
+            const rrows = Array.isArray(j2) ? j2 : (j2.messages || []);
+            const chatMessages2: ChatMessage[] = rrows.map((msg: any) => {
+              const direction = (msg.direction || '').toUpperCase();
+              return {
+                id: msg.id,
+                type: direction === 'OUTGOING' ? 'outgoing' : 'incoming',
+                text: msg.text,
+                timestamp: msg.timestamp
+                  ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                  : '',
+                status: direction === 'OUTGOING' ? 'sent' : undefined,
+                media_url: msg.media_url ? `${API_HOST_URL}${msg.media_url}?token=${accessToken}` : undefined,
+                media_mimetype: msg.media_mimetype,
+              };
+            });
+            setMessages(chatMessages2);
+            return;
+          }
+        } catch (e) {
+          // ignore; we show empty state below
         }
       }
+
+      if (isLoadMore) setMessages(prev => [...chatMessages, ...prev]);
+      else setMessages(chatMessages);
     } catch (e) {
       console.error(e);
+      setLoadError(e instanceof Error ? e.message : 'Failed to load chat');
     } finally {
       setIsLoadingMessages(false);
     }
-  }, [contactId, accessToken, formatMessageTime]);
+  }, [parsedProvider, parsedActualId, accessToken, formatMessageTime]);
 
   const fetchLiMessages = useCallback(async () => {
     if (!linkedInChatId || !accessToken) return;
@@ -471,15 +583,15 @@ export default function ChatDetail() {
 
   // Real-time Telegram message updates via WebSocket
   useEffect(() => {
-    if (!contactId || !contactId.startsWith('telegram-') || !accessToken) return;
-    const tgChatId = contactId.replace('telegram-', '');
+    if (parsedProvider !== 'telegram' || !parsedActualId || !accessToken) return;
+    const tgChatId = parsedActualId;
 
     // Connect to WebSocket
     telegramWS.connect(accessToken);
 
     const unsubscribe = telegramWS.onMessage((msg) => {
       // 1. Only handle messages for the CURRENT chat
-      if (msg.chat_id !== tgChatId) return;
+      if (String(msg.chat_id) !== String(tgChatId)) return;
 
       setMessages(prev => {
         const existingIds = new Set(prev.map(m => String(m.id)));
@@ -514,7 +626,7 @@ export default function ChatDetail() {
     return () => {
       unsubscribe();
     };
-  }, [contactId, accessToken]);
+  }, [parsedProvider, parsedActualId, accessToken]);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop } = e.currentTarget;
@@ -578,7 +690,7 @@ export default function ChatDetail() {
         lastSeen: 'LinkedIn',
         avatar: avatarFromParams || undefined,
       });
-    } else if (contactId.startsWith('telegram-')) {
+    } else if (parsedProvider === 'telegram') {
       const tgContactName = contactNameFromParams || 'Telegram User';
 
       setDynamicContact({
@@ -611,13 +723,18 @@ export default function ChatDetail() {
 
   // Part 2: Fetch Messages (runs when accessToken is available)
   useEffect(() => {
-    if (!accessToken) return;
+    if (!accessToken) {
+      // Prevent infinite loader when auth is missing/expired.
+      setIsLoadingMessages(false);
+      setLoadError('Please log in again to view this chat.');
+      return;
+    }
 
     if (contactId === 'wa' && roomId) {
       fetchWaMessages();
     } else if (contactId === 'li' && linkedInChatId) {
       void fetchLiMessages();
-    } else if (contactId && contactId.startsWith('telegram-')) {
+    } else if (parsedProvider === 'telegram') {
       fetchTgMessages(false);
     } else if (contactId === 'ig' && roomId) {
       fetchIgMessages();
@@ -627,6 +744,7 @@ export default function ChatDetail() {
     contactId,
     roomId,
     linkedInChatId,
+    parsedProvider,
     fetchTgMessages,
     fetchWaMessages,
     fetchLiMessages,
@@ -1087,7 +1205,7 @@ export default function ChatDetail() {
             </div>
 
             <div>
-              <h1 className="font-semibold text-foreground">{contact.name}</h1>
+              <h1 className="font-semibold text-foreground">{formatSenderName(contact.name)}</h1>
               <p className="text-xs text-muted-foreground">
                 {contact.platform === 'whatsapp' ? (
                   roomId?.endsWith('@g.us')
@@ -1201,7 +1319,7 @@ export default function ChatDetail() {
                       {/* Sender Name for groups */}
                       {!isOutgoing && roomId?.endsWith('@g.us') && message.sender_name && (
                         <div className="text-[11px] font-bold text-primary mb-0.5 px-1 truncate">
-                          {message.sender_name}
+                          {formatSenderName(message.sender_name)}
                         </div>
                       )}
 

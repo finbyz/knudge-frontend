@@ -273,8 +273,15 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
     };
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data === 'pong') return;
+      // Heartbeat responses can be plain text.
+      if (event.data === 'pong') return;
+      let data: any;
+      try {
+        data = JSON.parse(event.data);
+      } catch {
+        // Ignore any non-JSON frames.
+        return;
+      }
 
       if (data.type === 'deck_notification') {
         const newNotification: AppNotification = {

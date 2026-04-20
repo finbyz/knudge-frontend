@@ -3,6 +3,22 @@ const envApiBasePath = import.meta.env.VITE_API_BASE_PATH || '/api/v1';
 
 let baseUrl = envApiUrl || '';
 
+// Never ship a build that points browsers at *their own* localhost.
+// If the app is running on a real hostname and VITE_API_URL is localhost/127.0.0.1,
+// ignore it and use same-origin relative URLs instead.
+try {
+  const host = window.location.hostname;
+  const isLocalHost =
+    host === 'localhost' || host === '127.0.0.1' || host.endsWith('.local');
+  const looksLikeLocalApi =
+    baseUrl.includes('127.0.0.1') || baseUrl.includes('localhost');
+  if (!isLocalHost && looksLikeLocalApi) {
+    baseUrl = '';
+  }
+} catch {
+  // SSR / non-browser: keep envApiUrl as-is
+}
+
 if (baseUrl && !baseUrl.startsWith('http')) {
   baseUrl = `https://${baseUrl}`;
 }
@@ -117,6 +133,14 @@ export class ApiClient {
       const errorMessage = typeof data.detail === 'object'
         ? JSON.stringify(data.detail)
         : (data.detail || data.message || 'API request failed');
+      if (response.status === 401) {
+        // Ensure we don't keep the UI in a broken authenticated state.
+        try {
+          useAuthStore.getState().logout();
+        } catch {
+          // ignore
+        }
+      }
       throw new Error(errorMessage);
     }
 

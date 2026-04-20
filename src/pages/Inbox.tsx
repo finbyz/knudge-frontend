@@ -4,12 +4,20 @@ import { Search, MessageCircle, MessageSquare, Linkedin, Mail, X, Check, Archive
 import { motion, AnimatePresence } from 'framer-motion';
 import { PageShell } from '@/components/layout/PageShell';
 import { Avatar } from '@/components/Avatar';
-import { cn } from '@/lib/utils';
+import { cn, formatSenderName } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useUnreadStore } from '@/stores/unreadStore';
 import { useAuthStore } from '@/stores/authStore';
-import { useInboxStore, type InboxMessage, useShallow } from '@/stores/inboxStore';
-import { useInbox } from '@/hooks/useInbox';
+import { useQueryClient } from '@tanstack/react-query';
+import { useInboxStore, type InboxMessage, useShallow, scheduleInboxTabsMetaRefresh } from '@/stores/inboxStore';
+import { API_BASE_URL } from '@/lib/api-client';
+import {
+  useInboxList,
+  patchInboxInfiniteCache,
+  pruneThreadFromInboxPageCaches,
+  useDebouncedSearch,
+  inboxPageQueryKey,
+} from '@/hooks/useInbox';
 import { telegramWS } from '@/lib/telegramWebSocket';
 import { whatsappWS } from '@/lib/whatsappWebSocket';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
@@ -110,7 +118,8 @@ export default function Inbox() {
     updateOrAddMessage, 
     archiveMessage,
     selectedPlatform,
-    setSelectedPlatform
+    setSelectedPlatform,
+    tabsMeta,
   } = useInboxStore(
     useShallow((state) => ({
       messages: state.messages,
@@ -118,12 +127,30 @@ export default function Inbox() {
       updateOrAddMessage: state.updateOrAddMessage,
       archiveMessage: state.archiveMessage,
       selectedPlatform: state.selectedPlatform,
-      setSelectedPlatform: state.setSelectedPlatform
+      setSelectedPlatform: state.setSelectedPlatform,
+      tabsMeta: state.tabsMeta,
     }))
   );
 
-  // Central React-Query data fetching
-  const { isLoading, isError, refetch } = useInbox();
+  const debouncedSearch = useDebouncedSearch(searchQuery);
+  const queryClient = useQueryClient();
+  const inboxQuery = useInboxList(selectedPlatform, debouncedSearch);
+  const {
+    flatMessages,
+    totalFiltered,
+    isPending,
+    isError,
+    error,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isFetching,
+    debouncedSearch: inboxDebouncedSearch,
+  } = inboxQuery;
+
+  const [showNewMessagesBanner, setShowNewMessagesBanner] = useState(false);
+  const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
 
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -144,12 +171,27 @@ export default function Inbox() {
     if (!accessToken) return;
 
     const intervalId = setInterval(() => {
-      console.log('[Inbox] Auto-refreshing inbox for IG...');
       refetch();
     }, 60000); // 1 min
 
     return () => clearInterval(intervalId);
   }, [accessToken, refetch]);
+
+  useEffect(() => {
+    const el = loadMoreSentinelRef.current;
+    if (!el || !hasNextPage) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (first?.isIntersecting && hasNextPage && !isFetchingNextPage) {
+          void fetchNextPage();
+        }
+      },
+      { root: null, rootMargin: '120px', threshold: 0 }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage, flatMessages.length]);
 
   // ============================================================================
   // WhatsApp Real-time Updates via WebSocket
@@ -160,8 +202,6 @@ export default function Inbox() {
     whatsappWS.connect(accessToken);
 
     const unsubscribe = whatsappWS.onMessage((msg) => {
-      console.log('[Inbox] Received real-time WhatsApp message:', msg);
-
       updateOrAddMessage(
         'whatsapp',
         msg.room_id,
@@ -172,12 +212,41 @@ export default function Inbox() {
         msg.normalized_phone,
         msg.identity_key
       );
+      const ts =
+        typeof msg.timestamp === 'string'
+          ? msg.timestamp
+          : new Date(msg.timestamp).toISOString();
+      const matched = patchInboxInfiniteCache(
+        queryClient,
+        selectedPlatform,
+        inboxDebouncedSearch,
+        (c) =>
+          String(c.platform) === 'whatsapp' &&
+          (String(c.room_id) === String(msg.room_id) ||
+            (msg.identity_key && String(c.identity_key) === String(msg.identity_key)) ||
+            (msg.normalized_phone &&
+              String(c.normalized_phone) === String(msg.normalized_phone))),
+        (c) => ({
+          ...c,
+          preview: msg.text ?? c.preview,
+          timestamp: ts,
+          unread_count: Math.max(Number(c.unread_count) || 0, 1),
+        })
+      );
+      if (!matched) setShowNewMessagesBanner(true);
+      scheduleInboxTabsMetaRefresh();
     });
 
     return () => {
       unsubscribe();
     };
-  }, [accessToken, updateOrAddMessage]);
+  }, [
+    accessToken,
+    updateOrAddMessage,
+    queryClient,
+    selectedPlatform,
+    inboxDebouncedSearch,
+  ]);
 
   // ============================================================================
   // Telegram Real-time Updates via WebSocket
@@ -188,8 +257,6 @@ export default function Inbox() {
     telegramWS.connect(accessToken);
     // 2. Subscribe
     const unsubscribe = telegramWS.onMessage((msg) => {
-      console.log('[Inbox] Received real-time Telegram message:', msg);
-
       updateOrAddMessage(
         'telegram',
         msg.chat_id,
@@ -197,50 +264,79 @@ export default function Inbox() {
         msg.text,
         new Date(msg.timestamp)
       );
+      const ts =
+        typeof msg.timestamp === 'string'
+          ? msg.timestamp
+          : new Date(msg.timestamp).toISOString();
+      const matched = patchInboxInfiniteCache(
+        queryClient,
+        selectedPlatform,
+        inboxDebouncedSearch,
+        (c) =>
+          String(c.platform) === 'telegram' &&
+          (String(c.room_id) === String(msg.chat_id) ||
+            String(c.id) === `telegram-${msg.chat_id}`),
+        (c) => ({
+          ...c,
+          preview: msg.text ?? c.preview,
+          timestamp: ts,
+          unread_count: Math.max(Number(c.unread_count) || 0, 1),
+        })
+      );
+      if (!matched) setShowNewMessagesBanner(true);
+      scheduleInboxTabsMetaRefresh();
     });
 
     return () => {
       unsubscribe();
     };
-  }, [accessToken, updateOrAddMessage]);
+  }, [
+    accessToken,
+    updateOrAddMessage,
+    queryClient,
+    selectedPlatform,
+    inboxDebouncedSearch,
+  ]);
 
   useEffect(() => {
     clearUnreadInbox();
   }, [clearUnreadInbox]);
 
-  const filteredMessages = messages.filter((msg) => {
-    const query = searchQuery.toLowerCase();
-    const matchesSearch = !query ||
-      msg.sender.name.toLowerCase().includes(query) ||
-      msg.preview.toLowerCase().includes(query) ||
-      (msg.subject && msg.subject.toLowerCase().includes(query));
+  useEffect(() => {
+    setShowNewMessagesBanner(false);
+  }, [selectedPlatform, debouncedSearch]);
 
-    if (!matchesSearch) return false;
-
-    if (selectedPlatform !== 'all') {
-      if (selectedPlatform === 'whatsapp') {
-        if (msg.platform !== 'whatsapp') return false;
-      } else if (selectedPlatform === 'gmail') {
-        if (msg.platform !== 'gmail') return false;
-      } else if (selectedPlatform === 'outlook') {
-        if (msg.platform !== 'outlook') return false;
-      } else if (selectedPlatform === 'telegram') {
-        if (msg.platform !== 'telegram') return false;
-      } else if (selectedPlatform === 'instagram') {
-        if (msg.platform !== 'instagram') return false;
-      } else if ((selectedPlatform as string) === 'erpnext') {
-        if ((msg.platform as string) === 'erpnext') return true;
+  const tabUnreadCount = useCallback(
+    (tabId: string) => {
+      if (tabsMeta?.[tabId]) {
+        return tabsMeta[tabId].unread_threads_total;
       }
-    }
-
-    return true;
-  });
-
-  const getCount = (tab: 'all' | 'whatsapp' | 'email') => {
-    if (tab === 'all') return messages.length;
-    if (tab === 'whatsapp') return messages.filter(m => m.platform === 'whatsapp').length;
-    return messages.filter(m => ['email', 'gmail', 'outlook'].includes((m.platform || '').toLowerCase())).length;
-  };
+      const pl = (m: InboxMessage) => (m.platform || '').toLowerCase();
+      const unread = (m: InboxMessage) => m.unread;
+      const rows = flatMessages.length ? flatMessages : messages;
+      switch (tabId) {
+        case 'all':
+          return rows.filter(unread).length;
+        case 'whatsapp':
+          return rows.filter((m) => unread(m) && pl(m) === 'whatsapp').length;
+        case 'linkedin':
+          return rows.filter((m) => unread(m) && pl(m) === 'linkedin').length;
+        case 'instagram':
+          return rows.filter((m) => unread(m) && pl(m) === 'instagram').length;
+        case 'gmail':
+          return rows.filter((m) => unread(m) && ['gmail', 'email'].includes(pl(m))).length;
+        case 'outlook':
+          return rows.filter((m) => unread(m) && pl(m) === 'outlook').length;
+        case 'telegram':
+          return rows.filter((m) => unread(m) && pl(m) === 'telegram').length;
+        case 'erpnext':
+          return rows.filter((m) => unread(m) && pl(m) === 'erpnext').length;
+        default:
+          return 0;
+      }
+    },
+    [tabsMeta, messages, flatMessages]
+  );
 
   // Long press and swipe handlers (unchanged)
   const handleLongPressStart = useCallback((messageId: string) => {
@@ -289,10 +385,11 @@ export default function Inbox() {
     const SWIPE_THRESHOLD = 100;
     if (swipeState.offsetX < -SWIPE_THRESHOLD) {
       archiveMessage(swipeState.messageId);
+      pruneThreadFromInboxPageCaches(queryClient, swipeState.messageId);
       toast({ description: "Message archived" });
     } else if (swipeState.offsetX > SWIPE_THRESHOLD) {
       const msgId = swipeState.messageId;
-      const msg = messages.find(m => m.id === msgId);
+      const msg = flatMessages.find(m => m.id === msgId) ?? messages.find(m => m.id === msgId);
       if (msg) {
         if(msg.unread) {
            markAsRead(msg.id, msg.roomId, msg.normalizedPhone, msg.identityKey);
@@ -301,7 +398,7 @@ export default function Inbox() {
       }
     }
     setSwipeState({ messageId: null, offsetX: 0, startX: 0, isSwiping: false });
-  }, [selectionMode, swipeState, messages, toast, handleLongPressEnd, archiveMessage, markAsRead]);
+  }, [selectionMode, swipeState, flatMessages, messages, toast, handleLongPressEnd, archiveMessage, markAsRead, queryClient]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent, messageId: string) => {
     if (selectionMode) return;
@@ -328,12 +425,31 @@ export default function Inbox() {
     if (selectionMode) {
       toggleSelection(message.id);
     } else if (!swipeState.isSwiping) {
-      if (message.unread) {
-        markAsRead(message.id, message.roomId, message.normalizedPhone, message.identityKey);
-      }
-
       if (['email', 'outlook', 'gmail'].includes(message.platform)) {
-        navigate(`/inbox/email/${message.id}`);
+        // Optimistically clear unread dot in the infinite cache so UI won't revert on refetch.
+        patchInboxInfiniteCache(
+          queryClient,
+          selectedPlatform,
+          inboxDebouncedSearch,
+          (c) => String(c.id) === message.id,
+          (c) => ({ ...c, unread_count: 0, email_status: 'READ' })
+        );
+        // Persist local read state and sync backend thread read.
+        markAsRead(message.id, message.roomId, message.normalizedPhone, message.identityKey);
+        try {
+          const { accessToken } = useAuthStore.getState();
+          void fetch(`${API_BASE_URL}/inbox/thread/${encodeURIComponent(message.id)}/read`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+        } catch {
+          // ignore; optimistic UI already applied
+        }
+
+        const realId = message.id.startsWith('email-')
+          ? message.id.replace(/^email-/, '')
+          : message.id;
+        navigate(`/inbox/email/${realId}?platform=${encodeURIComponent(message.platform)}`);
       } else if (message.platform === 'whatsapp' && message.roomId) {
         const roomParam = encodeURIComponent(message.roomId);
         const phoneParam = message.sender.phone
@@ -354,7 +470,7 @@ export default function Inbox() {
         navigate(`/inbox/chat/${message.id}`);
       }
     }
-  }, [selectionMode, swipeState.isSwiping, toggleSelection, navigate]);
+  }, [selectionMode, swipeState.isSwiping, toggleSelection, navigate, markAsRead, queryClient, selectedPlatform, inboxDebouncedSearch]);
 
   const exitSelectionMode = useCallback(() => {
     setSelectionMode(false);
@@ -416,9 +532,7 @@ export default function Inbox() {
                 const config = platformConfig[filter.id] || DEFAULT_PLATFORM;
                 const Icon = config.icon;
 
-                const unreadCount = filter.id === 'all'
-                  ? messages.filter(m => m.unread).length
-                  : messages.filter(m => m.unread && m.platform === filter.id).length;
+                const unreadCount = tabUnreadCount(filter.id);
 
                 return (
                   <button
@@ -482,7 +596,7 @@ export default function Inbox() {
         </AnimatePresence>
 
         <AnimatePresence mode="wait">
-          {isLoading ? (
+          {isPending && flatMessages.length === 0 ? (
             <motion.div 
               key="loading"
               initial={{ opacity: 0 }}
@@ -490,7 +604,7 @@ export default function Inbox() {
               exit={{ opacity: 0 }}
               className="py-20"
             >
-              <LoadingSpinner size="lg" label="Syncing your messages..." />
+              <LoadingSpinner size="lg" label="Messages are syncing…" />
             </motion.div>
           ) : isError ? (
             <motion.div
@@ -500,11 +614,15 @@ export default function Inbox() {
               exit={{ opacity: 0 }}
             >
               <ErrorBanner 
-                message="We couldn't reach the server. Please check your connection." 
-                onRetry={refetch} 
+                message={
+                  (error instanceof Error && error.message)
+                    ? error.message
+                    : "We couldn't load your inbox. Messages are syncing in the background — try again in a moment."
+                }
+                onRetry={() => void refetch()} 
               />
             </motion.div>
-          ) : messages.length === 0 ? (
+          ) : (totalFiltered ?? flatMessages.length) === 0 ? (
             <motion.div
               key="empty"
               initial={{ opacity: 0, scale: 0.95 }}
@@ -529,8 +647,30 @@ export default function Inbox() {
               animate={{ opacity: 1 }}
               className="bg-card rounded-2xl border border-border overflow-hidden shadow-sm"
             >
+              {isFetching && flatMessages.length > 0 && (
+                <div className="border-b border-border/60 bg-muted/40 px-4 py-2 text-center text-xs font-medium text-muted-foreground">
+                  Messages are syncing…
+                </div>
+              )}
+              {showNewMessagesBanner && (
+                <div className="border-b border-border/60 bg-primary/10 px-4 py-2 flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-foreground">New messages</span>
+                  <button
+                    type="button"
+                    className="text-sm font-semibold text-primary hover:underline"
+                    onClick={() => {
+                      setShowNewMessagesBanner(false);
+                      void queryClient.resetQueries({
+                        queryKey: inboxPageQueryKey(selectedPlatform, inboxDebouncedSearch),
+                      });
+                    }}
+                  >
+                    Refresh list
+                  </button>
+                </div>
+              )}
               <AnimatePresence>
-                {filteredMessages.map((message, index) => {
+                {flatMessages.map((message, index) => {
                   const platformKey = (message.platform || 'email').toLowerCase();
                   const platform = platformConfig[platformKey] || DEFAULT_PLATFORM;
                   const PlatformIcon = platform.icon;
@@ -556,7 +696,7 @@ export default function Inbox() {
                       }}
                       className={cn(
                         'relative overflow-hidden group',
-                        index !== filteredMessages.length - 1 && 'border-b border-border/50'
+                        index !== flatMessages.length - 1 && 'border-b border-border/50'
                       )}
                     >
                       {/* Swipe Backgrounds */}
@@ -640,7 +780,7 @@ export default function Inbox() {
                               'truncate text-[16px] tracking-tight',
                               message.unread ? 'text-foreground font-bold' : 'text-foreground/80 font-semibold'
                             )}>
-                              {highlightText(message.sender.name, searchQuery)}
+                              {highlightText(formatSenderName(message.sender.name), searchQuery)}
                             </h4>
                             <span className={cn(
                               'text-[12px] flex-shrink-0 font-medium',
@@ -695,6 +835,14 @@ export default function Inbox() {
                   );
                 })}
               </AnimatePresence>
+              {hasNextPage && (
+                <div
+                  ref={loadMoreSentinelRef}
+                  className="py-4 flex justify-center text-xs text-muted-foreground min-h-[48px]"
+                >
+                  {isFetchingNextPage ? 'Loading more…' : '\u00a0'}
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

@@ -110,6 +110,11 @@ export const bridgesApi = {
     return ApiClient.post('/gmail/disconnect', {});
   },
 
+  /** Pull INBOX messages into email_communications (unified inbox). */
+  syncGmailInbox: async (): Promise<{ success: boolean; synced_count: number }> => {
+    return ApiClient.post('/gmail/inbox/sync', {});
+  },
+
   // Outlook Extensions
   getOutlookAuthUrl: async (): Promise<{ url: string }> => {
     return ApiClient.get('/outlook/auth_url');

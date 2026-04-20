@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronDown, ChevronUp, ChevronRight, MoreVertical, Reply, ReplyAll, Forward, Paperclip, Download, Mail } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
@@ -9,8 +9,8 @@ import { ConversationalEmailView } from '@/components/inbox/ConversationalEmailV
 import { useSwipeable } from 'react-swipeable';
 import { useToast } from '@/hooks/use-toast';
 import { API_BASE_URL } from '@/lib/api-client';
+import { useQuery } from '@tanstack/react-query';
 import { useInboxStore } from '@/stores/inboxStore';
-import { useInbox } from '@/hooks/useInbox';
 interface EmailAttachment {
     name: string;
     size: string;
@@ -153,36 +153,60 @@ export default function EmailDetail() {
     const { toast } = useToast();
 
 
-    // Ensure we have the latest inbox data for navigation, even on refresh
-    useInbox();
+    const { accessToken } = useAuthStore();
+    const [searchParams] = useSearchParams();
+    const navPlatform = (searchParams.get('platform') || '').toLowerCase();
+    const platformForNav =
+        navPlatform === 'outlook' || navPlatform === 'gmail' || navPlatform === 'email'
+            ? navPlatform
+            : 'email';
 
-    const { messages, selectedPlatform } = useInboxStore();
-    
-    // Filter messages to match the currently selected "section" (In the Inbox)
-    const filteredMessages = messages.filter(m => {
-        if (selectedPlatform === 'all') return true;
-        if (selectedPlatform === 'whatsapp') return m.platform === 'whatsapp';
-        if (selectedPlatform === 'gmail') return m.platform === 'gmail';
-        if (selectedPlatform === 'outlook') return m.platform === 'outlook';
-        if (selectedPlatform === 'telegram') return m.platform === 'telegram';
-        if (selectedPlatform === 'instagram') return m.platform === 'instagram';
-        if (selectedPlatform === 'linkedin') return m.platform === 'linkedin';
-        if (selectedPlatform === 'erpnext') return m.platform === 'erpnext';
-        return true;
+    const normEmailId = (id: string | undefined) => {
+        if (!id) return '';
+        return id.startsWith('email-') ? id : `email-${id}`;
+    };
+    const targetNorm = normEmailId(emailId);
+    const rawForNav = (emailId || '').replace(/^email-/, '');
+    const navNeighborEnabled =
+        !!accessToken && !!targetNorm && rawForNav.length > 30;
+
+    const { data: neighborNav } = useQuery({
+        queryKey: ['inbox-navigation-neighbor', targetNorm, platformForNav],
+        queryFn: async () => {
+            const params = new URLSearchParams({ current_id: targetNorm, platform: platformForNav });
+            const r = await fetch(
+                `${API_BASE_URL}/inbox/navigation-neighbor?${params.toString()}`,
+                { headers: { Authorization: `Bearer ${accessToken}` } }
+            );
+            if (!r.ok) throw new Error('navigation-neighbor failed');
+            const body = (await r.json()) as unknown;
+            return body as {
+                prev_id: string | null;
+                next_id: string | null;
+                index: number;
+                total: number;
+                found: boolean;
+            };
+        },
+        enabled: navNeighborEnabled,
+        staleTime: 30_000,
     });
 
-    const currentIndex = filteredMessages.findIndex(m => {
-        const targetId = emailId || '';
-        // Match UUID part, prefixed ID, or roomId
-        return m.id === targetId || 
-               m.id === `email-${targetId}` || 
-               targetId === `email-${m.id}` ||
-               m.roomId === targetId ||
-               (targetId.length > 20 && m.id.includes(targetId));
-    });
+    const prevId = neighborNav?.prev_id ?? null;
+    const nextId = neighborNav?.next_id ?? null;
 
-    const prevMessage = currentIndex > 0 ? filteredMessages[currentIndex - 1] : null;
-    const nextMessage = currentIndex < filteredMessages.length - 1 ? filteredMessages[currentIndex + 1] : null;
+    const stubEmailNav = (id: string | null) =>
+        id
+            ? {
+                  id,
+                  platform: platformForNav as any,
+                  roomId: id.startsWith('email-') ? id.replace(/^email-/, '') : id,
+                  sender: { name: '' },
+              }
+            : null;
+
+    const prevMessage = stubEmailNav(prevId);
+    const nextMessage = stubEmailNav(nextId);
 
     const markAsRead = useInboxStore((state) => state.markAsRead);
 
@@ -195,7 +219,7 @@ export default function EmailDetail() {
             const realId = message.id.startsWith('email-')
                 ? message.id.replace('email-', '')
                 : message.id;
-            navigate(`/inbox/email/${realId}`);
+            navigate(`/inbox/email/${realId}?platform=${encodeURIComponent(platformForNav)}`);
         } else if (message.platform === 'whatsapp' && message.roomId) {
             const roomParam = encodeURIComponent(message.roomId);
             const phoneParam = message.sender?.phone
@@ -223,9 +247,6 @@ export default function EmailDetail() {
 
     // Use sample if not fetched yet or if using demo IDs
     const email = fetchedEmail || (emailId && (emailId.length < 10) ? (sampleEmails[emailId] || sampleEmails['3']) : null);
-
-    // Fetch from API
-    const { accessToken } = useAuthStore();
 
     useEffect(() => {
         // Strip "email-" prefix if it exists (added in Inbox.tsx)
@@ -367,6 +388,11 @@ export default function EmailDetail() {
             </div>
             {/* Header */}
             <header className="sticky top-0 z-50 bg-card border-b border-border p-4">
+                {navNeighborEnabled && neighborNav && neighborNav.found === false && (
+                    <p className="text-xs text-amber-600 dark:text-amber-500 mb-2">
+                        This thread is not in the unified inbox order. Previous and next may be unavailable.
+                    </p>
+                )}
                 <div className="flex items-center justify-between mb-2">
                     {/* Back button */}
                     <button
