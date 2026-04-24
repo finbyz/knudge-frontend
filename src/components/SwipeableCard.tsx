@@ -1,7 +1,6 @@
-import { motion, useMotionValue, useTransform } from 'framer-motion';
+import { motion, useMotionValue, useTransform, animate } from 'framer-motion';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { Check, X, Calendar, RefreshCw, ArrowLeft, ArrowRight } from 'lucide-react';
-import { useSwipeable } from 'react-swipeable';
 import { ActionCard } from '@/types';
 import { deckApi } from '@/api/deck';
 import { toast } from 'sonner';
@@ -102,65 +101,39 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
   const resetCardState = useCallback(() => {
     setIsSwiping(false);
     swipeDirectionRef.current = null;
-    requestAnimationFrame(() => {
-      x.set(0);
-    });
+    animate(x, 0, { type: 'spring', stiffness: 400, damping: 40 });
   }, [x]);
 
-  // Create handlers that are bound to current card - recreated when card changes
-  // Using mountCountRef ensures Brave mobile gets fresh handlers
-  const swipeHandlers = useMemo(() => {
-    const currentCardId = card.id;
-    const currentMount = mountCountRef.current;
+  const handleDragEnd = (event: any, info: any) => {
+    if (!isTop || hasSwipedRef.current) return;
 
-    return {
-      onSwiping: (eventData: { deltaX: number }) => {
-        if (!isTop || hasSwipedRef.current) return;
+    setIsSwiping(false);
 
-        setIsSwiping(true);
-        x.set(eventData.deltaX);
+    const offset = info.offset.x;
+    const velocity = info.velocity.x;
 
-        // Track direction based on current position
-        if (eventData.deltaX > SWIPE_THRESHOLD) {
-          swipeDirectionRef.current = 'right';
-        } else if (eventData.deltaX < -SWIPE_THRESHOLD) {
-          swipeDirectionRef.current = 'left';
-        } else {
-          swipeDirectionRef.current = null;
-        }
-      },
-      onSwiped: (eventData: { deltaX: number }) => {
-        if (!isTop || hasSwipedRef.current) return;
+    if (offset > SWIPE_THRESHOLD || velocity > 500) {
+      handleSwipeComplete('right');
+    } else if (offset < -SWIPE_THRESHOLD || velocity < -500) {
+      handleSwipeComplete('left');
+    } else {
+      resetCardState();
+    }
+  };
 
-        const absX = Math.abs(eventData.deltaX);
+  const handleDrag = (event: any, info: any) => {
+    if (!isTop || hasSwipedRef.current) return;
+    
+    setIsSwiping(true);
 
-        if (absX > SWIPE_THRESHOLD) {
-          const direction = eventData.deltaX > 0 ? 'right' : 'left';
-          handleSwipeComplete(direction);
-        } else {
-          resetCardState();
-        }
-      },
-      onTouchStartOrOnMouseDown: () => {
-        // Log touch start for debugging Brave mobile
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`Touch start on card: ${currentCardId}, mount: ${currentMount}`);
-        }
-      },
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [card.id, isTop, handleSwipeComplete, resetCardState]);
-
-  // Use useSwipeable with fresh handlers for each card
-  const swipeableHandlers = useSwipeable({
-    ...swipeHandlers,
-    trackMouse: true,
-    trackTouch: true,
-    preventScrollOnSwipe: true,
-    delta: 10,
-    swipeDuration: 500,
-    touchEventOptions: { passive: false },
-  });
+    if (info.offset.x > SWIPE_THRESHOLD) {
+      swipeDirectionRef.current = 'right';
+    } else if (info.offset.x < -SWIPE_THRESHOLD) {
+      swipeDirectionRef.current = 'left';
+    } else {
+      swipeDirectionRef.current = null;
+    }
+  };
 
   const [isRegenerating, setIsRegenerating] = useState(false);
 
@@ -192,7 +165,10 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
 
   return (
     <motion.div
-      {...(isTop ? swipeableHandlers : {})}
+      drag={isTop ? "x" : false}
+      onDrag={handleDrag}
+      onDragEnd={handleDragEnd}
+      dragDirectionLock
       data-card-id={card.id}
       data-is-top={isTop}
       className={cn(

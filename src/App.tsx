@@ -10,6 +10,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { useEffect, useState } from "react";
 import { authApi } from "@/api/auth";
 import { useNotificationStore } from "@/stores/notificationStore";
+import { getPersistedAccessToken } from "@/lib/api-client";
 import Index from "./pages/Index";
 import Deck from "./pages/Deck";
 import Connections from "./pages/Connections";
@@ -106,7 +107,9 @@ function AppRoutes() {
   const location = useLocation();
   const { completed, currentStep } = useOnboardingStore();
   const { accessToken, setUser } = useAuthStore();
-  const token = accessToken || JSON.parse(localStorage.getItem('knudge-auth') || '{}')?.state?.accessToken;
+  const persistedToken = getPersistedAccessToken();
+  const effectiveAuth = accessToken || persistedToken;
+  const token = effectiveAuth;
   const isOnboardingRoute = location.pathname.startsWith('/onboarding');
   const { startPolling, stopPolling, connectWebSocket, disconnectWebSocket } = useNotificationStore();
 
@@ -136,8 +139,8 @@ function AppRoutes() {
     }
   }, [token, setUser, startPolling, stopPolling]);
 
-  // Case 1: Not authenticated - only allow login
-  if (!accessToken) {
+  // Case 1: Not authenticated — use persisted token too (zustand may not have rehydrated yet)
+  if (!effectiveAuth) {
     if (location.pathname !== '/onboarding/login') {
       return <Navigate to="/onboarding/login" replace />;
     }
@@ -159,7 +162,7 @@ function AppRoutes() {
   }
 
   // If trying to access onboarding but user is fully authenticated and completed, go to main app
-  if (isOnboardingRoute && accessToken && completed && location.pathname !== '/onboarding/login') {
+  if (isOnboardingRoute && effectiveAuth && completed && location.pathname !== '/onboarding/login') {
     return <Navigate to="/" replace />;
   }
 

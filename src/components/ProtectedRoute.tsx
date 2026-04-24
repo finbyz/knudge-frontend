@@ -3,6 +3,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { authApi } from '@/api/auth';
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { getPersistedAccessToken } from '@/lib/api-client';
 
 export const ProtectedRoute = () => {
     const { accessToken, logout } = useAuthStore();
@@ -11,7 +12,8 @@ export const ProtectedRoute = () => {
 
     useEffect(() => {
         const validateSession = async () => {
-            if (!accessToken) {
+            const persisted = getPersistedAccessToken();
+            if (!accessToken && !persisted) {
                 setIsValidating(false);
                 setIsValid(false);
                 return;
@@ -22,10 +24,16 @@ export const ProtectedRoute = () => {
                 await authApi.getMe();
                 setIsValid(true);
             } catch (error: any) {
-                console.error('Session validation failed:', error);
-                // Token is invalid or expired, clear auth state
-                logout();
-                setIsValid(false);
+                // Only logout when we are sure the token is invalid (401 from /auth/me).
+                const status = Number(error?.status || error?.response?.status || 0);
+                console.error('Session validation failed:', { status, message: error?.message });
+                if (status === 401) {
+                    logout();
+                    setIsValid(false);
+                } else {
+                    // Transient network/backend error: keep the user in-app instead of forcing relogin.
+                    setIsValid(true);
+                }
             } finally {
                 setIsValidating(false);
             }

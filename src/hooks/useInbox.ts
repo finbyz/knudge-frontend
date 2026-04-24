@@ -11,7 +11,7 @@ import {
   type InboxTabsMeta,
   scheduleInboxTabsMetaRefresh,
 } from '@/stores/inboxStore';
-import { API_BASE_URL } from '@/lib/api-client';
+import { API_BASE_URL, getEffectiveAccessToken, getPersistedAccessToken } from '@/lib/api-client';
 
 const CACHE_TIME = 10 * 60 * 1000;
 const STALE_TIME = 45 * 1000;
@@ -171,20 +171,26 @@ export function useInboxList(platform: string, search: string) {
 
   const infinite = useInfiniteQuery({
     queryKey: inboxPageQueryKey(platform, debouncedSearch),
-    enabled: !!accessToken,
+    enabled: !!(accessToken || getPersistedAccessToken()),
     initialPageParam: null as string | null,
     staleTime: STALE_TIME,
     gcTime: CACHE_TIME,
     retry: 2,
     retryDelay: (attempt) => Math.min(1500 * 2 ** attempt, 8000),
+    refetchInterval: 8000,
+    refetchIntervalInBackground: true,
     queryFn: async ({ pageParam }): Promise<InboxPageJson> => {
+      const token = getEffectiveAccessToken(accessToken);
+      if (!token) {
+        throw new Error('Not authenticated');
+      }
       const params = new URLSearchParams();
       params.set('platform', platform || 'all');
       params.set('limit', String(INBOX_PAGE_LIMIT));
       if (debouncedSearch) params.set('search', debouncedSearch);
       if (pageParam) params.set('cursor', pageParam);
       const response = await fetch(`${API_BASE_URL}/inbox/page?${params}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) {
         throw new Error(`Inbox page failed: ${response.status}`);

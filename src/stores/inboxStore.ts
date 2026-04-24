@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { useAuthStore } from '@/stores/authStore';
-import { API_BASE_URL } from '@/lib/api-client';
+import { API_BASE_URL, getEffectiveAccessToken } from '@/lib/api-client';
 
 interface InboxMessage {
   id: string;
@@ -56,10 +56,10 @@ export function scheduleInboxTabsMetaRefresh() {
   inboxTabsRefreshTimer = setTimeout(async () => {
     inboxTabsRefreshTimer = null;
     try {
-      const { accessToken } = useAuthStore.getState();
-      if (!accessToken) return;
+      const token = getEffectiveAccessToken();
+      if (!token) return;
       const r = await fetch(`${API_BASE_URL}/inbox/tabs`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!r.ok) return;
       const j = await r.json();
@@ -236,12 +236,13 @@ export const useInboxStore = create<InboxState>()((set, get) => ({
     // Sync with backend for emails
     if (targetMessage && ['email', 'outlook', 'gmail'].includes((targetMessage as any).platform)) {
       try {
-        const { accessToken } = useAuthStore.getState();
+        const token = getEffectiveAccessToken();
         const emailId = id.startsWith('email-') ? id.replace('email-', '') : id;
-        
+        if (!token) return;
+
         await fetch(`${API_BASE_URL}/emails/${emailId}/read`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${accessToken}` },
+          headers: { Authorization: `Bearer ${token}` },
         });
       } catch (err) {
         console.error('Failed to sync mark-as-read with backend:', err);

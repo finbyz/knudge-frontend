@@ -34,9 +34,34 @@ export function ContactItem({ contact, onClick }: ContactItemProps) {
   if (hasWa && !platforms.map((p) => p.toLowerCase()).includes('whatsapp')) {
     platforms.push('whatsapp');
   }
+  const hasTg =
+    Boolean(contact.has_telegram) ||
+    (contact.provider || '').toLowerCase().split(',').some((x) => x.trim() === 'telegram');
+  if (hasTg && !platforms.map((p) => p.toLowerCase()).includes('telegram')) {
+    platforms.push('telegram');
+  }
   if (contact.linkedin_url && !platforms.includes('linkedin')) platforms.push('linkedin');
 
   const uniquePlatforms = [...new Set(platforms)];
+
+  const tgHandle =
+    contact.telegram_username &&
+    `@${String(contact.telegram_username).replace(/^@/, '')}`;
+  const subtitleParts = [
+    contact.email?.trim() || '',
+    contact.phone ? formatPhone(contact.phone) : '',
+    tgHandle || '',
+  ].filter(Boolean);
+  const subtitle =
+    subtitleParts.length > 0
+      ? subtitleParts.join(' · ')
+      : (contact.provider?.toLowerCase() === 'whatsapp'
+          ? 'WhatsApp contact'
+          : '') ||
+        (['gmail', 'google_contacts'].includes((contact.provider || '').toLowerCase())
+          ? 'Google Contacts'
+          : '') ||
+        'No contact info';
 
   // Title/Company not in backend currently. Display nothing or placeholder if really needed.
   // For now we just show name.
@@ -56,13 +81,7 @@ export function ContactItem({ contact, onClick }: ContactItemProps) {
       <div className="flex-1 min-w-0">
         <h3 className="font-medium text-foreground truncate">{formatSenderName(contact.name)}</h3>
         <p className="text-sm text-muted-foreground truncate">
-          {contact.email?.trim() ||
-            (contact.phone ? formatPhone(contact.phone) : '') ||
-            (contact.provider?.toLowerCase() === 'whatsapp' ? 'WhatsApp contact' : '') ||
-            (['gmail', 'google_contacts'].includes((contact.provider || '').toLowerCase())
-              ? 'Google Contacts'
-              : '') ||
-            'No contact info'}
+          {subtitle}
         </p>
       </div>
 

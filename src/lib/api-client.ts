@@ -38,39 +38,90 @@ export const API_HOST_URL = baseUrl;
 
 import { useAuthStore } from "@/stores/authStore";
 
+const AUTH_PERSIST_KEY = "knudge-auth";
+
+/**
+ * Read JWT from zustand-persist storage before rehydration completes.
+ * Without this, first paint has accessToken=null and APIs send no Authorization header.
+ */
+export function getPersistedAccessToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(AUTH_PERSIST_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { state?: { accessToken?: string | null } };
+    const t = parsed?.state?.accessToken;
+    return typeof t === "string" && t.length > 0 ? t : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Token from store (if hydrated) or from persisted localStorage. */
+export function getEffectiveAccessToken(explicit?: string | null): string | null {
+  if (explicit) return explicit;
+  const fromStore = useAuthStore.getState().accessToken;
+  if (fromStore) return fromStore;
+  return getPersistedAccessToken();
+}
+
 export class ApiClient {
+  /**
+   * Minimal structured error so callers can decide whether to logout.
+   * Never attach tokens or sensitive payloads here.
+   */
+  static ApiError = class ApiError extends Error {
+    status: number;
+    endpoint: string;
+    data: unknown;
+    constructor(message: string, status: number, endpoint: string, data: unknown) {
+      super(message);
+      this.name = "ApiError";
+      this.status = status;
+      this.endpoint = endpoint;
+      this.data = data;
+    }
+  };
+
   private static getHeaders(token?: string) {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
 
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    } else {
-      const storedToken = useAuthStore.getState().accessToken;
-      if (storedToken) {
-        headers['Authorization'] = `Bearer ${storedToken}`;
-      }
+    const auth = getEffectiveAccessToken(token ?? null);
+    if (auth) {
+      headers['Authorization'] = `Bearer ${auth}`;
     }
 
     return headers;
   }
 
   static async get(endpoint: string, token?: string) {
+    // Temporary debug visibility (do not log token value).
+    if (endpoint.startsWith('/contacts') || endpoint.startsWith('/bridges/status')) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[ApiClient] GET ${endpoint} hasToken=${!!getEffectiveAccessToken(token ?? null)}`
+      );
+    }
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       method: 'GET',
       headers: this.getHeaders(token),
     });
-    return this.handleResponse(response);
+    return this.handleResponse(endpoint, response);
   }
 
   static async post(endpoint: string, body: any, token?: string) {
+    if (endpoint.startsWith('/contacts') || endpoint.startsWith('/bridges/status')) {
+      // eslint-disable-next-line no-console
+      console.log(`[ApiClient] POST ${endpoint} hasToken=${!!(token || useAuthStore.getState().accessToken)}`);
+    }
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       method: 'POST',
       headers: this.getHeaders(token),
       body: JSON.stringify(body),
     });
-    return this.handleResponse(response);
+    return this.handleResponse(endpoint, response);
   }
 
   static async put(endpoint: string, body: any, token?: string) {
@@ -79,7 +130,7 @@ export class ApiClient {
       headers: this.getHeaders(token),
       body: JSON.stringify(body),
     });
-    return this.handleResponse(response);
+    return this.handleResponse(endpoint, response);
   }
 
   static async delete(endpoint: string, token?: string) {
@@ -87,7 +138,7 @@ export class ApiClient {
       method: 'DELETE',
       headers: this.getHeaders(token),
     });
-    return this.handleResponse(response);
+    return this.handleResponse(endpoint, response);
   }
 
   static async patch(endpoint: string, body: any, token?: string) {
@@ -96,19 +147,14 @@ export class ApiClient {
       headers: this.getHeaders(token),
       body: JSON.stringify(body),
     });
-    return this.handleResponse(response);
+    return this.handleResponse(endpoint, response);
   }
 
   static async postForm(endpoint: string, formData: FormData, token?: string) {
     const headers: HeadersInit = {};
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    } else {
-      const storedToken = useAuthStore.getState().accessToken;
-      if (storedToken) {
-        headers['Authorization'] = `Bearer ${storedToken}`;
-      }
+    const auth = getEffectiveAccessToken(token ?? null);
+    if (auth) {
+      headers['Authorization'] = `Bearer ${auth}`;
     }
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -116,10 +162,10 @@ export class ApiClient {
       headers,
       body: formData,
     });
-    return this.handleResponse(response);
+    return this.handleResponse(endpoint, response);
   }
 
-  private static async handleResponse(response: Response) {
+  private static async handleResponse(endpoint: string, response: Response) {
     const contentType = response.headers.get("content-type");
     let data;
 
@@ -133,15 +179,8 @@ export class ApiClient {
       const errorMessage = typeof data.detail === 'object'
         ? JSON.stringify(data.detail)
         : (data.detail || data.message || 'API request failed');
-      if (response.status === 401) {
-        // Ensure we don't keep the UI in a broken authenticated state.
-        try {
-          useAuthStore.getState().logout();
-        } catch {
-          // ignore
-        }
-      }
-      throw new Error(errorMessage);
+      // Do NOT blindly logout on every 401. Let ProtectedRoute decide based on /auth/me.
+      throw new this.ApiError(errorMessage, response.status, endpoint, data);
     }
 
     return data;

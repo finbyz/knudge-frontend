@@ -49,6 +49,7 @@ export default function Connections() {
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
   const [qrCodeData, setQrCodeData] = useState<string | null>(null);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
+  const [whatsappLifecycleState, setWhatsappLifecycleState] = useState<string | null>(null);
   const [showPhoneInput, setShowPhoneInput] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -325,13 +326,19 @@ export default function Connections() {
         try {
           const status = await bridgesApi.getStatus();
           const waStatus = status?.whatsapp as
-            | { connected?: boolean; authenticated?: boolean; contact_count?: number }
+            | { connected?: boolean; contact_count?: number; state?: string | null; last_error?: string | null }
             | undefined;
-          const conn = !!(waStatus?.connected || waStatus?.authenticated);
+          const waState = String(waStatus?.state || '').toUpperCase();
+          if (waState) setWhatsappLifecycleState(waState);
+          const conn = waState === 'CONNECTED' || waState === 'READY' || !!waStatus?.connected;
           // Require a "not connected" observation before accepting "connected", otherwise a stale
           // bridge session makes the wizard complete without scanning the new QR.
           if (!conn) {
             sawDisconnected = true;
+          }
+          // Hide QR as soon as the scan is done (CONNECTING -> SCANNED/CONNECTED/READY).
+          if (waState && waState !== 'CONNECTING' && qrCodeData) {
+            setQrCodeData(null);
           }
           if (conn && sawDisconnected) {
             setConnectingPlatform(null);
@@ -422,6 +429,7 @@ export default function Connections() {
       setConnectingPlatform(platform);
       setQrCodeData(null);
       setPairingCode(null);
+      if (platform === 'whatsapp') setWhatsappLifecycleState(null);
     }
 
     if (platform === 'whatsapp' || platform === 'signal') {
@@ -464,6 +472,7 @@ export default function Connections() {
     setConnectingPlatform(null);
     setQrCodeData(null);
     setPairingCode(null);
+    setWhatsappLifecycleState(null);
     setShowPhoneInput(false);
     setPhoneNumber('');
     setLoginId(null);
@@ -677,27 +686,29 @@ export default function Connections() {
         aria-hidden
         onChange={handleLinkedInFileChange}
       />
-      <main className="w-full min-w-0 space-y-8 pb-12 pt-0">
+      <main className="w-full min-w-0 pb-12 pt-0">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="rounded-2xl border border-border/60 bg-muted/15 p-4 text-sm leading-relaxed text-muted-foreground sm:p-5"
+          className="mb-6 rounded-2xl border border-border/60 bg-muted/15 p-4 text-sm leading-relaxed text-muted-foreground sm:p-5"
         >
           Connect your messaging platforms so Knudge can sync conversations and draft personalized messages.
         </motion.div>
 
-        {connections.map((connection, index) => (
-          <motion.div key={connection.platform} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: index * 0.1 }}>
-            <ConnectionCard
-              connection={connection}
-              onConnect={() => handleConnect(connection.platform)}
-              onDisconnect={() => requestDisconnect(connection.platform)}
-              onSync={() => handleSyncContacts(connection.platform)}
-              isSyncing={syncingPlatform === connection.platform}
-            />
-          </motion.div>
-        ))}
+        <div className="space-y-3">
+          {connections.map((connection, index) => (
+            <motion.div key={connection.platform} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: index * 0.1 }}>
+              <ConnectionCard
+                connection={connection}
+                onConnect={() => handleConnect(connection.platform)}
+                onDisconnect={() => requestDisconnect(connection.platform)}
+                onSync={() => handleSyncContacts(connection.platform)}
+                isSyncing={syncingPlatform === connection.platform}
+              />
+            </motion.div>
+          ))}
+        </div>
       </main>
 
       <TelegramLoginModal
@@ -865,7 +876,7 @@ export default function Connections() {
                     </button>
                     <button onClick={() => setShowPhoneInput(false)} className="text-sm text-primary underline">Use QR Code instead</button>
                   </div>
-                ) : qrCodeData ? (
+                ) : qrCodeData && (whatsappLifecycleState || 'CONNECTING') === 'CONNECTING' ? (
                   <div className="flex flex-col items-center space-y-4">
                     <div className="bg-white p-4 rounded-xl shadow-inner border-2 border-dashed border-border relative">
                       <QRCodeSVG value={qrCodeData} size={256} level={"L"} includeMargin={false} className="w-64 h-64" />
@@ -874,6 +885,13 @@ export default function Connections() {
                       <button onClick={() => handleConnect(connectingPlatform!)} className="text-xs text-muted-foreground underline hover:text-primary transition-colors">Refresh Code</button>
                       <button onClick={() => { setShowPhoneInput(true); setQrCodeData(null); }} className="text-xs text-primary underline hover:text-primary/80 transition-colors">Link with Phone Number</button>
                     </div>
+                  </div>
+                ) : whatsappLifecycleState === 'SCANNED' ? (
+                  <div className="flex flex-col items-center space-y-3">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground text-center">
+                      QR scanned. Finalizing connection…
+                    </p>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center space-y-2">

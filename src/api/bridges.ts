@@ -3,6 +3,8 @@ import { ApiClient } from "@/lib/api-client";
 export interface PlatformStatus {
   connected: boolean;
   contact_count: number;
+  state?: string | null;
+  last_error?: string | null;
 }
 
 export interface BridgeStatus {

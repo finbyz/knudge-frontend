@@ -12,7 +12,8 @@ import { toast } from 'sonner';
 import { knowledgeApi, KnowledgeDocument } from '@/api/knowledge';
 import { researchApi, UserResearchProfile } from '@/api/research';
 import { Avatar } from '@/components/Avatar';
-import { FileText, Trash2, Upload, Loader2, AlertCircle, RefreshCw, Globe, ExternalLink } from 'lucide-react';
+import { emailsApi, EmailParticipant } from '@/api/emails';
+import { FileText, Trash2, Upload, Loader2, AlertCircle, RefreshCw, Globe, ExternalLink, History } from 'lucide-react';
 import { useRef } from 'react';
 import {
   AlertDialog,
@@ -34,6 +35,7 @@ interface CircleWithUI extends Circle {
   contacts: number; // For display count
   outreach_agenda: string;
   contact_ids?: string[]; // IDs of members
+  participant_emails?: string[]; // Emails of members not yet contacts
 }
 
 const channelOptions: { id: ChannelType; label: string; color: string; icon: React.ReactNode }[] = [
@@ -104,10 +106,11 @@ export default function Settings() {
   const [allContacts, setAllContacts] = useState<Contact[]>([]);
   const [showCircleForm, setShowCircleForm] = useState(false);
   const [editingCircle, setEditingCircle] = useState<CircleWithUI | null>(null);
+  const [contactsLoadedOnce, setContactsLoadedOnce] = useState(false);
 
   // Adjusted form state
-  const [circleForm, setCircleForm] = useState<{ name: string; frequency: string; channels: ChannelType[]; outreach_agenda: string; contact_ids: string[] }>({
-    name: '', frequency: 'Weekly', channels: [], outreach_agenda: '', contact_ids: []
+  const [circleForm, setCircleForm] = useState<{ name: string; frequency: string; channels: ChannelType[]; outreach_agenda: string; contact_ids: string[]; participant_emails: string[] }>({
+    name: '', frequency: 'Weekly', channels: [], outreach_agenda: '', contact_ids: [], participant_emails: []
   });
 
   const [contactSearchQuery, setContactSearchQuery] = useState('');
@@ -132,43 +135,90 @@ export default function Settings() {
     loadData();
   }, []);
 
+  const loadContactsForCircleModal = async () => {
+    // Always load via the new paginated merged endpoint to avoid legacy behavior differences.
+    // Intentionally fetch "all" platforms with a generous limit for the modal.
+    // eslint-disable-next-line no-console
+    console.log("[circle_contacts_api_called] GET /contacts/page platform=all limit=500 search=<empty>");
+    const page = await contactsApi.getContactsPage({ platform: "all", limit: 500, offset: 0 });
+    let loadedContacts = page.items || [];
+
+    try {
+      const participants = await emailsApi.getParticipants();
+      const newContacts = participants
+        .filter(p => !p.is_contact && p.email)
+        .map(p => ({
+          id: p.email, // Use email as virtual ID for non-contacts
+          name: p.display_name || p.email.split('@')[0],
+          email: p.email,
+          phone: null,
+          is_group: false,
+          has_whatsapp: false,
+          has_telegram: false,
+          provider: 'email',
+          notes: null,
+          linkedin_url: null,
+          avatar: null
+        } as unknown as Contact));
+      loadedContacts = [...loadedContacts, ...newContacts];
+    } catch (e) {
+      console.error("Failed to load email participants", e);
+    }
+
+    // eslint-disable-next-line no-console
+    console.log("[circle_contacts_response_count]", loadedContacts.length);
+    setAllContacts(loadedContacts);
+    setContactsLoadedOnce(true);
+    return loadedContacts;
+  };
+
+
   const loadData = async () => {
     try {
-      const [userData, circlesData, contactsData, documentsRes, researchData] = await Promise.all([
+      // Settings previously used Promise.all(). Any single 401 (common before zustand rehydration)
+      // prevented contacts from loading, breaking Circles. Use allSettled and keep contacts resilient.
+      const [meRes, circlesRes, documentsRes, researchRes, contactsRes] = await Promise.allSettled([
         authApi.getMe(),
         contactsApi.getCircles(),
-        contactsApi.getContacts(),
         knowledgeApi.getDocuments(),
-        researchApi.getUserResearchProfile()
+        researchApi.getUserResearchProfile(),
+        loadContactsForCircleModal(),
       ]);
-      setUserProfile(userData);
-      setResearch(researchData);
-      setDocuments(documentsRes.documents);
-      setUser(userData); // Sync to global store
-      // Load notification preferences - use ?? to handle undefined/null with default true
-      setBirthdayReminders(userData.birthday_reminders ?? true);
-      setSocialMonitoring(userData.social_monitoring ?? true);
-      setPushNotifications(userData.push_notifications ?? true);
-      // Load message preferences
-      setTone(userData.message_tone ?? 'professional');
-      const lengthToIndex: Record<string, number> = { short: 0, medium: 1, long: 2 };
-      setMessageLength(lengthToIndex[(userData.message_length || 'medium').toLowerCase()] ?? 1);
-      setAllContacts(contactsData);
 
-      // Enhance circles
-      const enhancedCircles: CircleWithUI[] = await Promise.all(circlesData.map(async (c) => {
-        // Fetch contacts for this circle to get count and IDs
-        // This is N+1 but okay for limited circles
-        const members = await contactsApi.getContacts(c.id);
-        return {
-          ...c,
-          channels: (c.channels || ['whatsapp']) as ChannelType[],
-          contacts: members.length,
-          contact_ids: members.map(m => m.id),
-          outreach_agenda: c.outreach_agenda
-        };
+      if (meRes.status === "fulfilled") {
+        const userData = meRes.value;
+        setUserProfile(userData);
+        setUser(userData); // Sync to global store
+        // Load notification preferences - use ?? to handle undefined/null with default true
+        setBirthdayReminders(userData.birthday_reminders ?? true);
+        setSocialMonitoring(userData.social_monitoring ?? true);
+        setPushNotifications(userData.push_notifications ?? true);
+        // Load message preferences
+        setTone(userData.message_tone ?? 'professional');
+        const lengthToIndex: Record<string, number> = { short: 0, medium: 1, long: 2 };
+        setMessageLength(lengthToIndex[(userData.message_length || 'medium').toLowerCase()] ?? 1);
+      }
+
+      if (documentsRes.status === "fulfilled") setDocuments(documentsRes.value.documents);
+      if (researchRes.status === "fulfilled") setResearch(researchRes.value);
+
+      const circlesData = circlesRes.status === "fulfilled" ? circlesRes.value : [];
+
+      // Use persisted backend count to avoid refresh mismatches from legacy paginated member fetches.
+      const enhancedCircles: CircleWithUI[] = circlesData.map((c) => ({
+        ...c,
+        channels: (c.channels || ['whatsapp']) as ChannelType[],
+        contacts: c.contacts_count ?? 0,
+        contact_ids: [],
+        participant_emails: [],
+        outreach_agenda: c.outreach_agenda
       }));
       setCircles(enhancedCircles);
+
+      if (contactsRes.status === "rejected") {
+        // eslint-disable-next-line no-console
+        console.log("[circle_contacts_error]", contactsRes.reason);
+      }
     } catch (error) {
       console.error("Failed to load settings data", error);
       toast.error("Failed to load data");
@@ -180,9 +230,16 @@ export default function Settings() {
 
   const handleAddCircle = () => {
     setEditingCircle(null);
-    setCircleForm({ name: '', channels: [], frequency: 'Weekly', outreach_agenda: '', contact_ids: [] });
+    setCircleForm({ name: '', channels: [], frequency: 'Weekly', outreach_agenda: '', contact_ids: [], participant_emails: [] });
     setContactSearchQuery('');
     setShowCircleForm(true);
+    // If settings loaded before auth rehydration, contacts may not have loaded. Retry on modal open.
+    if (!contactsLoadedOnce || allContacts.length === 0) {
+      loadContactsForCircleModal().catch((e) => {
+        // eslint-disable-next-line no-console
+        console.log("[circle_contacts_error]", e);
+      });
+    }
   };
 
   const toggleChannel = (channel: ChannelType) => {
@@ -206,13 +263,23 @@ export default function Settings() {
   };
 
   const toggleContact = (contactId: string) => {
-    setCircleForm(prev => ({
-      ...prev,
-      contact_ids: prev.contact_ids.includes(contactId)
-        ? prev.contact_ids.filter(id => id !== contactId)
-        : [...prev.contact_ids, contactId]
-    }));
+    if (contactId.includes('@')) {
+      setCircleForm(prev => ({
+        ...prev,
+        participant_emails: prev.participant_emails.includes(contactId)
+          ? prev.participant_emails.filter(id => id !== contactId)
+          : [...prev.participant_emails, contactId]
+      }));
+    } else {
+      setCircleForm(prev => ({
+        ...prev,
+        contact_ids: prev.contact_ids.includes(contactId)
+          ? prev.contact_ids.filter(id => id !== contactId)
+          : [...prev.contact_ids, contactId]
+      }));
+    }
   };
+
 
   const handleCreateNewContact = async () => {
     if (!newContactForm.name) return;
@@ -234,17 +301,38 @@ export default function Settings() {
     }
   };
 
-  const handleEditCircle = (circle: CircleWithUI) => {
+  const handleEditCircle = async (circle: CircleWithUI) => {
+    let memberIds = circle.contact_ids || [];
+    try {
+      const page = await contactsApi.getContactsPage({
+        platform: 'all',
+        circleId: circle.id,
+        limit: 1000,
+        offset: 0
+      });
+      memberIds = page.items.map((contact) => contact.id);
+    } catch (error) {
+      console.error("Failed to load circle members", error);
+      toast.error("Could not load all circle members");
+    }
+
     setEditingCircle(circle);
     setCircleForm({
       name: circle.name,
       frequency: circle.frequency,
       channels: circle.channels,
       outreach_agenda: circle.outreach_agenda,
-      contact_ids: circle.contact_ids || []
+      contact_ids: memberIds,
+      participant_emails: []
     });
     setContactSearchQuery('');
     setShowCircleForm(true);
+    if (!contactsLoadedOnce || allContacts.length === 0) {
+      loadContactsForCircleModal().catch((e) => {
+        // eslint-disable-next-line no-console
+        console.log("[circle_contacts_error]", e);
+      });
+    }
   };
 
   const selectAllContacts = () => {
@@ -255,8 +343,9 @@ export default function Settings() {
     }));
   };
 
-  const clearAllContacts = () => {
-    setCircleForm(prev => ({ ...prev, contact_ids: [] }));
+
+  const clearAllMembers = () => {
+    setCircleForm(prev => ({ ...prev, contact_ids: [], participant_emails: [] }));
   };
 
   const filteredContacts = allContacts.filter(contact => {
@@ -292,6 +381,15 @@ export default function Settings() {
 
     return matchesChannel;
   });
+  
+  useEffect(() => {
+    // Signal-only observability to find where contacts disappear:
+    // API -> state -> filtered list.
+    // eslint-disable-next-line no-console
+    console.log("[circle_contacts_state_count]", allContacts.length);
+    // eslint-disable-next-line no-console
+    console.log("[circle_contacts_filtered_count]", filteredContacts.length);
+  }, [allContacts.length, filteredContacts.length]);
 
   const handleSaveCircle = async () => {
     if (!circleForm.name || !circleForm.outreach_agenda || circleForm.channels.length === 0) return;
@@ -302,6 +400,7 @@ export default function Settings() {
           name: circleForm.name,
           frequency: circleForm.frequency,
           contact_ids: circleForm.contact_ids,
+          participant_emails: circleForm.participant_emails,
           outreach_agenda: circleForm.outreach_agenda,
           channels: circleForm.channels
         });
@@ -312,7 +411,8 @@ export default function Settings() {
           channels: circleForm.channels,
           outreach_agenda: circleForm.outreach_agenda,
           contact_ids: circleForm.contact_ids,
-          contacts: circleForm.contact_ids.length
+          participant_emails: circleForm.participant_emails,
+          contacts: circleForm.contact_ids.length + circleForm.participant_emails.length
         };
 
         setCircles((prev) =>
@@ -324,14 +424,16 @@ export default function Settings() {
           name: circleForm.name,
           frequency: circleForm.frequency,
           contact_ids: circleForm.contact_ids,
+          participant_emails: circleForm.participant_emails,
           outreach_agenda: circleForm.outreach_agenda,
           channels: circleForm.channels
         });
         // Enhance with local UI state
         const enhanced: CircleWithUI = {
           ...created,
-          contacts: circleForm.contact_ids.length,
+          contacts: circleForm.contact_ids.length + circleForm.participant_emails.length,
           contact_ids: circleForm.contact_ids,
+          participant_emails: circleForm.participant_emails,
           channels: circleForm.channels,
           outreach_agenda: circleForm.outreach_agenda
         };
@@ -977,7 +1079,7 @@ export default function Settings() {
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-sm font-medium text-foreground">
-                      Members <span className="text-muted-foreground">({circleForm.contact_ids.length})</span>
+                      Members <span className="text-muted-foreground">({circleForm.contact_ids.length + circleForm.participant_emails.length})</span>
                     </label>
                     <button
                       onClick={() => setShowNewContactForm(!showNewContactForm)}
@@ -1038,20 +1140,41 @@ export default function Settings() {
                   </div>
 
                   <div className="max-h-48 overflow-y-auto border border-border rounded-xl bg-card divide-y divide-border">
-                    {filteredContacts.length === 0 ? (
+                    {contactSearchQuery.includes('@') && !filteredContacts.some(c => c.email === contactSearchQuery) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          toggleContact(contactSearchQuery);
+                          setContactSearchQuery('');
+                        }}
+                        className="w-full flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors bg-primary/5"
+                      >
+                        <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                          <Plus className="h-4 w-4 text-primary" />
+                        </div>
+                        <div className="text-left flex-1 min-w-0">
+                          <div className="text-sm font-medium text-foreground truncate">Add "{contactSearchQuery}"</div>
+                          <div className="text-xs text-muted-foreground">Add to circle participants</div>
+                        </div>
+                      </button>
+                    )}
+                    {filteredContacts.length === 0 && !contactSearchQuery.includes('@') ? (
                       <div className="p-4 text-center text-sm text-muted-foreground">No contacts matching search.</div>
                     ) : (
-                      filteredContacts.map(contact => (
+                      filteredContacts.map(contact => {
+                        const isSelected = circleForm.contact_ids.includes(contact.id) || circleForm.participant_emails.includes(contact.id);
+                        return (
                         <button
                           key={contact.id}
+                          type="button"
                           onClick={() => toggleContact(contact.id)}
                           className="w-full flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors"
                         >
                           <div className={cn(
-                            "h-5 w-5 rounded-md border flex items-center justify-center transition-colors",
-                            circleForm.contact_ids.includes(contact.id) ? "bg-primary border-primary" : "border-muted-foreground/30"
+                            "h-5 w-5 rounded-md border flex items-center justify-center transition-colors flex-shrink-0",
+                            isSelected ? "bg-primary border-primary" : "border-muted-foreground/30"
                           )}>
-                            {circleForm.contact_ids.includes(contact.id) && <Plus className="h-3 w-3 text-primary-foreground" />}
+                            {isSelected && <Plus className="h-3 w-3 text-primary-foreground" />}
                           </div>
                           <div className="text-left flex-1 min-w-0">
                             <div className="flex items-center gap-1.5">
@@ -1062,6 +1185,11 @@ export default function Settings() {
                                   Group
                                 </span>
                               )}
+                              {contact.provider === 'email' && !contact.phone && !contact.linkedin_url && (
+                                <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-blue-500/10 text-blue-500 text-[10px] font-bold uppercase tracking-wider">
+                                  Email
+                                </span>
+                              )}
                             </div>
                             {(contact.email || (contact.phone && !contact.is_group)) && (
                               <div className="text-xs text-muted-foreground truncate">
@@ -1070,9 +1198,10 @@ export default function Settings() {
                             )}
                           </div>
                         </button>
-                      ))
+                      )})
                     )}
                   </div>
+
                 </div>
 
                 <div>

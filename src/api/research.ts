@@ -48,7 +48,7 @@ export const researchApi = {
             websiteUrl?: string;
         }
     ): Promise<UserResearchProfile> => {
-        return ApiClient.post('/research/user-profile/', {
+        return ApiClient.post('/research/user-profile', {
             linkedin_url: linkedinUrl,
             name: name,
             first_name: options?.firstName,
@@ -64,7 +64,7 @@ export const researchApi = {
      */
     getUserResearchProfile: async (): Promise<UserResearchProfile | null> => {
         try {
-            return await ApiClient.get('/research/user-profile/');
+            return await ApiClient.get('/research/user-profile');
         } catch {
             return null;
         }
@@ -74,7 +74,7 @@ export const researchApi = {
      * Research a contact (uses Perplexity separately — unchanged).
      */
     researchContact: async (contactId: string): Promise<ContactIntelligence> => {
-        return ApiClient.post(`/research/contact/${contactId}/`, {});
+        return ApiClient.post(`/research/contact/${contactId}`, {});
     },
 
     /**
@@ -82,7 +82,7 @@ export const researchApi = {
      */
     getContactIntelligence: async (contactId: string): Promise<ContactIntelligence | null> => {
         try {
-            return await ApiClient.get(`/research/contact/${contactId}/`);
+            return await ApiClient.get(`/research/contact/${contactId}`);
         } catch {
             return null;
         }

@@ -10,7 +10,13 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
+  RefreshCw,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { bridgesApi } from '@/api/bridges';
+import { toast } from 'sonner';
 import { NavLink, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useUnreadStore } from '@/stores/unreadStore';
@@ -32,6 +38,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 const navItems = [
   { path: '/', icon: Home, label: 'Home' },
@@ -53,6 +65,40 @@ export function DesktopSidebar({ collapsed, onToggle }: DesktopSidebarProps) {
   const { unreadInbox, unreadFeed } = useUnreadStore();
   const { user, logout } = useAuthStore();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const status = await bridgesApi.getStatus();
+      const jobs: Promise<unknown>[] = [];
+
+      if (status.whatsapp?.connected) jobs.push(bridgesApi.sync('whatsapp'));
+      if (status.gmail?.connected) {
+        jobs.push(
+          bridgesApi.sync('gmail').then(() => bridgesApi.syncGmailInbox())
+        );
+      }
+      if (status.outlook?.connected) jobs.push(bridgesApi.sync('outlook'));
+      if (status.erpnext?.connected) jobs.push(bridgesApi.syncERPNext());
+      if (status.telegram?.connected) jobs.push(bridgesApi.syncTelegram());
+      if (status.instagram?.connected) jobs.push(bridgesApi.syncInstagram());
+
+      if (jobs.length === 0) {
+        toast.message('No connected sources', {
+          description: 'Open Sync settings to link sources.',
+        });
+        return;
+      }
+
+      await Promise.allSettled(jobs);
+      toast.success('Sync complete. Contacts and messages updated.');
+    } catch (error) {
+      toast.error('Failed to sync. Please check your connections.');
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const getUnreadCount = (key?: 'inbox' | 'feed') => {
     if (key === 'inbox') return unreadInbox;
@@ -71,38 +117,76 @@ export function DesktopSidebar({ collapsed, onToggle }: DesktopSidebarProps) {
       className="z-40 flex h-full min-h-0 max-h-full min-w-0 flex-shrink-0 flex-col glass-panel shadow-elevated"
     >
       {/* Logo Section */}
-      <div
-        className={cn(
-          'flex h-[4.5rem] flex-shrink-0 items-center border-b border-sidebar-border/40',
-          collapsed ? 'justify-center px-2' : 'justify-between px-5'
-        )}
-      >
-        <AnimatePresence mode="wait">
-          {!collapsed && (
-            <motion.div
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -10 }}
-              transition={{ duration: 0.2 }}
-              className="flex min-w-0 items-center gap-3"
-            >
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl gradient-primary shadow-glow">
-                <span className="text-base font-bold text-white">K</span>
-              </div>
-              <span className="truncate text-xl font-bold tracking-tight text-sidebar-foreground">Knudge</span>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {collapsed && (
+      <div className="relative flex h-[4.5rem] flex-shrink-0 items-center border-b border-sidebar-border/40 overflow-hidden">
+        <div className="absolute left-[20px] flex items-center gap-3">
           <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl gradient-primary shadow-glow">
             <span className="text-base font-bold text-white">K</span>
           </div>
-        )}
+          
+          <AnimatePresence>
+            {!collapsed && (
+              <motion.div
+                initial={{ opacity: 0, width: 0 }}
+                animate={{ opacity: 1, width: 'auto' }}
+                exit={{ opacity: 0, width: 0 }}
+                transition={{ duration: 0.2 }}
+                style={{ overflow: 'hidden', whiteSpace: 'nowrap' }}
+                className="text-xl font-bold tracking-tight text-sidebar-foreground"
+              >
+                Knudge
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        <AnimatePresence>
+          {!collapsed && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="absolute right-4"
+            >
+              <TooltipProvider delayDuration={150}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={onToggle}
+                      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-foreground transition-colors group"
+                    >
+                      <PanelLeftClose className="h-5 w-5 opacity-70 transition-all group-hover:opacity-100" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="border-none bg-zinc-900 px-2.5 py-1.5 text-xs font-semibold text-white shadow-md">
+                    Close sidebar
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Navigation — items share px-3 with logo/footer; active rail is flush with highlight left edge */}
       <nav className="no-scrollbar min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-3 py-2">
+        {collapsed && (
+          <TooltipProvider delayDuration={150}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={onToggle}
+                  className="mb-2 flex min-h-[44px] w-full cursor-pointer items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-primary/5 hover:text-sidebar-foreground group"
+                >
+                  <PanelLeftOpen className="h-5 w-5 opacity-70 transition-all duration-200 group-hover:scale-110 group-hover:opacity-100" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="border-none bg-zinc-900 px-2.5 py-1.5 text-xs font-semibold text-white shadow-md">
+                Open sidebar
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
         {navItems.map((item) => {
           const unreadCount = getUnreadCount(item.unreadKey);
           const isActive =
@@ -129,12 +213,7 @@ export function DesktopSidebar({ collapsed, onToggle }: DesktopSidebarProps) {
                 />
               )}
 
-              <div
-                className={cn(
-                  'relative z-0 flex min-w-0 flex-1 items-center py-2.5',
-                  collapsed ? 'justify-center px-2' : 'gap-3 pl-3 pr-3'
-                )}
-              >
+              <div className="relative z-0 flex min-w-0 flex-1 items-center py-2.5 gap-3 pl-[14px] pr-3">
                 <div className="relative flex-shrink-0">
                   <item.icon
                     className={cn(
@@ -170,22 +249,6 @@ export function DesktopSidebar({ collapsed, onToggle }: DesktopSidebarProps) {
       </nav>
 
       <div className="mt-auto flex-shrink-0">
-        <div className="px-3 pb-1 pt-0">
-          <button
-            type="button"
-            onClick={onToggle}
-            className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-muted-foreground transition-colors duration-200 hover:bg-primary/5 hover:text-foreground"
-          >
-            {collapsed ? (
-              <ChevronRight className="h-5 w-5" aria-hidden />
-            ) : (
-              <>
-                <ChevronLeft className="h-5 w-5 shrink-0" aria-hidden />
-                <span className="text-sm font-medium">Collapse</span>
-              </>
-            )}
-          </button>
-        </div>
 
         <div className="px-3 pb-3 pt-1">
           <DropdownMenu modal={false}>

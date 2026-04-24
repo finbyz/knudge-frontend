@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { remindersApi, ReminderData } from '@/api/reminders';
 import { useAuthStore } from '@/stores/authStore';
+import { API_HOST_URL, getEffectiveAccessToken } from '@/lib/api-client';
 
 export interface AppNotification {
   id: string;
@@ -250,14 +251,30 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
 
   connectWebSocket: () => {
     const user = useAuthStore.getState().user;
-    const token = useAuthStore.getState().accessToken;
+    const token = getEffectiveAccessToken();
     if (!user || !token) return;
 
     // Already connected check
     const existing = get().wsConnection;
     if (existing && existing.readyState === WebSocket.OPEN) return;
 
-    const wsUrl = `wss://knudge-dev.finbyz.com/ws/notifications?token=${token}`;
+    const custom = import.meta.env.VITE_WS_NOTIFICATIONS_URL as string | undefined;
+    let wsUrl: string;
+    if (custom) {
+      wsUrl = custom.includes('?')
+        ? `${custom}&token=${encodeURIComponent(token)}`
+        : `${custom}?token=${encodeURIComponent(token)}`;
+    } else {
+      const host = (API_HOST_URL || '')
+        .replace(/^https?:\/\//, '')
+        .replace(/\/$/, '');
+      const h = host || (typeof window !== 'undefined' ? window.location.host : '');
+      const proto =
+        typeof window !== 'undefined' && window.location.protocol === 'https:'
+          ? 'wss:'
+          : 'ws:';
+      wsUrl = `${proto}//${h}/ws/notifications?token=${encodeURIComponent(token)}`;
+    }
     const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {

@@ -15,6 +15,9 @@ export interface Contact {
   provider?: string;
   /** True when an active non-group WhatsApp row exists for this person (linked or phone match). */
   has_whatsapp?: boolean;
+  /** True when a Telegram contact exists (linked or standalone row). */
+  has_telegram?: boolean;
+  telegram_username?: string | null;
   whatsapp_contact_id?: string;
   instagram_username?: string;
   is_group?: boolean;
@@ -24,6 +27,7 @@ export interface CreateCircleRequest {
   name: string;
   frequency: string;
   contact_ids?: string[];
+  participant_emails?: string[];
   outreach_agenda?: string;
   channels?: string[];
 }
@@ -108,7 +112,8 @@ export const contactsApi = {
   },
   // Circles
   getCircles: async (): Promise<Circle[]> => {
-    return ApiClient.get('/contacts/circles/');
+    // Avoid trailing-slash redirects which can drop Authorization in browsers.
+    return ApiClient.get('/contacts/circles');
   },
 
   createCircle: async (data: CreateCircleRequest): Promise<Circle> => {

@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
-import { API_BASE_URL } from '@/lib/api-client';
+import { API_BASE_URL, getEffectiveAccessToken, getPersistedAccessToken } from '@/lib/api-client';
 
 const CACHE_TIME = 10 * 60 * 1000;
 const STALE_TIME = 2 * 60 * 1000;
@@ -29,11 +29,13 @@ export function useContacts(circleId?: string) {
   return useInfiniteQuery<ContactsResponse, Error, { pages: ContactsResponse[]; pageParams: number[] }, (string | undefined)[], number>({
     queryKey: ['contacts', circleId],
     queryFn: async ({ pageParam = 1 }) => {
+      const token = getEffectiveAccessToken(accessToken);
+      if (!token) throw new Error('Not authenticated');
       const url = circleId
         ? `${API_BASE_URL}/contacts/?circle_id=${circleId}&page=${pageParam}&limit=50`
         : `${API_BASE_URL}/contacts/?page=${pageParam}&limit=50`;
       const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to fetch contacts');
       return response.json();
@@ -44,7 +46,7 @@ export function useContacts(circleId?: string) {
     },
     staleTime: STALE_TIME,
     gcTime: CACHE_TIME,
-    enabled: !!accessToken,
+    enabled: !!(accessToken || getPersistedAccessToken()),
   });
 }
 
@@ -56,15 +58,17 @@ export function useContact(contactId: string | null) {
     queryKey: ['contact', contactId],
     queryFn: async () => {
       if (!contactId) return null;
+      const token = getEffectiveAccessToken(accessToken);
+      if (!token) throw new Error('Not authenticated');
       const response = await fetch(`${API_BASE_URL}/contacts/${contactId}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to fetch contact');
       return response.json();
     },
     staleTime: STALE_TIME,
     gcTime: CACHE_TIME,
-    enabled: !!accessToken && !!contactId,
+    enabled: !!(accessToken || getPersistedAccessToken()) && !!contactId,
   });
 }
 
@@ -76,15 +80,17 @@ export function useUnifiedContact(contactId: string | null) {
     queryKey: ['contact', contactId, 'unified'],
     queryFn: async () => {
       if (!contactId) return null;
+      const token = getEffectiveAccessToken(accessToken);
+      if (!token) throw new Error('Not authenticated');
       const response = await fetch(`${API_BASE_URL}/contacts/${contactId}/unified`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to fetch unified contact');
       return response.json();
     },
     staleTime: STALE_TIME,
     gcTime: CACHE_TIME,
-    enabled: !!accessToken && !!contactId,
+    enabled: !!(accessToken || getPersistedAccessToken()) && !!contactId,
   });
 }
 
@@ -96,15 +102,17 @@ export function useContactConversationSummary(contactId: string | null) {
     queryKey: ['contact', contactId, 'conversation-summary'],
     queryFn: async () => {
       if (!contactId) return null;
+      const token = getEffectiveAccessToken(accessToken);
+      if (!token) throw new Error('Not authenticated');
       const response = await fetch(`${API_BASE_URL}/contacts/${contactId}/conversation-summary`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to fetch conversation summary');
       return response.json();
     },
     staleTime: 5 * 60 * 1000, // 5 minutes - summaries don't change often
     gcTime: CACHE_TIME,
-    enabled: !!accessToken && !!contactId,
+    enabled: !!(accessToken || getPersistedAccessToken()) && !!contactId,
   });
 }
 
@@ -115,11 +123,13 @@ export function useCreateContact() {
 
   return useMutation({
     mutationFn: async (contactData: Partial<Contact>) => {
+      const token = getEffectiveAccessToken(accessToken);
+      if (!token) throw new Error('Not authenticated');
       const response = await fetch(`${API_BASE_URL}/contacts/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(contactData),
       });
@@ -139,11 +149,13 @@ export function useUpdateContact() {
 
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Contact> }) => {
+      const token = getEffectiveAccessToken(accessToken);
+      if (!token) throw new Error('Not authenticated');
       const response = await fetch(`${API_BASE_URL}/contacts/${id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(data),
       });
@@ -164,9 +176,11 @@ export function useDeleteContact() {
 
   return useMutation({
     mutationFn: async (id: string) => {
+      const token = getEffectiveAccessToken(accessToken);
+      if (!token) throw new Error('Not authenticated');
       const response = await fetch(`${API_BASE_URL}/contacts/${id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!response.ok) throw new Error('Failed to delete contact');
       return response.json();
@@ -185,16 +199,18 @@ export function useSearchContacts(query: string) {
     queryKey: ['contacts', 'search', query],
     queryFn: async () => {
       if (!query || query.length < 2) return [];
+      const token = getEffectiveAccessToken(accessToken);
+      if (!token) throw new Error('Not authenticated');
       const response = await fetch(
         `${API_BASE_URL}/contacts/search?q=${encodeURIComponent(query)}`,
-        { headers: { Authorization: `Bearer ${accessToken}` } }
+        { headers: { Authorization: `Bearer ${token}` } }
       );
       if (!response.ok) throw new Error('Failed to search contacts');
       return response.json();
     },
     staleTime: 30 * 1000, // 30 seconds for search
     gcTime: 2 * 60 * 1000,
-    enabled: !!accessToken && query.length >= 2,
+    enabled: !!(accessToken || getPersistedAccessToken()) && query.length >= 2,
   });
 }
 
@@ -207,8 +223,10 @@ export function usePrefetchContact() {
     queryClient.prefetchQuery({
       queryKey: ['contact', contactId],
       queryFn: async () => {
+        const token = getEffectiveAccessToken(accessToken);
+        if (!token) throw new Error('Not authenticated');
         const response = await fetch(`${API_BASE_URL}/contacts/${contactId}`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
+          headers: { Authorization: `Bearer ${token}` },
         });
         return response.json();
       },
