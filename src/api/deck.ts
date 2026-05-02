@@ -33,7 +33,7 @@ export const deckApi = {
   },
 
   regenerate: async (itemId: string, instructions: string) => {
-    return ApiClient.post(`/deck/${itemId}/regenerate/`, {
+    return ApiClient.post(`/deck/${itemId}/regenerate`, {
       instructions
     });
   },

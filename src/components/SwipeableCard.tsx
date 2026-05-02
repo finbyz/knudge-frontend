@@ -123,7 +123,7 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
 
   const handleDrag = (event: any, info: any) => {
     if (!isTop || hasSwipedRef.current) return;
-    
+
     setIsSwiping(true);
 
     if (info.offset.x > SWIPE_THRESHOLD) {
@@ -340,27 +340,26 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
               <textarea
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
-                onBlur={() => {
-                  // Only exit edit mode if we clicked outside? 
-                  // Actually relying on blur for textarea might be annoying if click subject input.
-                  // Let's remove onBlur auto-close or make it smarter.
-                  // For simplicity, keep it but maybe delay or check active element.
-                  // User can click "Send" to finish.
-                  // Or we rely on the container click to open edit, and explicit 'Done' button?
-                  // Current UX: click text -> edit -> blur -> view.
-                  // If I click Subject input, Textarea blurs.
-                  // I should wrap the whole editing block in a container that handles edit state?
-                  // For now, I'll remove onBlur from textarea so user can switch between inputs.
-                }}
+                onBlur={() => { }}
                 className="w-full min-h-[100px] sm:min-h-[120px] p-3 sm:p-4 rounded-xl bg-primary/5 border border-primary/20 text-foreground text-sm sm:text-base leading-relaxed resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
                 autoFocus
+                disabled={isRegenerating}
               />
             ) : (
               <div
-                onClick={() => setIsEditing(true)}
-                className="min-h-[100px] sm:min-h-[120px] p-3 sm:p-4 rounded-xl bg-primary/5 border border-primary/20 hover:border-primary/40 cursor-text transition-colors"
+                onClick={() => !isRegenerating && setIsEditing(true)}
+                className={cn(
+                  "relative overflow-hidden min-h-[100px] sm:min-h-[120px] p-3 sm:p-4 rounded-xl bg-primary/5 border border-primary/20 transition-colors",
+                  isRegenerating ? "cursor-wait opacity-80" : "hover:border-primary/40 cursor-text"
+                )}
               >
-                <p className="text-foreground text-sm sm:text-base leading-relaxed whitespace-pre-wrap break-words">{draft}</p>
+                {isRegenerating && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/40 backdrop-blur-[2px]">
+                    <RefreshCw className="h-6 w-6 animate-spin text-primary mb-2 shadow-sm" />
+                    <span className="text-xs font-semibold tracking-wider text-primary uppercase">Rewriting...</span>
+                  </div>
+                )}
+                <p className={cn("text-foreground text-sm sm:text-base leading-relaxed whitespace-pre-wrap break-words", isRegenerating && "blur-[1px]")}>{draft}</p>
               </div>
             )}
 
@@ -382,14 +381,17 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
                   type="text"
                   placeholder="Add instructions for regeneration..."
                   value={regenerateInstructions}
+
                   onChange={(e) => setRegenerateInstructions(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-lg bg-card/80 border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  disabled={isRegenerating}
+                  className="w-full px-3 py-2.5 rounded-lg bg-card/80 border border-border text-foreground text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-50"
                 />
                 <div className="flex gap-2">
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => setShowRegenerateInput(false)}
+                    disabled={isRegenerating}
                     className="flex-1 h-10"
                   >
                     Cancel
@@ -397,10 +399,14 @@ export function SwipeableCard({ card, onSwipeRight, onSwipeLeft, isTop, stackInd
                   <Button
                     size="sm"
                     onClick={handleRegenerate}
-                    className="flex-1 h-10 gradient-primary text-primary-foreground border-0"
+                    disabled={isRegenerating || !regenerateInstructions.trim()}
+                    className="flex-1 h-10 gradient-primary text-primary-foreground border-0 relative overflow-hidden group"
                   >
-                    <RefreshCw className="h-4 w-4 mr-1.5" />
-                    Regenerate
+                    {isRegenerating && (
+                      <span className="absolute inset-0 bg-white/20 animate-pulse" />
+                    )}
+                    <RefreshCw className={cn("h-4 w-4 mr-1.5", isRegenerating && "animate-spin")} />
+                    <span className="relative z-10">{isRegenerating ? "Regenerating..." : "Regenerate"}</span>
                   </Button>
                 </div>
               </div>

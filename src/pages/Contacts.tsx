@@ -17,6 +17,7 @@ import { bridgesApi } from '@/api/bridges';
 import { toast } from 'sonner';
 import { cn, formatPhone, formatSenderName } from '@/lib/utils';
 import { remindersApi } from '@/api/reminders';
+import { useInboxStore } from '@/stores/inboxStore';
 
 // Platform options for new contacts
 const platformOptions = [
@@ -26,6 +27,89 @@ const platformOptions = [
   { id: 'telegram', label: 'Telegram', color: 'bg-[#26A5E4]' },
   { id: 'erpnext', label: 'ERPNext', color: 'bg-[#0078D4]' },
 ];
+
+/**
+ * Determine the correct messaging route for a contact based on their primary platform.
+ * Returns { url } for navigation or { error } if no route is available.
+ * For email contacts, also sets the inbox platform filter via the store.
+ */
+function getContactMessageRoute(contact: Contact): { url: string } | { error: string } {
+  // Determine primary platform using same logic as the platform badge
+  let primaryPlatform = 'unknown';
+  if (contact.provider) {
+    const providers = contact.provider.split(',');
+    primaryPlatform = providers[0].trim().toLowerCase() === 'google_contacts'
+      ? 'gmail'
+      : providers[0].trim().toLowerCase();
+  } else if (contact.has_whatsapp) primaryPlatform = 'whatsapp';
+  else if (contact.has_telegram) primaryPlatform = 'telegram';
+  else if (contact.email) primaryPlatform = 'email';
+
+  // Helpers to attempt routing for each channel
+  const tryWhatsApp = () => {
+    if (contact.phone) {
+      const phone = contact.phone.replace(/\D/g, '');
+      const avatarParam = contact.avatar
+        ? `&avatar=${encodeURIComponent(contact.avatar)}`
+        : '';
+      return {
+        url: `/inbox/chat/wa?room=${phone}@s.whatsapp.net&name=${encodeURIComponent(contact.name)}&phone=${encodeURIComponent(contact.phone)}${avatarParam}`,
+      };
+    }
+    return null;
+  };
+
+  const tryTelegram = () => {
+    if (contact.telegram_chat_id) {
+      const chatIdParam = `telegram-${contact.telegram_chat_id}`;
+      const avatarParam = contact.avatar
+        ? `&avatar=${encodeURIComponent(contact.avatar)}`
+        : '';
+      return {
+        url: `/inbox/chat/${chatIdParam}?name=${encodeURIComponent(contact.name)}${avatarParam}`,
+      };
+    }
+    return null;
+  };
+
+  const tryEmail = (platform: 'gmail' | 'outlook' = 'gmail') => {
+    if (contact.email) {
+      useInboxStore.getState().setSelectedPlatform(platform);
+      return { url: `/inbox` };
+    }
+    return null;
+  };
+
+  // 1. Attempt to route using the primary platform first
+  if (primaryPlatform === 'whatsapp') {
+    const route = tryWhatsApp();
+    if (route) return route;
+  } else if (primaryPlatform === 'telegram') {
+    const route = tryTelegram();
+    if (route) return route;
+  } else if (['gmail', 'outlook', 'email'].includes(primaryPlatform)) {
+    const route = tryEmail(primaryPlatform === 'outlook' ? 'outlook' : 'gmail');
+    if (route) return route;
+  }
+
+  // 2. Graceful Fallback: If primary platform data is missing, try other available channels
+  if (contact.has_whatsapp || contact.phone) {
+    const route = tryWhatsApp();
+    if (route) return route;
+  }
+
+  if (contact.has_telegram) {
+    const route = tryTelegram();
+    if (route) return route;
+  }
+
+  if (contact.email) {
+    const route = tryEmail();
+    if (route) return route;
+  }
+
+  return { error: 'No messaging channel available for this contact' };
+}
 
 export default function Contacts() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -400,20 +484,19 @@ export default function Contacts() {
 
   if (loading && contacts.length === 0 && circles.length === 0) {
     return (
-      <div className="h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+      <PageShell title="Contacts" className="pb-20">
+        <div className="flex min-h-[50vh] items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </PageShell>
     );
   }
 
   return (
-    <>
-      <div className="flex flex-col min-h-screen bg-background relative z-0 pb-20 overflow-y-auto no-scrollbar pt-6 px-4 md:px-8 max-w-[1200px] mx-auto">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight text-foreground">Contacts</h1>
-            <p className="text-sm text-muted-foreground mt-1">Manage your connections and grow your network.</p>
-          </div>
+    <PageShell title="Contacts" className="pb-20">
+      <div className="flex flex-col relative w-full max-w-[1200px] mx-auto">
+        <div className="flex items-center justify-between mb-6">
+          <p className="text-sm text-muted-foreground">Manage your connections and grow your network.</p>
           <div className="flex items-center gap-3">
             <Button
               type="button"
@@ -622,11 +705,11 @@ export default function Contacts() {
                                 <Calendar className="h-4 w-4" /> Schedule
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => {
-                                if (contact.phone) {
-                                  const phone = contact.phone.replace(/\D/g, '');
-                                  window.location.href = `/inbox/chat/wa?room=${phone}@s.whatsapp.net&name=${encodeURIComponent(contact.name)}`;
+                                const route = getContactMessageRoute(contact);
+                                if ('url' in route) {
+                                  window.location.href = route.url;
                                 } else {
-                                  toast.error('No phone number available');
+                                  toast.error(route.error);
                                 }
                               }} className="gap-2 cursor-pointer">
                                 <MessageSquare className="h-4 w-4" /> Message
@@ -926,7 +1009,7 @@ export default function Contacts() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-50 bg-foreground/20 backdrop-blur-sm overflow-y-auto"
+              className="fixed inset-0 z-50 bg-foreground/20 backdrop-blur-sm overflow-y-auto pt-28"
               onClick={() => setSelectedContact(null)}
             >
               <motion.div
@@ -934,7 +1017,7 @@ export default function Contacts() {
                 animate={{ y: 0, opacity: 1 }}
                 exit={{ y: -50, opacity: 0 }}
                 transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                className="bg-card rounded-3xl shadow-elevated w-full max-w-lg mx-auto mt-[5vh] mb-24 overflow-hidden relative"
+                className="bg-card rounded-3xl shadow-elevated w-full max-w-lg mx-auto mb-24 overflow-hidden relative"
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
@@ -1051,15 +1134,15 @@ export default function Contacts() {
                           const isEmail = ['gmail', 'outlook', 'email'].includes(platform);
                           const platformLabel = platform === 'gmail' ? 'Gmail'
                             : platform === 'outlook' ? 'Outlook'
-                            : platform === 'email' ? 'Email'
-                            : platform === 'whatsapp' ? 'WhatsApp'
-                            : platform === 'telegram' ? 'Telegram'
-                            : platform;
+                              : platform === 'email' ? 'Email'
+                                : platform === 'whatsapp' ? 'WhatsApp'
+                                  : platform === 'telegram' ? 'Telegram'
+                                    : platform;
                           const platformColor = platform === 'gmail' ? 'text-red-500'
                             : platform === 'outlook' ? 'text-blue-500'
-                            : platform === 'whatsapp' ? 'text-green-500'
-                            : platform === 'telegram' ? 'text-sky-500'
-                            : 'text-muted-foreground';
+                              : platform === 'whatsapp' ? 'text-green-500'
+                                : platform === 'telegram' ? 'text-sky-500'
+                                  : 'text-muted-foreground';
 
                           return (
                             <div key={msg.id || idx} className={`p-3 rounded-2xl ${msg.from_me ? 'bg-primary/10 ml-4' : 'bg-muted/50 mr-4'}`}>
@@ -1157,14 +1240,12 @@ export default function Contacts() {
                     <Button
                       className="flex-1 gradient-primary text-primary-foreground border-0"
                       onClick={() => {
-                        if (selectedContact?.phone) {
-                          const phone = selectedContact.phone.replace(/\D/g, '');
-                          const avatarParam = selectedContact.avatar
-                            ? `&avatar=${encodeURIComponent(selectedContact.avatar)}`
-                            : '';
-                          window.location.href = `/inbox/chat/wa?room=${phone}@s.whatsapp.net&name=${encodeURIComponent(selectedContact.name)}&phone=${encodeURIComponent(selectedContact.phone)}${avatarParam}`;
+                        if (!selectedContact) return;
+                        const route = getContactMessageRoute(selectedContact);
+                        if ('url' in route) {
+                          window.location.href = route.url;
                         } else {
-                          toast.error('No phone number available');
+                          toast.error(route.error);
                         }
                       }}
                     >
@@ -1223,19 +1304,21 @@ export default function Contacts() {
 
                     setSavingReminder(true);
                     try {
-                      await remindersApi.create({
+                      const response = await remindersApi.create({
                         contact_id: contactIdForReminder,
                         contact_name: contactNameForReminder,
                         remind_at: new Date(scheduleDate).toISOString(),
                         note: scheduleNote || undefined,
                       });
+                      
                       toast.success(`Reminder set for ${new Date(scheduleDate).toLocaleString()}`);
                       setShowScheduleModal(false);
                       setScheduleDate('');
                       setScheduleNote('');
-                      // Use captured id — not reactive selectedContact
-                      if (contactIdForReminder) {
-                        await loadContactReminders(contactIdForReminder);
+                      
+                      // Immediately add the new reminder to the UI state
+                      if (response.success && response.reminder) {
+                        setContactReminders(prev => [response.reminder, ...prev]);
                       }
                     } catch (error) {
                       toast.error("Failed to create reminder");
@@ -1257,6 +1340,6 @@ export default function Contacts() {
         )}
 
       </div>
-    </>
+    </PageShell>
   );
 }

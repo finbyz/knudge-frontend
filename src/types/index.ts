@@ -24,12 +24,14 @@ export interface Connection {
 
 export interface FeedItem {
   id: string;
-  type: 'youtube' | 'rss';
+  source_type: 'youtube' | 'linkedin' | 'instagram' | 'whatsapp' | 'telegram' | 'rss' | 'twitter';
   title: string;
-  source: string;
-  thumbnail?: string;
-  suggestion: string;
-  timestamp: string;
+  content?: string;
+  url: string;
+  source_name: string;
+  image_url?: string;
+  published_at: string;
+  is_read: boolean;
 }
 
 export interface Activity {

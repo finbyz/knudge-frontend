@@ -8,6 +8,8 @@ import { toast } from '@/hooks/use-toast';
 import { Inbox } from 'lucide-react';
 import { FeedItem } from '@/types';
 import { useUnreadStore } from '@/stores/unreadStore';
+import { ApiClient } from '@/lib/api-client';
+import { useSourcesStore } from '@/stores/sourcesStore';
 
 const tabs = [
   { id: 'all', label: 'All' },
@@ -20,16 +22,32 @@ export default function Feed() {
   const [activeTab, setActiveTab] = useState('all');
   const [items, setItems] = useState<FeedItem[]>([]);
   const { clearUnreadFeed } = useUnreadStore();
+  const { fetchSources } = useSourcesStore();
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     clearUnreadFeed();
-  }, [clearUnreadFeed]);
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        await fetchSources();
+        const data = await ApiClient.get('/feed/items');
+        setItems(data);
+      } catch (error) {
+        console.error('Failed to fetch feed:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    loadData();
+  }, [clearUnreadFeed, fetchSources]);
 
   const filteredItems = activeTab === 'all'
     ? items
-    : items.filter((item) => item.type === activeTab);
+    : items.filter((item) => item.source_type === activeTab);
 
-  const handleDraft = (itemId: string) => {
+  const handleDraft = async (itemId: string) => {
+    // In a real app, this would call an API to generate a draft card
     toast({
       title: 'Draft Created',
       description: 'AI has drafted a comment for you. Check your deck!',
@@ -80,7 +98,12 @@ export default function Feed() {
       </Link>
 
       <main className="space-y-4 py-4">
-        {filteredItems.length > 0 ? (
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+            <p className="mt-4 text-sm text-muted-foreground">Fetching latest updates...</p>
+          </div>
+        ) : filteredItems.length > 0 ? (
           filteredItems.map((item, index) => (
             <motion.div
               key={item.id}

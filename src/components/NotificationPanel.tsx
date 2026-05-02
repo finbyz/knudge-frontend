@@ -61,17 +61,17 @@ export function NotificationPanel({ isOpen, onClose }: NotificationPanelProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-foreground/20 backdrop-blur-sm"
+            className="fixed inset-0 z-50"
             onClick={onClose}
           />
-          
+
           {/* Panel */}
           <motion.div
             initial={{ opacity: 0, y: -20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -20, scale: 0.95 }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed top-16 right-4 left-4 z-50 bg-card rounded-2xl shadow-elevated border border-border max-h-[70vh] overflow-hidden"
+            className="fixed top-16 right-4 z-50 w-full max-w-md bg-card rounded-2xl shadow-elevated border border-border max-h-[70vh] overflow-hidden"
           >
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-border">

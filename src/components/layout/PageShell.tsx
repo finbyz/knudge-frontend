@@ -38,12 +38,12 @@ export function PageShell({
         className
       )}
     >
-      <div className="sticky top-0 z-30 -mx-4 flex shrink-0 flex-col bg-background/95 px-4 pb-4 pt-4 shadow-sm backdrop-blur-md transition-all sm:-mx-6 sm:px-6 sm:pb-5 sm:pt-6">
+      <div className="sticky top-0 z-30 -mx-4 flex shrink-0 flex-col bg-background/60 px-4 pb-2 pt-2 backdrop-blur-xl border-b border-border/40 transition-all sm:-mx-6 sm:px-6 sm:pb-3 sm:pt-4">
         <TopBar title={title} showNotifications={showNotifications} />
 
         {toolbar != null && (
           <div
-            className="mt-4 rounded-2xl border border-border/80 bg-background p-3 shadow-sm sm:mt-5 sm:p-4"
+            className="mt-2 rounded-2xl border border-border/80 bg-background/50 backdrop-blur-md p-3 shadow-sm sm:mt-3 sm:p-4"
           >
             {toolbar}
           </div>

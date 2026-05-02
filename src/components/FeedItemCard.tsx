@@ -32,6 +32,34 @@ const typeConfig = {
     cardBg: 'bg-gradient-to-br from-blue-50 to-card dark:from-blue-950/20',
     borderClass: 'border-blue-200/50 dark:border-blue-800/30',
   },
+  instagram: {
+    icon: Calendar, // Fallback icon
+    bgClass: 'bg-pink-500/10',
+    iconClass: 'text-pink-600',
+    cardBg: 'bg-gradient-to-br from-pink-50 to-card dark:from-pink-950/20',
+    borderClass: 'border-pink-200/50 dark:border-pink-800/30',
+  },
+  whatsapp: {
+    icon: Calendar, // Fallback icon
+    bgClass: 'bg-green-500/10',
+    iconClass: 'text-green-600',
+    cardBg: 'bg-gradient-to-br from-green-50 to-card dark:from-green-950/20',
+    borderClass: 'border-green-200/50 dark:border-green-800/30',
+  },
+  telegram: {
+    icon: Calendar, // Fallback icon
+    bgClass: 'bg-sky-500/10',
+    iconClass: 'text-sky-600',
+    cardBg: 'bg-gradient-to-br from-sky-50 to-card dark:from-sky-950/20',
+    borderClass: 'border-sky-200/50 dark:border-sky-800/30',
+  },
+  twitter: {
+    icon: Calendar, // Fallback icon
+    bgClass: 'bg-slate-500/10',
+    iconClass: 'text-slate-600',
+    cardBg: 'bg-gradient-to-br from-slate-50 to-card dark:from-slate-950/20',
+    borderClass: 'border-slate-200/50 dark:border-slate-800/30',
+  },
 };
 
 export function FeedItemCard({ item, onDraft, onDismiss }: FeedItemCardProps) {
@@ -40,7 +68,7 @@ export function FeedItemCard({ item, onDraft, onDismiss }: FeedItemCardProps) {
   const [regenerateInstructions, setRegenerateInstructions] = useState('');
   const [showRegenerateInput, setShowRegenerateInput] = useState(false);
 
-  const config = typeConfig[item.type];
+  const config = typeConfig[item.source_type as keyof typeof typeConfig] || typeConfig.rss;
   const Icon = config.icon;
 
   const handleDraftClick = () => {
@@ -84,10 +112,10 @@ export function FeedItemCard({ item, onDraft, onDismiss }: FeedItemCardProps) {
       isExpanded ? config.cardBg : 'bg-card',
       isExpanded ? config.borderClass : 'border-border'
     )}>
-      {item.thumbnail && (
+      {item.image_url && (
         <div className="aspect-video bg-muted">
           <img
-            src={item.thumbnail}
+            src={item.image_url}
             alt={item.title}
             className="w-full h-full object-cover"
           />
@@ -102,7 +130,7 @@ export function FeedItemCard({ item, onDraft, onDismiss }: FeedItemCardProps) {
           <div className="flex-1 min-w-0">
             <h3 className="font-medium text-foreground line-clamp-2">{item.title}</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              {item.source} • {item.timestamp}
+              {item.source_name} • {new Date(item.published_at).toLocaleDateString()}
             </p>
           </div>
         </div>
@@ -112,9 +140,9 @@ export function FeedItemCard({ item, onDraft, onDismiss }: FeedItemCardProps) {
             <div className="mt-4 p-3 rounded-xl bg-primary/5 border border-primary/10">
               <div className="flex items-center gap-1.5 mb-1">
                 <Sparkles className="h-3.5 w-3.5 text-primary" />
-                <span className="text-xs font-medium text-primary">AI Suggests</span>
+                <span className="text-xs font-medium text-primary">Summary</span>
               </div>
-              <p className="text-sm text-foreground">{item.suggestion}</p>
+              <p className="text-sm text-foreground line-clamp-3">{item.content}</p>
             </div>
 
             <div className="mt-4 flex items-center gap-2">

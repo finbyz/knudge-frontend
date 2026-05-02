@@ -198,11 +198,11 @@ export default function EmailDetail() {
     const stubEmailNav = (id: string | null) =>
         id
             ? {
-                  id,
-                  platform: platformForNav as any,
-                  roomId: id.startsWith('email-') ? id.replace(/^email-/, '') : id,
-                  sender: { name: '' },
-              }
+                id,
+                platform: platformForNav as any,
+                roomId: id.startsWith('email-') ? id.replace(/^email-/, '') : id,
+                sender: { name: '' },
+            }
             : null;
 
     const prevMessage = stubEmailNav(prevId);
@@ -259,36 +259,36 @@ export default function EmailDetail() {
             })
                 .then(res => res.json())
                 .then(data => {
-                        const rawFrom = data.from_email || 'Unknown <unknown@email.com>';
-                        const plainText = (data.body_text || 'No content').trim();
-                        const fromName = rawFrom.includes('<') 
-                            ? rawFrom.split('<')[0].replace(/"/g, '').trim() 
-                            : rawFrom.split('@')[0];
-                        
-                        const safeDate = data.sent_at ? new Date(data.sent_at) : new Date();
-                        const timestampStr = isNaN(safeDate.getTime()) 
-                            ? 'Recent' 
-                            : safeDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    const rawFrom = data.from_email || 'Unknown <unknown@email.com>';
+                    const plainText = (data.body_text || 'No content').trim();
+                    const fromName = rawFrom.includes('<')
+                        ? rawFrom.split('<')[0].replace(/"/g, '').trim()
+                        : rawFrom.split('@')[0];
 
-                        setFetchedEmail({
-                            id: data.id,
-                            subject: data.subject || 'No Subject',
-                            to: data.to_email ? [data.to_email] : ['me'],
-                            from: fromName || 'Unknown',
-                            fromEmail: rawFrom,
-                            direction: data.direction || 'INCOMING',
-                            threads: [
-                                {
-                                    id: 1,
-                                    sender: fromName || 'Unknown',
-                                    email: rawFrom,
-                                    timestamp: timestampStr,
-                                    body: plainText,
-                                    bodyHtml: data.body_html || undefined,
-                                    attachments: []
-                                }
-                            ]
-                        });
+                    const safeDate = data.sent_at ? new Date(data.sent_at) : new Date();
+                    const timestampStr = isNaN(safeDate.getTime())
+                        ? 'Recent'
+                        : safeDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                    setFetchedEmail({
+                        id: data.id,
+                        subject: data.subject || 'No Subject',
+                        to: data.to_email ? [data.to_email] : ['me'],
+                        from: fromName || 'Unknown',
+                        fromEmail: rawFrom,
+                        direction: data.direction || 'INCOMING',
+                        threads: [
+                            {
+                                id: 1,
+                                sender: fromName || 'Unknown',
+                                email: rawFrom,
+                                timestamp: timestampStr,
+                                body: plainText,
+                                bodyHtml: data.body_html || undefined,
+                                attachments: []
+                            }
+                        ]
+                    });
                 })
                 .catch(err => {
                     console.error(err);
@@ -299,18 +299,18 @@ export default function EmailDetail() {
             setIsLoading(false);
         }
     }, [emailId, accessToken]);
-    
+
     // Mark as read when opened
     useEffect(() => {
         if (emailId && hasMarkedAsRead.current !== emailId) {
             // Find current message in store (using getter to avoid dependency loop)
             const currentMessages = useInboxStore.getState().messages;
-            const currentMsg = currentMessages.find(m => 
-                m.id === `email-${emailId}` || 
-                m.roomId === emailId || 
+            const currentMsg = currentMessages.find(m =>
+                m.id === `email-${emailId}` ||
+                m.roomId === emailId ||
                 m.id === emailId
             );
-            
+
             if (currentMsg) {
                 markAsRead(currentMsg.id, currentMsg.roomId, currentMsg.normalizedPhone, currentMsg.identityKey);
             } else {
@@ -460,14 +460,26 @@ export default function EmailDetail() {
             >
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <Mail className="h-4 w-4 text-muted-foreground" />
-                        <span className="text-sm font-medium text-foreground">From: {email.from}</span>
+                        <Mail className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+                        <div className="flex flex-col">
+                            <span className="text-sm font-medium text-foreground">From: {email.from}</span>
+                            {email.fromEmail && (
+                                <span className="text-xs text-muted-foreground">
+                                    {email.fromEmail.includes('<')
+                                        ? email.fromEmail.match(/<(.+?)>/)?.[1] || email.fromEmail
+                                        : email.fromEmail}
+                                </span>
+                            )}
+                        </div>
                     </div>
                     {showRecipients ? (
                         <ChevronUp className="h-4 w-4 text-muted-foreground" />
                     ) : (
                         <ChevronDown className="h-4 w-4 text-muted-foreground" />
                     )}
+                </div>
+                <div className="mt-1.5 ml-6 text-sm">
+                    <p className="text-muted-foreground">To: {email.to.join(', ')}</p>
                 </div>
 
                 <AnimatePresence>
@@ -479,8 +491,7 @@ export default function EmailDetail() {
                             transition={{ duration: 0.2 }}
                             className="overflow-hidden"
                         >
-                            <div className="mt-2 space-y-1 text-sm">
-                                <p className="text-muted-foreground">To: {email.to.join(', ')}</p>
+                            <div className="mt-1 ml-6 space-y-1 text-sm">
                                 {email.cc && <p className="text-muted-foreground">CC: {email.cc.join(', ')}</p>}
                             </div>
                         </motion.div>

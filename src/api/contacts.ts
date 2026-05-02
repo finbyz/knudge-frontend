@@ -18,6 +18,7 @@ export interface Contact {
   /** True when a Telegram contact exists (linked or standalone row). */
   has_telegram?: boolean;
   telegram_username?: string | null;
+  telegram_chat_id?: string | null;
   whatsapp_contact_id?: string;
   instagram_username?: string;
   is_group?: boolean;

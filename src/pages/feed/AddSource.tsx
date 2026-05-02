@@ -174,20 +174,11 @@ export default function AddSource() {
         : 'inspiration',
     };
 
+    const url = isUrl ? searchQuery : `https://${selectedSource.platform}.com/${selectedSource.name.toLowerCase().replace(/\s/g, '')}`;
+    
     addSource({
-      name: selectedSource.name,
-      platform: selectedSource.platform,
-      url: isUrl ? searchQuery : `https://${selectedSource.platform}.com/${selectedSource.name.toLowerCase().replace(/\s/g, '')}`,
-      avatarUrl: selectedSource.avatarUrl,
-      bio: selectedSource.bio,
-      metadata: {
-        followers: selectedSource.followers,
-        activityFrequency: selectedSource.activityFrequency,
-      },
-      intent: config.intent,
-      group: groupMap[config.intent],
-      isActive: true,
-      options: config.options,
+      url: url,
+      source_type: selectedSource.platform,
     });
 
     toast({

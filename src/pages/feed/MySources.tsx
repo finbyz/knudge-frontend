@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Plus, Radar } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -26,8 +26,13 @@ export default function MySources() {
     toggleGroup,
     toggleSourceActive,
     updateSource,
-    deleteSource
+    deleteSource,
+    fetchSources
   } = useSourcesStore();
+
+  useEffect(() => {
+    fetchSources();
+  }, [fetchSources]);
 
   const [editingSource, setEditingSource] = useState<Source | null>(null);
   const [deletingSourceId, setDeletingSourceId] = useState<string | null>(null);
